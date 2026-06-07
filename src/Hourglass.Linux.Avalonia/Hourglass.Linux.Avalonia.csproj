@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="12.0.4" />
+    <PackageReference Include="Avalonia.Desktop" Version="12.0.4" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.0.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Hourglass.Core\Hourglass.Core.csproj" />
+    <ProjectReference Include="..\Hourglass.Platform\Hourglass.Platform.csproj" />
+    <ProjectReference Include="..\Hourglass.Linux.Services\Hourglass.Linux.Services.csproj" />
+  </ItemGroup>
+</Project>

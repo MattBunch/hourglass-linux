@@ -1,0 +1,43 @@
+namespace Hourglass.Platform;
+
+public interface INotificationService
+{
+    Task ShowTimerExpiredAsync(string title, string body, CancellationToken cancellationToken = default);
+}
+
+public interface ITrayService
+{
+    bool IsAvailable { get; }
+}
+
+public interface ISessionInhibitor
+{
+    ValueTask<IAsyncDisposable?> InhibitAsync(string reason, CancellationToken cancellationToken = default);
+}
+
+public interface IAudioAlertService
+{
+    Task PlayAlertAsync(string soundId, CancellationToken cancellationToken = default);
+}
+
+public interface ISettingsPathService
+{
+    string GetSettingsDirectory();
+}
+
+public interface ISingleInstanceService
+{
+    Task<bool> TryAcquireAsync(CancellationToken cancellationToken = default);
+}
+
+public interface IStartupIntegrationService
+{
+    Task SetLaunchAtLoginAsync(bool enabled, CancellationToken cancellationToken = default);
+}
+
+public interface IWakeAlarmService
+{
+    Task<WakeAlarmScheduleResult> TryScheduleWakeAsync(DateTimeOffset wakeAt, CancellationToken cancellationToken = default);
+}
+
+public readonly record struct WakeAlarmScheduleResult(bool Supported, string Message);
