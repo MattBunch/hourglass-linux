@@ -1,0 +1,512 @@
+<?xml version='1.0' encoding='utf-8'?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <data name="DateTimeTokenDateOnlyFormatString" xml:space="preserve">
+    <value>{0}</value>
+  </data>
+  <data name="DateTimeTokenDateTimeFormatString" xml:space="preserve">
+    <value>{0} at {1}</value>
+  </data>
+  <data name="DateTimeTokenTimeOnlyFormatString" xml:space="preserve">
+    <value>until {0}</value>
+  </data>
+  <data name="RelativeDateTokenTodayName" xml:space="preserve">
+    <value>today</value>
+  </data>
+  <data name="RelativeDateTokenTodayPattern" xml:space="preserve">
+    <value>todd?ay</value>
+  </data>
+  <data name="RelativeDateTokenTomorrowName" xml:space="preserve">
+    <value>tomorrow</value>
+  </data>
+  <data name="RelativeDateTokenTomorrowPattern" xml:space="preserve">
+    <value>tomm?orr?ow</value>
+  </data>
+  <data name="SpecialDateTokenChristmasDayName" xml:space="preserve">
+    <value>Christmas Day</value>
+  </data>
+  <data name="SpecialDateTokenChristmasDayPattern" xml:space="preserve">
+    <value>(ch?rist?|x)-?mass?(\s*day)?</value>
+  </data>
+  <data name="SpecialDateTokenNewYearName" xml:space="preserve">
+    <value>New Year</value>
+  </data>
+  <data name="SpecialDateTokenNewYearPattern" xml:space="preserve">
+    <value>ny|new\s*year</value>
+  </data>
+  <data name="SpecialDateTokenNewYearsEveName" xml:space="preserve">
+    <value>New Year's Eve</value>
+  </data>
+  <data name="SpecialDateTokenNewYearsEvePattern" xml:space="preserve">
+    <value>nye|new\s*year('?s)?\s*eve</value>
+  </data>
+  <data name="SpecialTimeTokenMiddayName" xml:space="preserve">
+    <value>12 noon</value>
+  </data>
+  <data name="SpecialTimeTokenMiddayPattern" xml:space="preserve">
+    <value>(12([.:]00([.:]00)?)?\s*)?(noon|mid(-?d)?ay)</value>
+  </data>
+  <data name="SpecialTimeTokenMidnightName" xml:space="preserve">
+    <value>12 midnight</value>
+  </data>
+  <data name="SpecialTimeTokenMidnightPattern" xml:space="preserve">
+    <value>(12([.:]00([.:]00)?)?\s*)?mid-?night</value>
+  </data>
+  <data name="TimeSpanExtensions1DayFormatString" xml:space="preserve">
+    <value>{0} day</value>
+  </data>
+  <data name="TimeSpanExtensionsNDaysFormatString" xml:space="preserve">
+    <value>{0} days</value>
+  </data>
+  <data name="TimeSpanExtensions1HourFormatString" xml:space="preserve">
+    <value>{0} hour</value>
+  </data>
+  <data name="TimeSpanExtensionsNHoursFormatString" xml:space="preserve">
+    <value>{0} hours</value>
+  </data>
+  <data name="TimeSpanExtensions1MinuteFormatString" xml:space="preserve">
+    <value>{0} minute</value>
+  </data>
+  <data name="TimeSpanExtensionsNMinutesFormatString" xml:space="preserve">
+    <value>{0} minutes</value>
+  </data>
+  <data name="TimeSpanExtensions1SecondFormatString" xml:space="preserve">
+    <value>{0} second</value>
+  </data>
+  <data name="TimeSpanExtensionsNSecondsFormatString" xml:space="preserve">
+    <value>{0} seconds</value>
+  </data>
+  <data name="TimeSpanToken1DayFormatString" xml:space="preserve">
+    <value>{0} day</value>
+  </data>
+  <data name="TimeSpanTokenNDaysFormatString" xml:space="preserve">
+    <value>{0} days</value>
+  </data>
+  <data name="TimeSpanToken1HourFormatString" xml:space="preserve">
+    <value>{0} hour</value>
+  </data>
+  <data name="TimeSpanTokenNHoursFormatString" xml:space="preserve">
+    <value>{0} hours</value>
+  </data>
+  <data name="TimeSpanToken1MinuteFormatString" xml:space="preserve">
+    <value>{0} minute</value>
+  </data>
+  <data name="TimeSpanTokenNMinutesFormatString" xml:space="preserve">
+    <value>{0} minutes</value>
+  </data>
+  <data name="TimeSpanToken1MonthFormatString" xml:space="preserve">
+    <value>{0} month</value>
+  </data>
+  <data name="TimeSpanTokenNMonthsFormatString" xml:space="preserve">
+    <value>{0} months</value>
+  </data>
+  <data name="TimeSpanToken1SecondFormatString" xml:space="preserve">
+    <value>{0} second</value>
+  </data>
+  <data name="TimeSpanTokenNSecondsFormatString" xml:space="preserve">
+    <value>{0} seconds</value>
+  </data>
+  <data name="TimeSpanToken1WeekFormatString" xml:space="preserve">
+    <value>{0} week</value>
+  </data>
+  <data name="TimeSpanTokenNWeeksFormatString" xml:space="preserve">
+    <value>{0} weeks</value>
+  </data>
+  <data name="TimeSpanToken1YearFormatString" xml:space="preserve">
+    <value>{0} year</value>
+  </data>
+  <data name="TimeSpanTokenNYearsFormatString" xml:space="preserve">
+    <value>{0} years</value>
+  </data>
+  <data name="TimeSpanTokenUnitSeparator" xml:space="preserve">
+    <value> </value>
+  </data>
+  <data name="TimeSpanTokenLongFormPattern" xml:space="preserve">
+    <value>^
+(
+    \s*
+    (
+        (
+            (?&lt;years&gt;\d+|\d*[.,/]\d+)
+            \s*
+            (y|yrs?|years?)
+            (
+                \s*
+                (?&lt;months&gt;\d+|\d*[.,/]\d+)
+                (\s+|$)
+            )?
+        )
+        |
+        (
+            (?&lt;months&gt;\d+|\d*[.,/]\d+)
+            \s*
+            (mo|mon?s?|months?)
+            (
+                \s*
+                (?&lt;days&gt;\d+|\d*[.,/]\d+)
+                (\s+|$)
+            )?
+        )
+        |
+        (
+            (?&lt;weeks&gt;\d+|\d*[.,/]\d+)
+            \s*
+            (w|wks?|weeks?)
+            (
+                \s*
+                (?&lt;days&gt;\d+|\d*[.,/]\d+)
+                (\s+|$)
+            )?
+        )
+        |
+        (
+            (?&lt;days&gt;\d+|\d*[.,/]\d+)
+            \s*
+            (d|dys?|days?)
+            (
+                \s*
+                (?&lt;hours&gt;\d+|\d*[.,/]\d+)
+                (\s+|$)
+            )?
+        )
+        |
+        (
+            (?&lt;hours&gt;\d+|\d*[.,/]\d+)
+            \s*
+            (h|hrs?|hours?)
+            (
+                \s*
+                (?&lt;minutes&gt;\d+|\d*[.,/]\d+)
+                (\s+|$)
+            )?
+        )
+        |
+        (
+            (?&lt;minutes&gt;\d+|\d*[.,/]\d+)
+            \s*
+            (m|mins?|minutes?)
+            (
+                \s*
+                (?&lt;seconds&gt;\d+|\d*[.,/]\d+)
+                (\s+|$)
+            )?
+        )
+        |
+        (
+            (?&lt;seconds&gt;\d+|\d*[.,/]\d+)
+            \s*
+            (s|secs?|seconds?)
+        )
+    )
+    \s*
+)+
+$</value>
+  </data>
+  <data name="TimeSpanTokenMinutesOnlyPattern" xml:space="preserve">
+    <value>^
+\s*
+(?&lt;minutes&gt;\d+)
+\s*
+$</value>
+  </data>
+  <data name="TimeSpanTokenShortFormPattern" xml:space="preserve">
+    <value>^
+\s*
+(
+    (
+        (
+            (
+                (?&lt;years&gt;\d+)
+                \s*[.,:\s]\s*
+            )?
+            (?&lt;months&gt;\d+)
+            \s*[.,:\s]\s*
+        )?
+        (?&lt;days&gt;\d+)
+        \s*[.,:\s]\s*
+    )?
+    (?&lt;hours&gt;\d+)
+    \s*[.,:\s]\s*
+)?
+(?&lt;minutes&gt;\d+)
+\s*[.,:\s]\s*
+(?&lt;seconds&gt;\d+)
+\s*
+$</value>
+  </data>
+  <data name="DateTimeExtensionsApril" xml:space="preserve">
+    <value>April</value>
+  </data>
+  <data name="DateTimeExtensionsAugust" xml:space="preserve">
+    <value>August</value>
+  </data>
+  <data name="DateTimeExtensionsDecember" xml:space="preserve">
+    <value>December</value>
+  </data>
+  <data name="DateTimeExtensionsFebruary" xml:space="preserve">
+    <value>February</value>
+  </data>
+  <data name="DateTimeExtensionsJanuary" xml:space="preserve">
+    <value>January</value>
+  </data>
+  <data name="DateTimeExtensionsJuly" xml:space="preserve">
+    <value>July</value>
+  </data>
+  <data name="DateTimeExtensionsJune" xml:space="preserve">
+    <value>June</value>
+  </data>
+  <data name="DateTimeExtensionsMarch" xml:space="preserve">
+    <value>March</value>
+  </data>
+  <data name="DateTimeExtensionsMay" xml:space="preserve">
+    <value>May</value>
+  </data>
+  <data name="DateTimeExtensionsNndFormatString" xml:space="preserve">
+    <value>{0}nd</value>
+  </data>
+  <data name="DateTimeExtensionsNovember" xml:space="preserve">
+    <value>November</value>
+  </data>
+  <data name="DateTimeExtensionsNrdFormatString" xml:space="preserve">
+    <value>{0}rd</value>
+  </data>
+  <data name="DateTimeExtensionsNstFormatString" xml:space="preserve">
+    <value>{0}st</value>
+  </data>
+  <data name="DateTimeExtensionsNthFormatString" xml:space="preserve">
+    <value>{0}th</value>
+  </data>
+  <data name="DateTimeExtensionsOctober" xml:space="preserve">
+    <value>October</value>
+  </data>
+  <data name="DateTimeExtensionsSeptember" xml:space="preserve">
+    <value>September</value>
+  </data>
+  <data name="DayOfWeekDateTokenAfterNextFormatString" xml:space="preserve">
+    <value>{0} after next</value>
+  </data>
+  <data name="DayOfWeekDateTokenDaysOfWeekAfterNextPattern" xml:space="preserve">
+    <value>(?&lt;weekday&gt;(Sun|Mon|Tue|Wed|Thu|Fri|Sat)[a-z]*)
+(\s*after)?
+\s*(?&lt;afternext&gt;next)</value>
+  </data>
+  <data name="DayOfWeekDateTokenDaysOfWeekNextPattern" xml:space="preserve">
+    <value>((this|next)\s*)?
+(?&lt;weekday&gt;(Sun|Mon|Tue|Wed|Thu|Fri|Sat)[a-z]*)</value>
+  </data>
+  <data name="DayOfWeekDateTokenDaysOfWeekNextWeekPattern" xml:space="preserve">
+    <value>(?&lt;weekday&gt;(Sun|Mon|Tue|Wed|Thu|Fri|Sat)[a-z]*)
+\s*(?&lt;nextweek&gt;next\s*w(ee)?k)</value>
+  </data>
+  <data name="DayOfWeekDateTokenNextFormatString" xml:space="preserve">
+    <value>{0}</value>
+  </data>
+  <data name="DayOfWeekDateTokenNextWeekFormatString" xml:space="preserve">
+    <value>{0} next week</value>
+  </data>
+  <data name="DayOfWeekExtensionsFriday" xml:space="preserve">
+    <value>Friday</value>
+  </data>
+  <data name="DayOfWeekExtensionsMonday" xml:space="preserve">
+    <value>Monday</value>
+  </data>
+  <data name="DayOfWeekExtensionsSaturday" xml:space="preserve">
+    <value>Saturday</value>
+  </data>
+  <data name="DayOfWeekExtensionsSunday" xml:space="preserve">
+    <value>Sunday</value>
+  </data>
+  <data name="DayOfWeekExtensionsThursday" xml:space="preserve">
+    <value>Thursday</value>
+  </data>
+  <data name="DayOfWeekExtensionsTuesday" xml:space="preserve">
+    <value>Tuesday</value>
+  </data>
+  <data name="DayOfWeekExtensionsWednesday" xml:space="preserve">
+    <value>Wednesday</value>
+  </data>
+  <data name="NormalDateTokenDayAndMonthFormatString" xml:space="preserve">
+    <value>{0} {1}</value>
+  </data>
+  <data name="NormalDateTokenDayMonthAndYearFormatString" xml:space="preserve">
+    <value>{0} {1} {2}</value>
+  </data>
+  <data name="NormalDateTokenDayOnlyPattern" xml:space="preserve">
+    <value>(the\s*)?
+(?&lt;day&gt;\d\d?)
+(\s*(st|nd|rd|th))</value>
+  </data>
+  <data name="NormalDateTokenDayOnlyFormatString" xml:space="preserve">
+    <value>{0}</value>
+  </data>
+  <data name="NormalDateTokenMonthAndDayFormatString" xml:space="preserve">
+    <value>{1} {0}</value>
+  </data>
+  <data name="NormalDateTokenMonthAndYearFormatString" xml:space="preserve">
+    <value>{0} {1}</value>
+  </data>
+  <data name="NormalDateTokenMonthDayAndYearFormatString" xml:space="preserve">
+    <value>{1} {0}, {2}</value>
+  </data>
+  <data name="NormalDateTokenMonthOnlyFormatString" xml:space="preserve">
+    <value>{0}</value>
+  </data>
+  <data name="NormalDateTokenNumericalDateWithDayFirstPattern" xml:space="preserve">
+    <value>(?&lt;day&gt;\d\d?)
+[.\-/]
+(?&lt;month&gt;\d\d?)
+(
+    [.\-/]
+    (?&lt;year&gt;(\d\d)?\d\d)
+)?</value>
+  </data>
+  <data name="NormalDateTokenNumericalDateWithMonthFirstPattern" xml:space="preserve">
+    <value>(?&lt;month&gt;\d\d?)
+[.\-/]
+(?&lt;day&gt;\d\d?)
+(
+    [.\-/]
+    (?&lt;year&gt;(\d\d)?\d\d)
+)?</value>
+  </data>
+  <data name="NormalDateTokenNumericalDateWithYearFirstPattern" xml:space="preserve">
+    <value>(
+    (?&lt;year&gt;(\d\d)?\d\d)
+    [.\-/]
+)?
+(?&lt;month&gt;\d\d?)
+[.\-/]
+(?&lt;day&gt;\d\d?)</value>
+  </data>
+  <data name="NormalDateTokenNumericalMonthAndYearPattern" xml:space="preserve">
+    <value>(?&lt;month&gt;\d\d?)
+[.\-/]
+(?&lt;year&gt;\d\d\d\d)
+|
+(?&lt;year&gt;\d\d\d\d)
+[.\-/]
+(?&lt;month&gt;\d\d?)</value>
+  </data>
+  <data name="NormalDateTokenSpelledDateWithDayFirstPattern" xml:space="preserve">
+    <value>(?&lt;day&gt;\d\d?)
+(\s*(st|nd|rd|th))?
+(\s*of)?
+\s*(?&lt;month&gt;(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*)
+(
+    \s*,?\s*
+    (?&lt;year&gt;(\d\d)?\d\d)
+)?</value>
+  </data>
+  <data name="NormalDateTokenSpelledDateWithMonthFirstPattern" xml:space="preserve">
+    <value>(?&lt;month&gt;(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*)
+\s*(?&lt;day&gt;\d\d?)
+(\s*(st|nd|rd|th))?
+(
+    \s*[\s,]\s*
+    (?&lt;year&gt;(\d\d)?\d\d)
+)?</value>
+  </data>
+  <data name="NormalDateTokenSpelledMonthAndOptionalYearPattern" xml:space="preserve">
+    <value>(?&lt;month&gt;(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*)
+(
+    \s*,?\s*
+    (?&lt;year&gt;\d\d\d\d)
+)?</value>
+  </data>
+  <data name="NormalDateTokenYearOnlyFormatString" xml:space="preserve">
+    <value>{0}</value>
+  </data>
+  <data name="NormalTimeTokenAmSuffix" xml:space="preserve">
+    <value> am</value>
+  </data>
+  <data name="NormalTimeTokenHourPartFormatString" xml:space="preserve">
+    <value>{0}</value>
+  </data>
+  <data name="NormalTimeTokenMiddaySuffix" xml:space="preserve">
+    <value> noon</value>
+  </data>
+  <data name="NormalTimeTokenMidnightSuffix" xml:space="preserve">
+    <value> midnight</value>
+  </data>
+  <data name="NormalTimeTokenMinutePartFormatString" xml:space="preserve">
+    <value>:{0:00}</value>
+  </data>
+  <data name="NormalTimeTokenPmSuffix" xml:space="preserve">
+    <value> pm</value>
+  </data>
+  <data name="NormalTimeTokenSecondPartFormatString" xml:space="preserve">
+    <value>:{0:00}</value>
+  </data>
+  <data name="NormalTimeTokenTimeWithoutSeparatorsPattern" xml:space="preserve">
+    <value>(?&lt;hour&gt;\d\d?)
+(
+    (?&lt;minute&gt;\d\d)
+    (?&lt;second&gt;\d\d)?
+)?
+\s*
+(
+    (?&lt;am&gt;a\.?(\s*m\.?)?)
+    |
+    (?&lt;pm&gt;p\.?(\s*m\.?)?)
+    |
+    (?&lt;military&gt;h|hrs|hours)
+    |
+    o'?clock
+)?</value>
+  </data>
+  <data name="NormalTimeTokenTimeWithSeparatorsPattern" xml:space="preserve">
+    <value>(?&lt;hour&gt;\d\d?)
+(
+    [.:]
+    (?&lt;minute&gt;\d\d?)
+    (
+        [.:]
+        (?&lt;second&gt;\d\d?)
+    )?
+)?
+\s*
+(
+    (?&lt;am&gt;a\.?(\s*m\.?)?)
+    |
+    (?&lt;pm&gt;p\.?(\s*m\.?)?)
+    |
+    (?&lt;military&gt;h|hrs|hours)
+    |
+    o'?clock
+)?</value>
+  </data>
+  <data name="DateTimeTokenDateOnlyPatternFormatString" xml:space="preserve">
+    <value>^({0})$</value>
+  </data>
+  <data name="DateTimeTokenDateTimePatternFormatString" xml:space="preserve">
+    <value>^({0})\s+(at\s+)?({1})$</value>
+  </data>
+  <data name="DateTimeTokenTimeDatePatternFormatString" xml:space="preserve">
+    <value>^({0})\s+(on\s+)?({1})$</value>
+  </data>
+  <data name="DateTimeTokenTimeOnlyPatternFormatString" xml:space="preserve">
+    <value>^({0})$</value>
+  </data>
+  <data name="TimerStartTokenUseDateTimeParserPattern" xml:space="preserve">
+    <value>^\s*((un)?till?|@)\s*</value>
+  </data>
+  <data name="TimeSpanExtensionsUnitSeparator" xml:space="preserve">
+    <value> </value>
+  </data>
+  <data name="NormalTimeTokenMilitaryTimePattern" xml:space="preserve">
+    <value>(?&lt;hour&gt;\d\d)
+(?&lt;minute&gt;\d\d)
+(?&lt;military&gt;|h|hrs|hours)</value>
+  </data>
+  <data name="TimerStartDefault" xml:space="preserve">
+    <value>5 minutes</value>
+  </data>
+  <data name="TimerStartZero" xml:space="preserve">
+    <value>0 seconds</value>
+  </data>
+</root>
