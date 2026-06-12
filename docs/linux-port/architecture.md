@@ -18,7 +18,7 @@ The Linux port will be a native C#/.NET application using Avalonia for the Linux
 
 The first real porting phase should extract reusable parsing, serialization, timer state, and settings models from the existing app where practical. The extraction should happen before attempting full UI parity.
 
-The current Windows implementation relies on WPF `DispatcherTimer` and `DateTime.Now`. The Linux port should later replace that with a testable timer engine built around a monotonic clock, with wall-clock time reserved for display and absolute scheduling semantics.
+The current Windows implementation relies on WPF `DispatcherTimer` and `DateTime.Now`. The Linux port now has a testable core countdown engine built around a monotonic clock, with wall-clock time reserved for display and absolute scheduling semantics.
 
 ## Platform Services
 

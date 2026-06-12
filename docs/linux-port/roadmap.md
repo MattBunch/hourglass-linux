@@ -10,10 +10,11 @@
 
 ## Phase 2: Core Extraction
 
-- Move reusable parsing logic into `Hourglass.Core`.
-- Move serialization and settings models into `Hourglass.Core`.
-- Add tests around existing parsing behavior before changing semantics.
-- Introduce a monotonic-clock countdown engine.
+- Reusable parsing logic has been moved into `Hourglass.Core`.
+- Core timer serialization DTOs and timer-start models have been moved into `Hourglass.Core`; broader settings migration remains future work.
+- Modern tests cover parser, serialization, and countdown-engine behavior.
+- A monotonic-clock countdown engine has been introduced.
+- The source inventory for remaining reusable and replacement-required code lives in `docs/linux-port/source-inventory.md`.
 
 ## Phase 3: Linux MVP
 

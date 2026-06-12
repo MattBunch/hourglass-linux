@@ -22,7 +22,7 @@ Extract parsing, serialization, timer state, and settings models before trying t
 
 ## Timer Engine
 
-Replace the existing WPF `DispatcherTimer` and `DateTime.Now` timing model later with a testable monotonic-clock timer engine.
+Use the core monotonic-clock countdown engine as timer truth for the Linux UI. Avalonia timers should refresh presentation only.
 
 ## Notifications Before Tray
 
