@@ -42,6 +42,30 @@ public sealed class TimerSerializationTests
         Assert.Equal(TimeSpan.FromSeconds(10), roundTripped.TotalTime);
     }
 
+    [Fact]
+    public void TimerInfoMapsToAndFromCountdownState()
+    {
+        var info = new TimerInfo
+        {
+            State = TimerState.Paused,
+            TimeElapsed = TimeSpan.FromSeconds(3),
+            TimeLeft = TimeSpan.FromSeconds(7),
+            TimeExpired = TimeSpan.Zero,
+            TotalTime = TimeSpan.FromSeconds(10),
+            TimerStart = TimerStart.FromString("10 seconds")!.ToTimerStartInfo()
+        };
+
+        CountdownState state = CountdownState.FromTimerInfo(info, TimeSpan.Zero);
+        TimerInfo mapped = state.ToTimerInfo();
+
+        Assert.Equal(TimerState.Paused, state.State);
+        Assert.Equal(TimeSpan.FromSeconds(3), mapped.TimeElapsed);
+        Assert.Equal(TimeSpan.FromSeconds(7), mapped.TimeLeft);
+        Assert.Equal(TimeSpan.Zero, mapped.TimeExpired);
+        Assert.Equal(TimeSpan.FromSeconds(10), mapped.TotalTime);
+        Assert.NotNull(mapped.TimerStart);
+    }
+
     private static T RoundTrip<T>(T value)
     {
         var serializer = new XmlSerializer(typeof(T));

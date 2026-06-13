@@ -4,13 +4,11 @@ using Hourglass.Timing;
 
 namespace Hourglass.Linux.Avalonia;
 
-public sealed class MainWindowViewModel : INotifyPropertyChanged
+public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 {
     private readonly CountdownEngine engine;
     private readonly Func<DateTime> wallClockNow;
-    private string timerInput = "5 minutes";
-    private string remainingTime = "00:00:00";
-    private string statusText = "Ready";
+    private TimerViewState viewState = TimerViewState.Initial;
 
     public MainWindowViewModel()
         : this(new CountdownEngine(new SystemMonotonicClock()), () => DateTime.Now)
@@ -21,7 +19,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     {
         this.engine = engine ?? throw new ArgumentNullException(nameof(engine));
         this.wallClockNow = wallClockNow ?? throw new ArgumentNullException(nameof(wallClockNow));
-        this.engine.Expired += (_, _) => this.RefreshDisplay("Timer complete");
+        this.engine.Expired += this.OnEngineExpired;
 
         this.StartCommand = new RelayCommand(this.Start, () => this.engine.State == TimerState.Stopped);
         this.PauseResumeCommand = new RelayCommand(
@@ -42,37 +40,35 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
 
     public string TimerInput
     {
-        get => this.timerInput;
+        get => this.viewState.TimerInput;
         set
         {
             value ??= string.Empty;
 
-            if (this.SetField(ref this.timerInput, value))
+            if (value != this.viewState.TimerInput)
             {
-                this.RefreshDisplay(this.engine.State == TimerState.Stopped ? "Ready" : this.statusText);
+                this.ReplaceViewState(this.viewState with { TimerInput = value });
+                this.RefreshDisplay(this.engine.State == TimerState.Stopped ? "Ready" : this.StatusText);
             }
         }
     }
 
-    public string RemainingTime
+    public string RemainingTime => this.viewState.RemainingTime;
+
+    public string StatusText => this.viewState.StatusText;
+
+    public string PauseResumeText => this.viewState.PauseResumeText;
+
+    public bool IsInputEnabled => this.viewState.IsInputEnabled;
+
+    public bool IsRunning => this.viewState.IsRunning;
+
+    public TimerState State => this.viewState.State;
+
+    public void Dispose()
     {
-        get => this.remainingTime;
-        private set => this.SetField(ref this.remainingTime, value);
+        this.engine.Expired -= this.OnEngineExpired;
     }
-
-    public string StatusText
-    {
-        get => this.statusText;
-        private set => this.SetField(ref this.statusText, value);
-    }
-
-    public string PauseResumeText => this.engine.State == TimerState.Paused ? "Resume" : "Pause";
-
-    public bool IsInputEnabled => this.engine.State == TimerState.Stopped;
-
-    public bool IsRunning => this.engine.State == TimerState.Running;
-
-    public TimerState State => this.engine.State;
 
     public void Tick()
     {
@@ -124,9 +120,10 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
 
     private void RefreshDisplay(string? explicitStatus = null)
     {
-        this.RemainingTime = FormatRemainingTime(this.engine.TimeLeft ?? TimeSpan.Zero);
-        this.StatusText = explicitStatus ?? this.GetStatusText();
-
+        this.ReplaceViewState(TimerViewState.FromTimerState(this.TimerInput, this.engine.Snapshot, explicitStatus));
+        this.OnPropertyChanged(nameof(this.TimerInput));
+        this.OnPropertyChanged(nameof(this.RemainingTime));
+        this.OnPropertyChanged(nameof(this.StatusText));
         this.OnPropertyChanged(nameof(this.PauseResumeText));
         this.OnPropertyChanged(nameof(this.IsInputEnabled));
         this.OnPropertyChanged(nameof(this.IsRunning));
@@ -136,38 +133,20 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         this.ResetCommand.RaiseCanExecuteChanged();
     }
 
-    private string GetStatusText()
+    private void ReplaceViewState(TimerViewState next, string? changedPropertyName = null)
     {
-        return this.engine.State switch
+        if (this.viewState == next)
         {
-            TimerState.Running => "Running",
-            TimerState.Paused => "Paused",
-            TimerState.Expired => "Timer complete",
-            _ => "Ready"
-        };
-    }
-
-    private static string FormatRemainingTime(TimeSpan remaining)
-    {
-        if (remaining < TimeSpan.Zero)
-        {
-            remaining = TimeSpan.Zero;
+            return;
         }
 
-        int hours = (int)Math.Floor(remaining.TotalHours);
-        return FormattableString.Invariant($"{hours:00}:{remaining.Minutes:00}:{remaining.Seconds:00}");
+        this.viewState = next;
+        this.OnPropertyChanged(changedPropertyName);
     }
 
-    private bool SetField<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)
+    private void OnEngineExpired(object? sender, EventArgs e)
     {
-        if (EqualityComparer<T>.Default.Equals(field, value))
-        {
-            return false;
-        }
-
-        field = value;
-        this.OnPropertyChanged(propertyName);
-        return true;
+        this.RefreshDisplay("Timer complete");
     }
 
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null)
