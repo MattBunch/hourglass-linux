@@ -1,0 +1,13 @@
+root = true
+
+[src/**/*.cs]
+dotnet_style_readonly_field = true
+dotnet_diagnostic.IDE0044.severity = warning
+dotnet_diagnostic.CA1802.severity = suggestion
+dotnet_code_quality.CA1802.api_surface = private, internal
+
+[tests/**/*.cs]
+dotnet_style_readonly_field = true
+dotnet_diagnostic.IDE0044.severity = warning
+dotnet_diagnostic.CA1802.severity = suggestion
+dotnet_code_quality.CA1802.api_surface = private, internal

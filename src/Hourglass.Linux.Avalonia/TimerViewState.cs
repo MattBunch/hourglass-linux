@@ -11,7 +11,15 @@ public sealed record TimerViewState(
     bool IsRunning,
     TimerState State)
 {
-    public static TimerViewState Initial { get; } = FromTimerState("5 minutes", CountdownState.Stopped);
+    internal const string DefaultTimerInput = "5 minutes";
+    internal const string ReadyStatusText = "Ready";
+    internal const string RunningStatusText = "Running";
+    internal const string PausedStatusText = "Paused";
+    internal const string TimerCompleteStatusText = "Timer complete";
+    internal const string PauseCommandText = "Pause";
+    internal const string ResumeCommandText = "Resume";
+
+    public static TimerViewState Initial { get; } = FromTimerState(DefaultTimerInput, CountdownState.Stopped);
 
     public static TimerViewState FromTimerState(
         string timerInput,
@@ -25,7 +33,7 @@ public sealed record TimerViewState(
             timerInput,
             FormatRemainingTime(timerState.TimeLeft ?? TimeSpan.Zero),
             explicitStatus ?? GetStatusText(timerState.State),
-            timerState.State == TimerState.Paused ? "Resume" : "Pause",
+            timerState.State == TimerState.Paused ? ResumeCommandText : PauseCommandText,
             timerState.State == TimerState.Stopped,
             timerState.State == TimerState.Running,
             timerState.State);
@@ -46,10 +54,10 @@ public sealed record TimerViewState(
     {
         return state switch
         {
-            TimerState.Running => "Running",
-            TimerState.Paused => "Paused",
-            TimerState.Expired => "Timer complete",
-            _ => "Ready"
+            TimerState.Running => RunningStatusText,
+            TimerState.Paused => PausedStatusText,
+            TimerState.Expired => TimerCompleteStatusText,
+            _ => ReadyStatusText
         };
     }
 }

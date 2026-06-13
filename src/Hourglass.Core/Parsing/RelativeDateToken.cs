@@ -39,7 +39,7 @@ namespace Hourglass.Parsing
         /// <summary>
         /// A list of supported relative dates.
         /// </summary>
-        private static readonly RelativeDateDefinition[] RelativeDates =
+        private static readonly IReadOnlyList<RelativeDateDefinition> RelativeDates = Array.AsReadOnly(new[]
         {
             new RelativeDateDefinition(
                 RelativeDate.Today,
@@ -52,7 +52,7 @@ namespace Hourglass.Parsing
                 0 /* yearDelta */,
                 0 /* monthDelta */,
                 1 /* dayDelta */)
-        };
+        });
 
         /// <summary>
         /// Gets or sets the <see cref="RelativeDate"/> represented by this token.
@@ -207,27 +207,27 @@ namespace Hourglass.Parsing
             /// <summary>
             /// Gets the <see cref="RelativeDate"/>.
             /// </summary>
-            public RelativeDate RelativeDate { get; private set; }
+            public RelativeDate RelativeDate { get; }
 
             /// <summary>
             /// Gets the year delta.
             /// </summary>
-            public int YearDelta { get; private set; }
+            public int YearDelta { get; }
 
             /// <summary>
             /// Gets the month delta.
             /// </summary>
-            public int MonthDelta { get; private set; }
+            public int MonthDelta { get; }
 
             /// <summary>
             /// Gets the day delta.
             /// </summary>
-            public int DayDelta { get; private set; }
+            public int DayDelta { get; }
 
             /// <summary>
             /// Gets the name of the regular expression match group that identifies the relative date in a match.
             /// </summary>
-            public string MatchGroup { get; private set; }
+            public string MatchGroup { get; }
 
             /// <summary>
             /// Returns the friendly name for the relative date.

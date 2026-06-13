@@ -405,17 +405,17 @@ namespace Hourglass.Parsing
                 /// <summary>
                 /// Gets the <see cref="DateToken.Parser"/> for the date token part of the pattern.
                 /// </summary>
-                public DateToken.Parser DateTokenParser { get; private set; }
+                public DateToken.Parser DateTokenParser { get; }
 
                 /// <summary>
                 /// Gets the <see cref="TimeToken.Parser"/> for the time token part of the pattern.
                 /// </summary>
-                public TimeToken.Parser TimeTokenParser { get; private set; }
+                public TimeToken.Parser TimeTokenParser { get; }
 
                 /// <summary>
                 /// Gets the regular expression that matches a <see cref="DateTimeToken"/>.
                 /// </summary>
-                public string Pattern { get; private set; }
+                public string Pattern { get; }
             }
         }
     }

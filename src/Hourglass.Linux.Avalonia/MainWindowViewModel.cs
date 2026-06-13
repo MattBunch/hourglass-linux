@@ -6,6 +6,8 @@ namespace Hourglass.Linux.Avalonia;
 
 public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 {
+    private const string InvalidTimerStatusText = "Enter a valid current timer.";
+
     private readonly CountdownEngine engine;
     private readonly Func<DateTime> wallClockNow;
     private TimerViewState viewState = TimerViewState.Initial;
@@ -48,7 +50,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             if (value != this.viewState.TimerInput)
             {
                 this.ReplaceViewState(this.viewState with { TimerInput = value });
-                this.RefreshDisplay(this.engine.State == TimerState.Stopped ? "Ready" : this.StatusText);
+                this.RefreshDisplay(this.engine.State == TimerState.Stopped ? TimerViewState.ReadyStatusText : this.StatusText);
             }
         }
     }
@@ -83,17 +85,17 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
         if (timerStart == null || !timerStart.IsValid || !timerStart.TryGetEndTime(now, out DateTime endTime) || endTime < now)
         {
-            this.RefreshDisplay("Enter a valid current timer.");
+            this.RefreshDisplay(InvalidTimerStatusText);
             return;
         }
 
         if (!this.engine.Start(timerStart, now))
         {
-            this.RefreshDisplay("Enter a valid current timer.");
+            this.RefreshDisplay(InvalidTimerStatusText);
             return;
         }
 
-        this.RefreshDisplay("Running");
+        this.RefreshDisplay(TimerViewState.RunningStatusText);
     }
 
     private void PauseOrResume()
@@ -101,21 +103,21 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         if (this.engine.State == TimerState.Running)
         {
             this.engine.Pause();
-            this.RefreshDisplay("Paused");
+            this.RefreshDisplay(TimerViewState.PausedStatusText);
             return;
         }
 
         if (this.engine.State == TimerState.Paused)
         {
             this.engine.Resume(this.wallClockNow());
-            this.RefreshDisplay("Running");
+            this.RefreshDisplay(TimerViewState.RunningStatusText);
         }
     }
 
     private void Reset()
     {
         this.engine.Stop();
-        this.RefreshDisplay("Ready");
+        this.RefreshDisplay(TimerViewState.ReadyStatusText);
     }
 
     private void RefreshDisplay(string? explicitStatus = null)
@@ -146,7 +148,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     private void OnEngineExpired(object? sender, EventArgs e)
     {
-        this.RefreshDisplay("Timer complete");
+        this.RefreshDisplay(TimerViewState.TimerCompleteStatusText);
     }
 
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null)
