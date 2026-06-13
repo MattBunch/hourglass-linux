@@ -60,6 +60,22 @@ input/event
 - Do not return `List<T>`, `Dictionary<TKey, TValue>`, or mutable collection fields from public APIs.
 - Avoid shared mutable static state and mutable singletons.
 
+### `const`, `readonly`, and local variables
+
+Use the strongest immutability guarantee that C# supports for the specific value:
+
+- Declare every field or local as `const` when it represents a genuine compile-time constant and its initializer is a valid constant expression.
+- Do not force `const` onto runtime values. Values produced by constructors, method calls, clocks, parsing, configuration, collections, records, `DateTime`, or `TimeSpan` generally cannot be `const`.
+- Prefer `private readonly` fields when they are assigned at declaration or in a constructor and are never reassigned. Treat IDE0044 warnings as defects in new or modified code unless controlled mutation is intentional.
+- Prefer `static readonly` for shared values initialized at runtime, but only when the referenced value is itself immutable or is never mutated after construction.
+- Remember that a `readonly` field prevents reassignment of the field; it does not make a referenced mutable object immutable.
+- C# has no general `readonly`, `final`, or `val` modifier for ordinary runtime local variables. For locals that must not conceptually change, assign once, keep their scope small, avoid reusing the name for another value, and extract a pure expression or immutable value type when that makes the invariant clearer.
+- Prefer immutable records, `readonly record struct` values, tuples, and pure return values over mutating local accumulator objects.
+- Do not introduce mutable arrays or collections as `static readonly` and then treat them as immutable. Use immutable collections, frozen collections where appropriate, or defensive copies.
+- Do not create named constants for incidental one-use literals merely to increase the `const` count. A constant should communicate stable domain or implementation meaning.
+- Be cautious with public `const` fields because their values are compiled into consuming assemblies. Prefer `public static readonly` when a published value may change between releases.
+- When touching a file, convert eligible fields and meaningful locals in the changed area to `const` or `readonly`; avoid repository-wide style churn unrelated to the task.
+
 ### Necessary mutable DTOs
 
 Serialization frameworks may require parameterless constructors and public setters. Do not break XML or settings compatibility simply to convert every DTO into a record.
