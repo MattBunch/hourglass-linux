@@ -39,7 +39,7 @@ namespace Hourglass.Parsing
         /// <summary>
         /// The set of supported special times.
         /// </summary>
-        private static readonly SpecialTimeDefinition[] SpecialTimes =
+        private static readonly IReadOnlyList<SpecialTimeDefinition> SpecialTimes = Array.AsReadOnly(new[]
         {
             new SpecialTimeDefinition(
                 SpecialTime.Midday,
@@ -52,7 +52,7 @@ namespace Hourglass.Parsing
                 0 /* hour */,
                 0 /* minute */,
                 0 /* second */)
-        };
+        });
 
         /// <summary>
         /// Gets or sets the <see cref="SpecialTime"/> represented by this token.
@@ -209,27 +209,27 @@ namespace Hourglass.Parsing
             /// <summary>
             /// Gets the <see cref="SpecialTime"/>.
             /// </summary>
-            public SpecialTime SpecialTime { get; private set; }
+            public SpecialTime SpecialTime { get; }
 
             /// <summary>
             /// Gets the hour.
             /// </summary>
-            public int Hour { get; private set; }
+            public int Hour { get; }
 
             /// <summary>
             /// Gets the minute.
             /// </summary>
-            public int Minute { get; private set; }
+            public int Minute { get; }
 
             /// <summary>
             /// Gets the second.
             /// </summary>
-            public int Second { get; private set; }
+            public int Second { get; }
 
             /// <summary>
             /// Gets the name of the regular expression match group that identifies the special time in a match.
             /// </summary>
-            public string MatchGroup { get; private set; }
+            public string MatchGroup { get; }
 
             /// <summary>
             /// Returns the friendly name for the special time.

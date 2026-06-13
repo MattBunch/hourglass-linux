@@ -260,7 +260,7 @@ During editing:
 3. Keep commits and diffs focused.
 4. Avoid mixing architecture changes with unrelated UI polish.
 
-Before finishing, run:
+Before finishing, always run the validation commands for the modern Linux solution so changes are proven by tests:
 
 ```bash
 dotnet restore Hourglass.Linux.sln
@@ -268,7 +268,7 @@ dotnet build Hourglass.Linux.sln --configuration Release --no-restore
 dotnet test Hourglass.Linux.sln --configuration Release --no-build --verbosity normal
 ```
 
-Also run formatting or analyzer checks already configured by the repository. Do not introduce a new formatting regime as part of an unrelated refactor.
+Do not finish with unrun tests. If the commands cannot run because of environment or tooling constraints, record the exact command, failure, and any successful fallback verification. Also run formatting or analyzer checks already configured by the repository. Do not introduce a new formatting regime as part of an unrelated refactor.
 
 ## Definition of Done
 

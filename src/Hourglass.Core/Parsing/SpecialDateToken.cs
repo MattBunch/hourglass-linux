@@ -44,7 +44,7 @@ namespace Hourglass.Parsing
         /// <summary>
         /// A list of supported special dates.
         /// </summary>
-        private static readonly SpecialDateDefinition[] SpecialDates =
+        private static readonly IReadOnlyList<SpecialDateDefinition> SpecialDates = Array.AsReadOnly(new[]
         {
             new SpecialDateDefinition(
                 SpecialDate.NewYear,
@@ -60,7 +60,7 @@ namespace Hourglass.Parsing
                 SpecialDate.NewYearsEve,
                 12 /* month */,
                 31 /* day */)
-        };
+        });
 
         /// <summary>
         /// Gets or sets the <see cref="SpecialDate"/> represented by this token.
@@ -220,22 +220,22 @@ namespace Hourglass.Parsing
             /// <summary>
             /// Gets the <see cref="SpecialDate"/>.
             /// </summary>
-            public SpecialDate SpecialDate { get; private set; }
+            public SpecialDate SpecialDate { get; }
 
             /// <summary>
             /// Gets the month.
             /// </summary>
-            public int Month { get; private set; }
+            public int Month { get; }
 
             /// <summary>
             /// Gets the day.
             /// </summary>
-            public int Day { get; private set; }
+            public int Day { get; }
 
             /// <summary>
             /// Gets the name of the regular expression match group that identifies the special date in a match.
             /// </summary>
-            public string MatchGroup { get; private set; }
+            public string MatchGroup { get; }
 
             /// <summary>
             /// Returns the friendly name for the special date.
