@@ -1,19 +1,51 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:Hourglass.Linux.Avalonia"
         x:Class="Hourglass.Linux.Avalonia.MainWindow"
+        x:DataType="local:MainWindowViewModel"
         Title="Hourglass Linux Port"
-        Width="420"
-        Height="220"
+        Width="520"
+        Height="300"
         MinWidth="360"
-        MinHeight="180">
-  <Grid RowDefinitions="*,Auto,*"
-        ColumnDefinitions="*,Auto,*">
-    <TextBlock Grid.Row="1"
-               Grid.Column="1"
-               Text="Hourglass Linux Port"
-               FontSize="24"
-               FontWeight="SemiBold"
-               HorizontalAlignment="Center"
-               VerticalAlignment="Center" />
+        MinHeight="260">
+  <Grid RowDefinitions="Auto,*,Auto"
+        RowSpacing="20"
+        Margin="24">
+    <StackPanel Grid.Row="0"
+                Spacing="8">
+      <TextBlock Text="Hourglass"
+                 FontSize="22"
+                 FontWeight="SemiBold" />
+      <TextBox Text="{Binding TimerInput, Mode=TwoWay}"
+               IsEnabled="{Binding IsInputEnabled}"
+               PlaceholderText="5 minutes"
+               HorizontalAlignment="Stretch" />
+    </StackPanel>
+
+    <StackPanel Grid.Row="1"
+                VerticalAlignment="Center"
+                HorizontalAlignment="Center"
+                Spacing="8">
+      <TextBlock Text="{Binding RemainingTime}"
+                 FontFamily="Consolas, DejaVu Sans Mono, monospace"
+                 FontSize="48"
+                 FontWeight="SemiBold"
+                 HorizontalAlignment="Center" />
+      <TextBlock Text="{Binding StatusText}"
+                 HorizontalAlignment="Center"
+                 Foreground="{DynamicResource TextControlPlaceholderForeground}" />
+    </StackPanel>
+
+    <StackPanel Grid.Row="2"
+                Orientation="Horizontal"
+                Spacing="8"
+                HorizontalAlignment="Center">
+      <Button Content="Start"
+              Command="{Binding StartCommand}" />
+      <Button Content="{Binding PauseResumeText}"
+              Command="{Binding PauseResumeCommand}" />
+      <Button Content="Reset"
+              Command="{Binding ResetCommand}" />
+    </StackPanel>
   </Grid>
 </Window>
