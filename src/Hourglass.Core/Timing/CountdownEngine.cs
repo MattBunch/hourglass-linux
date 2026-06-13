@@ -1,3 +1,5 @@
+#nullable enable
+
 namespace Hourglass.Timing;
 
 using Hourglass.Serialization;
@@ -5,90 +7,66 @@ using Hourglass.Serialization;
 public sealed class CountdownEngine
 {
     private readonly IMonotonicClock clock;
-    private TimeSpan runStartedAt;
-    private TimeSpan elapsedBeforeRun;
-    private TimerStart timerStart;
-    private TimeSpan? restartDuration;
-    private bool canRestart;
+    private CountdownState state;
 
     public CountdownEngine(IMonotonicClock clock)
     {
         this.clock = clock ?? throw new ArgumentNullException(nameof(clock));
-        this.State = TimerState.Stopped;
+        this.state = CountdownState.Stopped;
     }
 
     public CountdownEngine(IMonotonicClock clock, TimerInfo timerInfo)
         : this(clock)
     {
-        if (timerInfo == null)
-        {
-            throw new ArgumentNullException(nameof(timerInfo));
-        }
-
-        this.State = timerInfo.State;
-        this.StartTime = timerInfo.StartTime;
-        this.EndTime = timerInfo.EndTime;
-        this.TimeElapsed = timerInfo.TimeElapsed;
-        this.TimeLeft = timerInfo.TimeLeft;
-        this.TimeExpired = timerInfo.TimeExpired;
-        this.TotalTime = timerInfo.TotalTime;
-        this.timerStart = TimerStart.FromTimerStartInfo(timerInfo.TimerStart);
-        this.canRestart = this.timerStart?.Type == TimerStartType.TimeSpan;
-
-        if (this.State == TimerState.Running || this.State == TimerState.Expired)
-        {
-            this.elapsedBeforeRun = this.TimeElapsed ?? TimeSpan.Zero;
-            this.runStartedAt = this.clock.Elapsed;
-            this.Update();
-        }
+        this.state = CountdownState.FromTimerInfo(timerInfo, this.clock.Elapsed);
     }
 
-    public event EventHandler Started;
+    public event EventHandler? Started;
 
-    public event EventHandler Paused;
+    public event EventHandler? Paused;
 
-    public event EventHandler Resumed;
+    public event EventHandler? Resumed;
 
-    public event EventHandler Stopped;
+    public event EventHandler? Stopped;
 
-    public event EventHandler Expired;
+    public event EventHandler? Expired;
 
-    public event EventHandler Tick;
+    public event EventHandler? Tick;
 
-    public TimerState State { get; private set; }
+    public CountdownState Snapshot => this.state;
 
-    public DateTime? StartTime { get; private set; }
+    public TimerState State => this.state.State;
 
-    public DateTime? EndTime { get; private set; }
+    public DateTime? StartTime => this.state.StartTime;
 
-    public TimeSpan? TimeElapsed { get; private set; }
+    public DateTime? EndTime => this.state.EndTime;
 
-    public TimeSpan? TimeLeft { get; private set; }
+    public TimeSpan? TimeElapsed => this.state.TimeElapsed;
 
-    public TimeSpan? TimeExpired { get; private set; }
+    public TimeSpan? TimeLeft => this.state.TimeLeft;
 
-    public TimeSpan? TotalTime { get; private set; }
+    public TimeSpan? TimeExpired => this.state.TimeExpired;
 
-    public TimerStart TimerStart => this.timerStart;
+    public TimeSpan? TotalTime => this.state.TotalTime;
 
-    public bool SupportsRestart => this.canRestart && (this.timerStart != null || this.restartDuration.HasValue);
+    public TimerStart? TimerStart => this.state.TimerStart;
 
-    public bool Start(TimerStart newTimerStart, DateTime wallClockStart)
+    public bool SupportsRestart => this.state.SupportsRestart;
+
+    public bool Start(TimerStart? newTimerStart, DateTime wallClockStart)
     {
-        if (newTimerStart == null)
+        CountdownTransition transition = CountdownTransitions.Start(
+            this.state,
+            newTimerStart,
+            wallClockStart,
+            this.clock.Elapsed);
+
+        if (!transition.Succeeded)
         {
             return false;
         }
 
-        if (!newTimerStart.TryGetEndTime(wallClockStart, out DateTime endTime))
-        {
-            return false;
-        }
-
-        this.timerStart = newTimerStart;
-        this.canRestart = newTimerStart.Type == TimerStartType.TimeSpan;
-        this.restartDuration = this.canRestart ? endTime - wallClockStart : null;
-        this.StartCore(wallClockStart, endTime);
+        this.Apply(transition);
         return true;
     }
 
@@ -99,157 +77,91 @@ public sealed class CountdownEngine
             throw new ArgumentOutOfRangeException(nameof(duration));
         }
 
-        this.timerStart = null;
-        this.canRestart = true;
-        this.restartDuration = duration;
-        this.StartCore(wallClockStart, wallClockStart + duration);
+        this.Apply(CountdownTransitions.StartDuration(this.state, duration, wallClockStart, this.clock.Elapsed));
     }
 
     public void Start(DateTime wallClockStart, DateTime wallClockEnd)
-    {
-        this.timerStart = null;
-        this.canRestart = false;
-        this.restartDuration = null;
-        this.StartCore(wallClockStart, wallClockEnd);
-    }
-
-    private void StartCore(DateTime wallClockStart, DateTime wallClockEnd)
     {
         if (wallClockEnd < wallClockStart)
         {
             throw new ArgumentOutOfRangeException(nameof(wallClockEnd));
         }
 
-        this.State = TimerState.Running;
-        this.StartTime = wallClockStart;
-        this.EndTime = wallClockEnd;
-        this.TotalTime = wallClockEnd - wallClockStart;
-        this.elapsedBeforeRun = TimeSpan.Zero;
-        this.runStartedAt = this.clock.Elapsed;
-        this.TimeElapsed = TimeSpan.Zero;
-        this.TimeLeft = this.TotalTime;
-        this.TimeExpired = TimeSpan.Zero;
-
-        this.Started?.Invoke(this, EventArgs.Empty);
-        this.Update();
+        this.Apply(CountdownTransitions.StartAbsolute(this.state, wallClockStart, wallClockEnd, this.clock.Elapsed));
     }
 
     public bool Restart(DateTime wallClockStart)
     {
-        if (!this.SupportsRestart)
+        CountdownTransition transition = CountdownTransitions.Restart(this.state, wallClockStart, this.clock.Elapsed);
+        if (!transition.Succeeded)
         {
             return false;
         }
 
-        if (this.timerStart != null)
-        {
-            this.Stop();
-            return this.Start(this.timerStart, wallClockStart);
-        }
-
-        TimeSpan duration = this.TotalTime ?? TimeSpan.Zero;
-        if (this.restartDuration.HasValue)
-        {
-            duration = this.restartDuration.Value;
-        }
-
-        this.Stop();
-        this.Start(duration, wallClockStart);
+        this.Apply(transition);
         return true;
     }
 
     public void Pause()
     {
-        if (this.State != TimerState.Running)
-        {
-            return;
-        }
-
-        this.Update();
-        this.State = TimerState.Paused;
-        this.StartTime = null;
-        this.EndTime = null;
-        this.elapsedBeforeRun = this.TimeElapsed ?? TimeSpan.Zero;
-        this.Paused?.Invoke(this, EventArgs.Empty);
+        this.Apply(CountdownTransitions.Pause(this.state, this.clock.Elapsed));
     }
 
     public void Resume(DateTime wallClockNow)
     {
-        if (this.State != TimerState.Paused)
-        {
-            return;
-        }
-
-        TimeSpan remaining = this.TimeLeft ?? TimeSpan.Zero;
-        this.State = TimerState.Running;
-        this.runStartedAt = this.clock.Elapsed;
-        this.StartTime = wallClockNow - this.elapsedBeforeRun;
-        this.EndTime = wallClockNow + remaining;
-        this.Resumed?.Invoke(this, EventArgs.Empty);
-        this.Update();
+        this.Apply(CountdownTransitions.Resume(this.state, wallClockNow, this.clock.Elapsed));
     }
 
     public void Stop()
     {
-        if (this.State == TimerState.Stopped)
-        {
-            return;
-        }
-
-        this.State = TimerState.Stopped;
-        this.StartTime = null;
-        this.EndTime = null;
-        this.TimeElapsed = null;
-        this.TimeLeft = null;
-        this.TimeExpired = null;
-        this.TotalTime = null;
-        this.elapsedBeforeRun = TimeSpan.Zero;
-        this.runStartedAt = TimeSpan.Zero;
-        this.timerStart = null;
-        this.restartDuration = null;
-        this.canRestart = false;
-        this.Stopped?.Invoke(this, EventArgs.Empty);
+        this.Apply(CountdownTransitions.Stop(this.state));
     }
 
     public void Update()
     {
-        if (this.State != TimerState.Running && this.State != TimerState.Expired)
-        {
-            return;
-        }
-
-        TimeSpan total = this.TotalTime ?? TimeSpan.Zero;
-        TimeSpan elapsed = this.elapsedBeforeRun + (this.clock.Elapsed - this.runStartedAt);
-        if (elapsed < TimeSpan.Zero)
-        {
-            elapsed = TimeSpan.Zero;
-        }
-
-        this.TimeElapsed = elapsed < total ? elapsed : total;
-        this.TimeLeft = elapsed < total ? total - elapsed : TimeSpan.Zero;
-        this.TimeExpired = elapsed > total ? elapsed - total : TimeSpan.Zero;
-
-        if (this.State == TimerState.Running && this.TimeLeft == TimeSpan.Zero)
-        {
-            this.State = TimerState.Expired;
-            this.Expired?.Invoke(this, EventArgs.Empty);
-        }
-
-        this.Tick?.Invoke(this, EventArgs.Empty);
+        this.Apply(CountdownTransitions.Tick(this.state, this.clock.Elapsed));
     }
 
     public TimerInfo ToTimerInfo()
     {
-        return new TimerInfo
+        return this.state.ToTimerInfo();
+    }
+
+    private void Apply(CountdownTransition transition)
+    {
+        this.state = transition.State;
+        this.Publish(transition.Effects.First);
+        this.Publish(transition.Effects.Second);
+        this.Publish(transition.Effects.Third);
+        this.Publish(transition.Effects.Fourth);
+    }
+
+    private void Publish(CountdownEffect effect)
+    {
+        switch (effect)
         {
-            State = this.State,
-            StartTime = this.StartTime,
-            EndTime = this.EndTime,
-            TimeElapsed = this.TimeElapsed,
-            TimeLeft = this.TimeLeft,
-            TimeExpired = this.TimeExpired,
-            TotalTime = this.TotalTime,
-            TimerStart = this.timerStart?.ToTimerStartInfo()
-        };
+            case CountdownEffect.Started:
+                this.Started?.Invoke(this, EventArgs.Empty);
+                break;
+            case CountdownEffect.Paused:
+                this.Paused?.Invoke(this, EventArgs.Empty);
+                break;
+            case CountdownEffect.Resumed:
+                this.Resumed?.Invoke(this, EventArgs.Empty);
+                break;
+            case CountdownEffect.Stopped:
+                this.Stopped?.Invoke(this, EventArgs.Empty);
+                break;
+            case CountdownEffect.Expired:
+                this.Expired?.Invoke(this, EventArgs.Empty);
+                break;
+            case CountdownEffect.Ticked:
+                this.Tick?.Invoke(this, EventArgs.Empty);
+                break;
+            case CountdownEffect.None:
+                break;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(effect), effect, null);
+        }
     }
 }
