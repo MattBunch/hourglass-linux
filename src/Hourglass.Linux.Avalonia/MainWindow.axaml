@@ -3,49 +3,164 @@
         xmlns:local="clr-namespace:Hourglass.Linux.Avalonia"
         x:Class="Hourglass.Linux.Avalonia.MainWindow"
         x:DataType="local:MainWindowViewModel"
-        Title="Hourglass Linux Port"
-        Width="520"
-        Height="300"
-        MinWidth="360"
-        MinHeight="260">
-  <Grid RowDefinitions="Auto,*,Auto"
-        RowSpacing="20"
-        Margin="24">
-    <StackPanel Grid.Row="0"
-                Spacing="8">
-      <TextBlock Text="Hourglass"
-                 FontSize="22"
-                 FontWeight="SemiBold" />
-      <TextBox Text="{Binding TimerInput, Mode=TwoWay}"
-               IsEnabled="{Binding IsInputEnabled}"
-               PlaceholderText="5 minutes"
-               HorizontalAlignment="Stretch" />
-    </StackPanel>
+        Title="Hourglass"
+        Width="350"
+        Height="150"
+        MinWidth="250"
+        MinHeight="150">
+  <Window.Resources>
+    <local:ProgressWidthConverter x:Key="ProgressWidthConverter" />
+  </Window.Resources>
 
-    <StackPanel Grid.Row="1"
-                VerticalAlignment="Center"
-                HorizontalAlignment="Center"
-                Spacing="8">
-      <TextBlock Text="{Binding RemainingTime}"
-                 FontFamily="Consolas, DejaVu Sans Mono, monospace"
-                 FontSize="48"
-                 FontWeight="SemiBold"
-                 HorizontalAlignment="Center" />
-      <TextBlock Text="{Binding StatusText}"
-                 HorizontalAlignment="Center"
-                 Foreground="{DynamicResource TextControlPlaceholderForeground}" />
-    </StackPanel>
+  <Window.Styles>
+    <Style Selector="Grid.progressTrack">
+      <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseLowBrush}" />
+    </Style>
 
-    <StackPanel Grid.Row="2"
-                Orientation="Horizontal"
-                Spacing="8"
-                HorizontalAlignment="Center">
-      <Button Content="Start"
-              Command="{Binding StartCommand}" />
-      <Button Content="{Binding PauseResumeText}"
-              Command="{Binding PauseResumeCommand}" />
-      <Button Content="Reset"
-              Command="{Binding ResetCommand}" />
-    </StackPanel>
+    <Style Selector="TextBox.timerInput">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="FontFamily" Value="Segoe UI Light, Inter, Noto Sans, sans-serif" />
+      <Setter Property="FontSize" Value="20" />
+      <Setter Property="Foreground" Value="{DynamicResource TextControlForeground}" />
+      <Setter Property="CaretBrush" Value="{DynamicResource TextControlForeground}" />
+    </Style>
+
+    <Style Selector="TextBox.timerInput:focus">
+      <Setter Property="BorderBrush" Value="{DynamicResource AccentFillColorDefaultBrush}" />
+      <Setter Property="BorderThickness" Value="0 0 0 1" />
+    </Style>
+
+    <Style Selector="TextBlock.timerText">
+      <Setter Property="FontFamily" Value="Segoe UI Light, Inter, Noto Sans, sans-serif" />
+      <Setter Property="FontSize" Value="24" />
+      <Setter Property="FontWeight" Value="Light" />
+      <Setter Property="Foreground" Value="{DynamicResource TextControlForeground}" />
+      <Setter Property="HorizontalAlignment" Value="Center" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="TextAlignment" Value="Center" />
+    </Style>
+
+    <Style Selector="Button.textCommand">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Padding" Value="7 0" />
+      <Setter Property="Margin" Value="0" />
+      <Setter Property="MinWidth" Value="0" />
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="FontFamily" Value="Segoe UI, Inter, Noto Sans, sans-serif" />
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="Foreground" Value="{DynamicResource TextControlForeground}" />
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+
+    <Style Selector="Button.textCommand:pointerover">
+      <Setter Property="Foreground" Value="{DynamicResource AccentFillColorDefaultBrush}" />
+    </Style>
+
+    <Style Selector="Button.textCommand:pressed">
+      <Setter Property="Opacity" Value="0.72" />
+    </Style>
+
+    <Style Selector="StackPanel#CommandPanel">
+      <Setter Property="Opacity" Value="1" />
+      <Setter Property="Transitions">
+        <Transitions>
+          <DoubleTransition Property="Opacity"
+                            Duration="0:0:0.3"
+                            Easing="QuadraticEaseOut" />
+        </Transitions>
+      </Setter>
+    </Style>
+
+    <Style Selector="Grid.timer-active:not(.content-active) StackPanel#CommandPanel">
+      <Setter Property="Opacity" Value="0.08" />
+    </Style>
+  </Window.Styles>
+
+  <Grid x:Name="RootGrid"
+        Classes="content-active">
+    <Grid x:Name="ProgressLayer"
+          Classes="progressTrack"
+          ClipToBounds="True"
+          IsHitTestVisible="False">
+      <Border x:Name="ProgressIndicator"
+              HorizontalAlignment="Left"
+              Background="{DynamicResource AccentFillColorDefaultBrush}">
+        <Border.Width>
+          <MultiBinding Converter="{StaticResource ProgressWidthConverter}">
+            <Binding Path="ProgressPercent" />
+            <Binding ElementName="ProgressLayer"
+                     Path="Bounds.Width" />
+          </MultiBinding>
+        </Border.Width>
+      </Border>
+    </Grid>
+
+    <Grid x:Name="InnerGrid"
+          Margin="10"
+          PointerEntered="InnerGridPointerEntered"
+          PointerExited="InnerGridPointerExited"
+          GotFocus="InnerGridFocusChanged"
+          LostFocus="InnerGridFocusChanged">
+      <StackPanel Margin="20 0"
+                  VerticalAlignment="Center"
+                  Spacing="4">
+        <Grid MinHeight="42">
+          <TextBox x:Name="TimerInputTextBox"
+                   Classes="timerInput"
+                   Text="{Binding TimerInput, Mode=TwoWay}"
+                   IsVisible="{Binding IsTimerInputVisible}"
+                   PlaceholderText="5 minutes" />
+
+          <Viewbox Stretch="Uniform"
+                   StretchDirection="DownOnly"
+                   IsVisible="{Binding IsRemainingTimeVisible}">
+            <TextBlock x:Name="RemainingTimeText"
+                       Classes="timerText"
+                       Text="{Binding RemainingTime}" />
+          </Viewbox>
+
+          <Viewbox Stretch="Uniform"
+                   StretchDirection="DownOnly"
+                   IsVisible="{Binding IsCompletionTextVisible}">
+            <TextBlock x:Name="CompletionText"
+                       Classes="timerText"
+                       Text="{Binding StatusText}" />
+          </Viewbox>
+        </Grid>
+
+        <StackPanel x:Name="CommandPanel"
+                    Orientation="Horizontal"
+                    HorizontalAlignment="Center"
+                    Spacing="0">
+          <Button x:Name="StartButton"
+                  Classes="textCommand"
+                  Content="Start"
+                  Command="{Binding StartCommand}"
+                  IsVisible="{Binding IsStartVisible}" />
+          <Button x:Name="PauseButton"
+                  Classes="textCommand"
+                  Content="Pause"
+                  Command="{Binding PauseResumeCommand}"
+                  IsVisible="{Binding IsPauseVisible}" />
+          <Button x:Name="ResumeButton"
+                  Classes="textCommand"
+                  Content="Resume"
+                  Command="{Binding PauseResumeCommand}"
+                  IsVisible="{Binding IsResumeVisible}" />
+          <Button x:Name="StopButton"
+                  Classes="textCommand"
+                  Content="Stop"
+                  Command="{Binding ResetCommand}"
+                  IsVisible="{Binding IsStopVisible}" />
+        </StackPanel>
+      </StackPanel>
+    </Grid>
   </Grid>
 </Window>
