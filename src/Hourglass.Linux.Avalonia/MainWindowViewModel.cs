@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using Hourglass.Platform;
 using Hourglass.Timing;
 
 namespace Hourglass.Linux.Avalonia;
@@ -7,20 +8,32 @@ namespace Hourglass.Linux.Avalonia;
 public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 {
     private const string InvalidTimerStatusText = "Enter a valid current timer.";
+    private const string NotificationBody = "Timer complete";
+    private const string NotificationTitle = "Hourglass";
 
     private readonly CountdownEngine engine;
+    private readonly INotificationService notificationService;
     private readonly Func<DateTime> wallClockNow;
     private TimerViewState viewState = TimerViewState.Initial;
 
     public MainWindowViewModel()
-        : this(new CountdownEngine(new SystemMonotonicClock()), () => DateTime.Now)
+        : this(new CountdownEngine(new SystemMonotonicClock()), () => DateTime.Now, NoOpNotificationService.Instance)
     {
     }
 
     public MainWindowViewModel(CountdownEngine engine, Func<DateTime> wallClockNow)
+        : this(engine, wallClockNow, NoOpNotificationService.Instance)
+    {
+    }
+
+    public MainWindowViewModel(
+        CountdownEngine engine,
+        Func<DateTime> wallClockNow,
+        INotificationService notificationService)
     {
         this.engine = engine ?? throw new ArgumentNullException(nameof(engine));
         this.wallClockNow = wallClockNow ?? throw new ArgumentNullException(nameof(wallClockNow));
+        this.notificationService = notificationService ?? throw new ArgumentNullException(nameof(notificationService));
         this.engine.Expired += this.OnEngineExpired;
 
         this.StartCommand = new RelayCommand(this.Start, () => this.engine.State == TimerState.Stopped);
@@ -146,13 +159,31 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         this.OnPropertyChanged(changedPropertyName);
     }
 
-    private void OnEngineExpired(object? sender, EventArgs e)
+    private async void OnEngineExpired(object? sender, EventArgs e)
     {
         this.RefreshDisplay(TimerViewState.TimerCompleteStatusText);
+
+        try
+        {
+            await this.notificationService.ShowTimerExpiredAsync(NotificationTitle, NotificationBody).ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+        }
     }
 
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null)
     {
         this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+    }
+
+    private sealed class NoOpNotificationService : INotificationService
+    {
+        public static NoOpNotificationService Instance { get; } = new();
+
+        public Task ShowTimerExpiredAsync(string title, string body, CancellationToken cancellationToken = default)
+        {
+            return Task.CompletedTask;
+        }
     }
 }

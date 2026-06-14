@@ -1,6 +1,7 @@
 namespace Hourglass.Linux.Avalonia.Tests;
 
 using Hourglass.Linux.Avalonia;
+using Hourglass.Platform;
 using Hourglass.Timing;
 using Xunit;
 
@@ -108,6 +109,42 @@ public sealed class MainWindowViewModelTests
         Assert.False(viewModel.IsInputEnabled);
     }
 
+    [Fact]
+    public void TickTransitionsExpiredTimerShowsNotificationOnce()
+    {
+        var clock = new ManualMonotonicClock();
+        var notificationService = new RecordingNotificationService();
+        var viewModel = CreateViewModel(clock, notificationService: notificationService);
+
+        viewModel.TimerInput = "1 second";
+        viewModel.StartCommand.Execute(null);
+        clock.Advance(TimeSpan.FromSeconds(2));
+        viewModel.Tick();
+        viewModel.Tick();
+
+        Assert.Equal(1, notificationService.CallCount);
+        Assert.Equal("Hourglass", notificationService.Title);
+        Assert.Equal("Timer complete", notificationService.Body);
+    }
+
+    [Fact]
+    public void NotificationFailureDoesNotPreventCompleteDisplay()
+    {
+        var clock = new ManualMonotonicClock();
+        var notificationService = new RecordingNotificationService { ThrowOnNotify = true };
+        var viewModel = CreateViewModel(clock, notificationService: notificationService);
+
+        viewModel.TimerInput = "1 second";
+        viewModel.StartCommand.Execute(null);
+        clock.Advance(TimeSpan.FromSeconds(2));
+        viewModel.Tick();
+
+        Assert.Equal(1, notificationService.CallCount);
+        Assert.Equal(TimerState.Expired, viewModel.State);
+        Assert.Equal("Timer complete", viewModel.StatusText);
+        Assert.Equal("00:00:00", viewModel.RemainingTime);
+    }
+
     [Theory]
     [InlineData(TimerState.Stopped, "Ready", "Pause", true, false, "00:00:00")]
     [InlineData(TimerState.Running, "Running", "Pause", false, true, "00:01:05")]
@@ -154,11 +191,13 @@ public sealed class MainWindowViewModelTests
 
     private static MainWindowViewModel CreateViewModel(
         ManualMonotonicClock clock,
-        Func<DateTime>? wallClockNow = null)
+        Func<DateTime>? wallClockNow = null,
+        INotificationService? notificationService = null)
     {
         return new MainWindowViewModel(
             new CountdownEngine(clock),
-            wallClockNow ?? (() => new DateTime(2026, 6, 8, 10, 0, 0)));
+            wallClockNow ?? (() => new DateTime(2026, 6, 8, 10, 0, 0)),
+            notificationService ?? new RecordingNotificationService());
     }
 
     private sealed class ManualMonotonicClock : IMonotonicClock
@@ -168,6 +207,31 @@ public sealed class MainWindowViewModelTests
         public void Advance(TimeSpan elapsed)
         {
             this.Elapsed += elapsed;
+        }
+    }
+
+    private sealed class RecordingNotificationService : INotificationService
+    {
+        public int CallCount { get; private set; }
+
+        public string? Title { get; private set; }
+
+        public string? Body { get; private set; }
+
+        public bool ThrowOnNotify { get; init; }
+
+        public Task ShowTimerExpiredAsync(string title, string body, CancellationToken cancellationToken = default)
+        {
+            this.CallCount++;
+            this.Title = title;
+            this.Body = body;
+
+            if (this.ThrowOnNotify)
+            {
+                return Task.FromException(new InvalidOperationException("Notification failed."));
+            }
+
+            return Task.CompletedTask;
         }
     }
 }

@@ -24,4 +24,6 @@ The current Windows implementation relies on WPF `DispatcherTimer` and `DateTime
 
 The platform layer should eventually cover notifications, optional tray/status notifier support, session inhibition, audio alerts, settings paths, single-instance behavior, startup integration, and wake alarms.
 
+Timer-expiry notifications are routed through `INotificationService`; the Linux implementation is documented in [notifications.md](notifications.md). Notification delivery is best-effort and must not be the only recoverable timer-completion state.
+
 Wake-from-suspend scheduling is explicitly out of scope for the Linux MVP. It may require distro-specific or privilege-sensitive backends and should be evaluated after the core Linux app is usable.
