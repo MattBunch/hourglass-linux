@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using Hourglass.Platform;
+using Hourglass.Settings;
 using Hourglass.Timing;
 
 namespace Hourglass.Linux.Avalonia;
@@ -10,19 +11,26 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private const string InvalidTimerStatusText = "Enter a valid current timer.";
     private const string NotificationBody = "Timer complete";
     private const string NotificationTitle = "Hourglass";
+    private const string SettingsKey = "app";
 
     private readonly CountdownEngine engine;
     private readonly INotificationService notificationService;
+    private readonly ISettingsStore settingsStore;
     private readonly Func<DateTime> wallClockNow;
+    private LinuxAppSettings settings = LinuxAppSettings.Default;
     private TimerViewState viewState = TimerViewState.Initial;
 
     public MainWindowViewModel()
-        : this(new CountdownEngine(new SystemMonotonicClock()), () => DateTime.Now, NoOpNotificationService.Instance)
+        : this(
+            new CountdownEngine(new SystemMonotonicClock()),
+            () => DateTime.Now,
+            NoOpNotificationService.Instance,
+            NoOpSettingsStore.Instance)
     {
     }
 
     public MainWindowViewModel(CountdownEngine engine, Func<DateTime> wallClockNow)
-        : this(engine, wallClockNow, NoOpNotificationService.Instance)
+        : this(engine, wallClockNow, NoOpNotificationService.Instance, NoOpSettingsStore.Instance)
     {
     }
 
@@ -30,10 +38,20 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         CountdownEngine engine,
         Func<DateTime> wallClockNow,
         INotificationService notificationService)
+        : this(engine, wallClockNow, notificationService, NoOpSettingsStore.Instance)
+    {
+    }
+
+    public MainWindowViewModel(
+        CountdownEngine engine,
+        Func<DateTime> wallClockNow,
+        INotificationService notificationService,
+        ISettingsStore settingsStore)
     {
         this.engine = engine ?? throw new ArgumentNullException(nameof(engine));
         this.wallClockNow = wallClockNow ?? throw new ArgumentNullException(nameof(wallClockNow));
         this.notificationService = notificationService ?? throw new ArgumentNullException(nameof(notificationService));
+        this.settingsStore = settingsStore ?? throw new ArgumentNullException(nameof(settingsStore));
         this.engine.Expired += this.OnEngineExpired;
 
         this.StartCommand = new RelayCommand(this.Start, () => this.engine.State == TimerState.Stopped);
@@ -80,6 +98,33 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     public TimerState State => this.viewState.State;
 
+    public async Task LoadSettingsAsync(CancellationToken cancellationToken = default)
+    {
+        LinuxAppSettings loadedSettings;
+
+        try
+        {
+            loadedSettings = await this.settingsStore.LoadAsync<LinuxAppSettings>(SettingsKey, cancellationToken).ConfigureAwait(false)
+                ?? LinuxAppSettings.Default;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception)
+        {
+            loadedSettings = LinuxAppSettings.Default;
+        }
+
+        this.settings = loadedSettings;
+
+        if (this.engine.State == TimerState.Stopped)
+        {
+            this.ReplaceViewState(this.viewState with { TimerInput = loadedSettings.GetInitialTimerInput(TimerViewState.DefaultTimerInput) });
+            this.RefreshDisplay(TimerViewState.ReadyStatusText);
+        }
+    }
+
     public void Dispose()
     {
         this.engine.Expired -= this.OnEngineExpired;
@@ -109,6 +154,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         }
 
         this.RefreshDisplay(TimerViewState.RunningStatusText);
+        this.settings = this.settings.AddRecentTimerInput(this.TimerInput);
+        _ = this.SaveSettingsAsync();
     }
 
     private void PauseOrResume()
@@ -163,9 +210,25 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     {
         this.RefreshDisplay(TimerViewState.TimerCompleteStatusText);
 
+        if (!this.settings.NotificationsEnabled)
+        {
+            return;
+        }
+
         try
         {
             await this.notificationService.ShowTimerExpiredAsync(NotificationTitle, NotificationBody).ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+        }
+    }
+
+    private async Task SaveSettingsAsync()
+    {
+        try
+        {
+            await this.settingsStore.SaveAsync(SettingsKey, this.settings).ConfigureAwait(false);
         }
         catch (Exception)
         {
@@ -182,6 +245,21 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         public static NoOpNotificationService Instance { get; } = new();
 
         public Task ShowTimerExpiredAsync(string title, string body, CancellationToken cancellationToken = default)
+        {
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class NoOpSettingsStore : ISettingsStore
+    {
+        public static NoOpSettingsStore Instance { get; } = new();
+
+        public Task<T?> LoadAsync<T>(string key, CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult<T?>(default);
+        }
+
+        public Task SaveAsync<T>(string key, T value, CancellationToken cancellationToken = default)
         {
             return Task.CompletedTask;
         }

@@ -16,7 +16,8 @@ public sealed partial class MainWindow : Window
         : this(new MainWindowViewModel(
             new CountdownEngine(new SystemMonotonicClock()),
             () => DateTime.Now,
-            new NotifySendNotificationService()))
+            new NotifySendNotificationService(),
+            new JsonFileSettingsStore(new XdgSettingsPathService())))
     {
     }
 
@@ -35,5 +36,6 @@ public sealed partial class MainWindow : Window
         this.refreshTimer.Start();
 
         this.Closed += (_, _) => this.refreshTimer.Stop();
+        this.Opened += async (_, _) => await this.viewModel.LoadSettingsAsync();
     }
 }

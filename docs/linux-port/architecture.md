@@ -26,4 +26,6 @@ The platform layer should eventually cover notifications, optional tray/status n
 
 Timer-expiry notifications are routed through `INotificationService`; the Linux implementation is documented in [notifications.md](notifications.md). Notification delivery is best-effort and must not be the only recoverable timer-completion state.
 
+Linux settings storage is routed through `ISettingsStore`; the storage location and privacy decisions are documented in [settings.md](settings.md).
+
 Wake-from-suspend scheduling is explicitly out of scope for the Linux MVP. It may require distro-specific or privilege-sensitive backends and should be evaluated after the core Linux app is usable.

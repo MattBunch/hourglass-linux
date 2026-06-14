@@ -25,6 +25,13 @@ public interface ISettingsPathService
     string GetSettingsDirectory();
 }
 
+public interface ISettingsStore
+{
+    Task<T?> LoadAsync<T>(string key, CancellationToken cancellationToken = default);
+
+    Task SaveAsync<T>(string key, T value, CancellationToken cancellationToken = default);
+}
+
 public interface ISingleInstanceService
 {
     Task<bool> TryAcquireAsync(CancellationToken cancellationToken = default);

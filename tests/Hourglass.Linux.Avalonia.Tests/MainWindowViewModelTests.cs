@@ -2,6 +2,7 @@ namespace Hourglass.Linux.Avalonia.Tests;
 
 using Hourglass.Linux.Avalonia;
 using Hourglass.Platform;
+using Hourglass.Settings;
 using Hourglass.Timing;
 using Xunit;
 
@@ -145,6 +146,69 @@ public sealed class MainWindowViewModelTests
         Assert.Equal("00:00:00", viewModel.RemainingTime);
     }
 
+    [Fact]
+    public async Task LoadSettingsUsesMostRecentTimerInput()
+    {
+        var settingsStore = new RecordingSettingsStore
+        {
+            LoadedSettings = new LinuxAppSettings(["15 minutes"], notificationsEnabled: true)
+        };
+        var viewModel = CreateViewModel(new ManualMonotonicClock(), settingsStore: settingsStore);
+
+        await viewModel.LoadSettingsAsync();
+
+        Assert.Equal("15 minutes", viewModel.TimerInput);
+        Assert.Equal("Ready", viewModel.StatusText);
+    }
+
+    [Fact]
+    public async Task LoadSettingsFailureKeepsDefaultTimerInput()
+    {
+        var settingsStore = new RecordingSettingsStore { ThrowOnLoad = true };
+        var viewModel = CreateViewModel(new ManualMonotonicClock(), settingsStore: settingsStore);
+
+        await viewModel.LoadSettingsAsync();
+
+        Assert.Equal("5 minutes", viewModel.TimerInput);
+        Assert.Equal("Ready", viewModel.StatusText);
+    }
+
+    [Fact]
+    public void StartWithValidInputSavesRecentTimerInput()
+    {
+        var settingsStore = new RecordingSettingsStore();
+        var viewModel = CreateViewModel(new ManualMonotonicClock(), settingsStore: settingsStore);
+
+        viewModel.TimerInput = "90 seconds";
+        viewModel.StartCommand.Execute(null);
+
+        Assert.NotNull(settingsStore.SavedSettings);
+        Assert.Equal(["90 seconds"], settingsStore.SavedSettings.RecentTimerInputs);
+    }
+
+    [Fact]
+    public async Task ExpiredTimerDoesNotNotifyWhenNotificationsAreDisabled()
+    {
+        var clock = new ManualMonotonicClock();
+        var notificationService = new RecordingNotificationService();
+        var settingsStore = new RecordingSettingsStore
+        {
+            LoadedSettings = new LinuxAppSettings(["1 second"], notificationsEnabled: false)
+        };
+        var viewModel = CreateViewModel(
+            clock,
+            notificationService: notificationService,
+            settingsStore: settingsStore);
+
+        await viewModel.LoadSettingsAsync();
+        viewModel.StartCommand.Execute(null);
+        clock.Advance(TimeSpan.FromSeconds(2));
+        viewModel.Tick();
+
+        Assert.Equal(TimerState.Expired, viewModel.State);
+        Assert.Equal(0, notificationService.CallCount);
+    }
+
     [Theory]
     [InlineData(TimerState.Stopped, "Ready", "Pause", true, false, "00:00:00")]
     [InlineData(TimerState.Running, "Running", "Pause", false, true, "00:01:05")]
@@ -192,12 +256,14 @@ public sealed class MainWindowViewModelTests
     private static MainWindowViewModel CreateViewModel(
         ManualMonotonicClock clock,
         Func<DateTime>? wallClockNow = null,
-        INotificationService? notificationService = null)
+        INotificationService? notificationService = null,
+        ISettingsStore? settingsStore = null)
     {
         return new MainWindowViewModel(
             new CountdownEngine(clock),
             wallClockNow ?? (() => new DateTime(2026, 6, 8, 10, 0, 0)),
-            notificationService ?? new RecordingNotificationService());
+            notificationService ?? new RecordingNotificationService(),
+            settingsStore ?? new RecordingSettingsStore());
     }
 
     private sealed class ManualMonotonicClock : IMonotonicClock
@@ -231,6 +297,31 @@ public sealed class MainWindowViewModelTests
                 return Task.FromException(new InvalidOperationException("Notification failed."));
             }
 
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class RecordingSettingsStore : ISettingsStore
+    {
+        public LinuxAppSettings? LoadedSettings { get; init; }
+
+        public LinuxAppSettings? SavedSettings { get; private set; }
+
+        public bool ThrowOnLoad { get; init; }
+
+        public Task<T?> LoadAsync<T>(string key, CancellationToken cancellationToken = default)
+        {
+            if (this.ThrowOnLoad)
+            {
+                return Task.FromException<T?>(new InvalidOperationException("Settings failed."));
+            }
+
+            return Task.FromResult((T?)(object?)this.LoadedSettings);
+        }
+
+        public Task SaveAsync<T>(string key, T value, CancellationToken cancellationToken = default)
+        {
+            this.SavedSettings = Assert.IsType<LinuxAppSettings>(value);
             return Task.CompletedTask;
         }
     }
