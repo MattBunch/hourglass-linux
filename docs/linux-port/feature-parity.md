@@ -5,8 +5,8 @@
 | Timer parsing | Implemented in legacy app | Extracted to `Hourglass.Core` with tests | Keep behavior stable while integrating the Linux UI. |
 | Timer state | Implemented in legacy app | Core serialization DTOs and timer-start model extracted | Continue extracting platform-neutral timer/session state before settings migration. |
 | Countdown timing | Uses WPF `DispatcherTimer` and `DateTime.Now` | Monotonic `CountdownEngine` implemented in `Hourglass.Core` | Use Avalonia timers only for UI refresh ticks. |
-| Timer UI | WPF | Placeholder Avalonia window | Build minimal native timer UI backed by `Hourglass.Core`. |
-| Notifications | Windows notification area balloon behavior | Not implemented | Use Linux notifications first. |
+| Timer UI | WPF | Minimal Avalonia timer UI backed by `Hourglass.Core` | Expand behavior after MVP platform services are in place. |
+| Notifications | Windows notification area balloon behavior | `INotificationService` with Linux `notify-send` backend | Keep notification delivery best-effort; app UI remains recoverable state. |
 | Tray/status icon | WinForms `NotifyIcon` | Not implemented | Optional; abstract behind platform interfaces. |
 | Keep awake | Windows execution state APIs | Not implemented | Add Linux session inhibition later. |
 | Wake from suspend | Windows waitable timer resume behavior | Out of scope | Defer until after MVP. |

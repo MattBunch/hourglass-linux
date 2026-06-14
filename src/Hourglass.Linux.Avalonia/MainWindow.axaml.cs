@@ -1,5 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Threading;
+using Hourglass.Linux.Services;
+using Hourglass.Timing;
 
 namespace Hourglass.Linux.Avalonia;
 
@@ -11,10 +13,18 @@ public sealed partial class MainWindow : Window
     private readonly MainWindowViewModel viewModel;
 
     public MainWindow()
+        : this(new MainWindowViewModel(
+            new CountdownEngine(new SystemMonotonicClock()),
+            () => DateTime.Now,
+            new NotifySendNotificationService()))
+    {
+    }
+
+    internal MainWindow(MainWindowViewModel viewModel)
     {
         InitializeComponent();
 
-        this.viewModel = new MainWindowViewModel();
+        this.viewModel = viewModel ?? throw new ArgumentNullException(nameof(viewModel));
         this.DataContext = this.viewModel;
 
         this.refreshTimer = new DispatcherTimer
