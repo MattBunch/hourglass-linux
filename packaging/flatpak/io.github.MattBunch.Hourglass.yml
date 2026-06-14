@@ -1,0 +1,21 @@
+app-id: io.github.MattBunch.Hourglass
+runtime: org.freedesktop.Platform
+runtime-version: "24.08"
+sdk: org.freedesktop.Sdk
+command: hourglass-linux
+finish-args:
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.freedesktop.portal.Desktop
+modules:
+  - name: hourglass-linux
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 publish/hourglass-linux /app/bin/hourglass-linux
+      - install -Dm644 packaging/linux/io.github.MattBunch.Hourglass.desktop /app/share/applications/io.github.MattBunch.Hourglass.desktop
+      - install -Dm644 packaging/linux/io.github.MattBunch.Hourglass.metainfo.xml /app/share/metainfo/io.github.MattBunch.Hourglass.metainfo.xml
+    sources:
+      - type: dir
+        path: ../..

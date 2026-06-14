@@ -14,6 +14,6 @@
 | Settings | .NET Framework settings | Linux JSON settings store for recent timer inputs and notification preference | Add broader preferences and explicit migration decisions later. |
 | Single instance | Windows Forms application base | Not implemented | Add Linux single-instance service later. |
 | Updates | Windows in-app update check | Not implemented | Disable or replace for Linux packaging. |
-| Packaging | MSI, bundle, portable Windows build | Not implemented | Flatpak first, AppImage second. |
+| Packaging | MSI, bundle, portable Windows build | Publish docs plus Flatpak and AppImage prototype files | Flatpak first, AppImage second. |
 
 The Linux MVP should not promise complete feature parity. It should prioritize a reliable native timer experience with notifications, sound, settings, and testable timing behavior.
