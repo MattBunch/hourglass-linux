@@ -24,6 +24,11 @@ public interface IAudioAlertService
     Task PlayAlertAsync(string soundId, CancellationToken cancellationToken = default);
 }
 
+public static class AudioAlertSoundIds
+{
+    public const string NormalBeep = "resource:Normal beep";
+}
+
 public interface ISettingsPathService
 {
     string GetSettingsDirectory();

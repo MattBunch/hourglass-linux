@@ -14,6 +14,7 @@ modules:
     buildsystem: simple
     build-commands:
       - install -Dm755 publish/hourglass-linux /app/bin/hourglass-linux
+      - install -Dm644 publish/Assets/Sounds/BeepNormal.wav /app/bin/Assets/Sounds/BeepNormal.wav
       - install -Dm644 packaging/linux/io.github.MattBunch.Hourglass.desktop /app/share/applications/io.github.MattBunch.Hourglass.desktop
       - install -Dm644 packaging/linux/io.github.MattBunch.Hourglass.metainfo.xml /app/share/metainfo/io.github.MattBunch.Hourglass.metainfo.xml
     sources:

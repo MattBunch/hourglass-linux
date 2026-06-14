@@ -12,7 +12,7 @@ public sealed class JsonFileSettingsStoreTests : IDisposable
     public async Task SaveAndLoadRoundTripsJsonSettings()
     {
         var store = this.CreateStore();
-        var settings = new LinuxAppSettings(["10 seconds"], notificationsEnabled: false);
+        var settings = new LinuxAppSettings(["10 seconds"], notificationsEnabled: false, audioAlertsEnabled: false);
 
         await store.SaveAsync("app", settings);
         LinuxAppSettings? loaded = await store.LoadAsync<LinuxAppSettings>("app");
@@ -20,6 +20,7 @@ public sealed class JsonFileSettingsStoreTests : IDisposable
         Assert.NotNull(loaded);
         Assert.Equal(["10 seconds"], loaded.RecentTimerInputs);
         Assert.False(loaded.NotificationsEnabled);
+        Assert.False(loaded.AudioAlertsEnabled);
     }
 
     [Fact]

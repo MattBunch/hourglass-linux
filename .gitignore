@@ -1,5 +1,6 @@
 /*.suo
 /.vs/
 /TestResults/
+/artifacts/
 bin/
 obj/

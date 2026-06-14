@@ -14,6 +14,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private const string NotificationTitle = "Hourglass";
     private const string SettingsKey = "app";
 
+    private readonly IAudioAlertService audioAlertService;
     private readonly CountdownEngine engine;
     private readonly INotificationService notificationService;
     private readonly ISessionInhibitor sessionInhibitor;
@@ -29,12 +30,19 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             () => DateTime.Now,
             NoOpNotificationService.Instance,
             NoOpSessionInhibitor.Instance,
-            NoOpSettingsStore.Instance)
+            NoOpSettingsStore.Instance,
+            NoOpAudioAlertService.Instance)
     {
     }
 
     public MainWindowViewModel(CountdownEngine engine, Func<DateTime> wallClockNow)
-        : this(engine, wallClockNow, NoOpNotificationService.Instance, NoOpSessionInhibitor.Instance, NoOpSettingsStore.Instance)
+        : this(
+            engine,
+            wallClockNow,
+            NoOpNotificationService.Instance,
+            NoOpSessionInhibitor.Instance,
+            NoOpSettingsStore.Instance,
+            NoOpAudioAlertService.Instance)
     {
     }
 
@@ -42,7 +50,13 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         CountdownEngine engine,
         Func<DateTime> wallClockNow,
         INotificationService notificationService)
-        : this(engine, wallClockNow, notificationService, NoOpSessionInhibitor.Instance, NoOpSettingsStore.Instance)
+        : this(
+            engine,
+            wallClockNow,
+            notificationService,
+            NoOpSessionInhibitor.Instance,
+            NoOpSettingsStore.Instance,
+            NoOpAudioAlertService.Instance)
     {
     }
 
@@ -51,7 +65,13 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         Func<DateTime> wallClockNow,
         INotificationService notificationService,
         ISettingsStore settingsStore)
-        : this(engine, wallClockNow, notificationService, NoOpSessionInhibitor.Instance, settingsStore)
+        : this(
+            engine,
+            wallClockNow,
+            notificationService,
+            NoOpSessionInhibitor.Instance,
+            settingsStore,
+            NoOpAudioAlertService.Instance)
     {
     }
 
@@ -61,12 +81,24 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         INotificationService notificationService,
         ISessionInhibitor sessionInhibitor,
         ISettingsStore settingsStore)
+        : this(engine, wallClockNow, notificationService, sessionInhibitor, settingsStore, NoOpAudioAlertService.Instance)
+    {
+    }
+
+    public MainWindowViewModel(
+        CountdownEngine engine,
+        Func<DateTime> wallClockNow,
+        INotificationService notificationService,
+        ISessionInhibitor sessionInhibitor,
+        ISettingsStore settingsStore,
+        IAudioAlertService audioAlertService)
     {
         this.engine = engine ?? throw new ArgumentNullException(nameof(engine));
         this.wallClockNow = wallClockNow ?? throw new ArgumentNullException(nameof(wallClockNow));
         this.notificationService = notificationService ?? throw new ArgumentNullException(nameof(notificationService));
         this.sessionInhibitor = sessionInhibitor ?? throw new ArgumentNullException(nameof(sessionInhibitor));
         this.settingsStore = settingsStore ?? throw new ArgumentNullException(nameof(settingsStore));
+        this.audioAlertService = audioAlertService ?? throw new ArgumentNullException(nameof(audioAlertService));
         this.engine.Expired += this.OnEngineExpired;
 
         this.StartCommand = new RelayCommand(this.Start, () => this.engine.State == TimerState.Stopped);
@@ -228,9 +260,19 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     private async void OnEngineExpired(object? sender, EventArgs e)
     {
+        await this.HandleEngineExpiredAsync().ConfigureAwait(false);
+    }
+
+    private async Task HandleEngineExpiredAsync()
+    {
         this.RefreshDisplay(TimerViewState.TimerCompleteStatusText);
         await this.ReleaseInhibitionAsync().ConfigureAwait(false);
+        await this.NotifyTimerExpiredAsync().ConfigureAwait(false);
+        await this.PlayTimerExpiredAudioAsync().ConfigureAwait(false);
+    }
 
+    private async Task NotifyTimerExpiredAsync()
+    {
         if (!this.settings.NotificationsEnabled)
         {
             return;
@@ -239,6 +281,22 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         try
         {
             await this.notificationService.ShowTimerExpiredAsync(NotificationTitle, NotificationBody).ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+        }
+    }
+
+    private async Task PlayTimerExpiredAudioAsync()
+    {
+        if (!this.settings.AudioAlertsEnabled)
+        {
+            return;
+        }
+
+        try
+        {
+            await this.audioAlertService.PlayAlertAsync(AudioAlertSoundIds.NormalBeep).ConfigureAwait(false);
         }
         catch (Exception)
         {
@@ -302,6 +360,16 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         public static NoOpNotificationService Instance { get; } = new();
 
         public Task ShowTimerExpiredAsync(string title, string body, CancellationToken cancellationToken = default)
+        {
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class NoOpAudioAlertService : IAudioAlertService
+    {
+        public static NoOpAudioAlertService Instance { get; } = new();
+
+        public Task PlayAlertAsync(string soundId, CancellationToken cancellationToken = default)
         {
             return Task.CompletedTask;
         }
