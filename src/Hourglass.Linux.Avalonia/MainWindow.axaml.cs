@@ -17,6 +17,7 @@ public sealed partial class MainWindow : Window
             new CountdownEngine(new SystemMonotonicClock()),
             () => DateTime.Now,
             new NotifySendNotificationService(),
+            new SystemdSessionInhibitor(),
             new JsonFileSettingsStore(new XdgSettingsPathService())))
     {
     }

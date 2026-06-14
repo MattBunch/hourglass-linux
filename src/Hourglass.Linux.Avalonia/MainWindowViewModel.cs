@@ -9,14 +9,17 @@ namespace Hourglass.Linux.Avalonia;
 public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 {
     private const string InvalidTimerStatusText = "Enter a valid current timer.";
+    private const string SessionInhibitionReason = "Hourglass timer is running";
     private const string NotificationBody = "Timer complete";
     private const string NotificationTitle = "Hourglass";
     private const string SettingsKey = "app";
 
     private readonly CountdownEngine engine;
     private readonly INotificationService notificationService;
+    private readonly ISessionInhibitor sessionInhibitor;
     private readonly ISettingsStore settingsStore;
     private readonly Func<DateTime> wallClockNow;
+    private IAsyncDisposable? inhibitionLease;
     private LinuxAppSettings settings = LinuxAppSettings.Default;
     private TimerViewState viewState = TimerViewState.Initial;
 
@@ -25,12 +28,13 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             new CountdownEngine(new SystemMonotonicClock()),
             () => DateTime.Now,
             NoOpNotificationService.Instance,
+            NoOpSessionInhibitor.Instance,
             NoOpSettingsStore.Instance)
     {
     }
 
     public MainWindowViewModel(CountdownEngine engine, Func<DateTime> wallClockNow)
-        : this(engine, wallClockNow, NoOpNotificationService.Instance, NoOpSettingsStore.Instance)
+        : this(engine, wallClockNow, NoOpNotificationService.Instance, NoOpSessionInhibitor.Instance, NoOpSettingsStore.Instance)
     {
     }
 
@@ -38,7 +42,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         CountdownEngine engine,
         Func<DateTime> wallClockNow,
         INotificationService notificationService)
-        : this(engine, wallClockNow, notificationService, NoOpSettingsStore.Instance)
+        : this(engine, wallClockNow, notificationService, NoOpSessionInhibitor.Instance, NoOpSettingsStore.Instance)
     {
     }
 
@@ -47,10 +51,21 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         Func<DateTime> wallClockNow,
         INotificationService notificationService,
         ISettingsStore settingsStore)
+        : this(engine, wallClockNow, notificationService, NoOpSessionInhibitor.Instance, settingsStore)
+    {
+    }
+
+    public MainWindowViewModel(
+        CountdownEngine engine,
+        Func<DateTime> wallClockNow,
+        INotificationService notificationService,
+        ISessionInhibitor sessionInhibitor,
+        ISettingsStore settingsStore)
     {
         this.engine = engine ?? throw new ArgumentNullException(nameof(engine));
         this.wallClockNow = wallClockNow ?? throw new ArgumentNullException(nameof(wallClockNow));
         this.notificationService = notificationService ?? throw new ArgumentNullException(nameof(notificationService));
+        this.sessionInhibitor = sessionInhibitor ?? throw new ArgumentNullException(nameof(sessionInhibitor));
         this.settingsStore = settingsStore ?? throw new ArgumentNullException(nameof(settingsStore));
         this.engine.Expired += this.OnEngineExpired;
 
@@ -128,6 +143,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     public void Dispose()
     {
         this.engine.Expired -= this.OnEngineExpired;
+        _ = this.ReleaseInhibitionAsync();
     }
 
     public void Tick()
@@ -154,6 +170,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         }
 
         this.RefreshDisplay(TimerViewState.RunningStatusText);
+        _ = this.AcquireInhibitionAsync();
         this.settings = this.settings.AddRecentTimerInput(this.TimerInput);
         _ = this.SaveSettingsAsync();
     }
@@ -164,6 +181,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         {
             this.engine.Pause();
             this.RefreshDisplay(TimerViewState.PausedStatusText);
+            _ = this.ReleaseInhibitionAsync();
             return;
         }
 
@@ -171,6 +189,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         {
             this.engine.Resume(this.wallClockNow());
             this.RefreshDisplay(TimerViewState.RunningStatusText);
+            _ = this.AcquireInhibitionAsync();
         }
     }
 
@@ -178,6 +197,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     {
         this.engine.Stop();
         this.RefreshDisplay(TimerViewState.ReadyStatusText);
+        _ = this.ReleaseInhibitionAsync();
     }
 
     private void RefreshDisplay(string? explicitStatus = null)
@@ -209,6 +229,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private async void OnEngineExpired(object? sender, EventArgs e)
     {
         this.RefreshDisplay(TimerViewState.TimerCompleteStatusText);
+        await this.ReleaseInhibitionAsync().ConfigureAwait(false);
 
         if (!this.settings.NotificationsEnabled)
         {
@@ -218,6 +239,42 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         try
         {
             await this.notificationService.ShowTimerExpiredAsync(NotificationTitle, NotificationBody).ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+        }
+    }
+
+    private async Task AcquireInhibitionAsync()
+    {
+        await this.ReleaseInhibitionAsync().ConfigureAwait(false);
+
+        try
+        {
+            this.inhibitionLease = await this.sessionInhibitor.InhibitAsync(
+                SessionInhibitionReason,
+                inhibitSuspend: true,
+                inhibitIdle: true).ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+            this.inhibitionLease = null;
+        }
+    }
+
+    private async Task ReleaseInhibitionAsync()
+    {
+        IAsyncDisposable? lease = this.inhibitionLease;
+        this.inhibitionLease = null;
+
+        if (lease == null)
+        {
+            return;
+        }
+
+        try
+        {
+            await lease.DisposeAsync().ConfigureAwait(false);
         }
         catch (Exception)
         {
@@ -247,6 +304,20 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         public Task ShowTimerExpiredAsync(string title, string body, CancellationToken cancellationToken = default)
         {
             return Task.CompletedTask;
+        }
+    }
+
+    private sealed class NoOpSessionInhibitor : ISessionInhibitor
+    {
+        public static NoOpSessionInhibitor Instance { get; } = new();
+
+        public ValueTask<IAsyncDisposable?> InhibitAsync(
+            string reason,
+            bool inhibitSuspend,
+            bool inhibitIdle,
+            CancellationToken cancellationToken = default)
+        {
+            return ValueTask.FromResult<IAsyncDisposable?>(null);
         }
     }
 

@@ -12,7 +12,11 @@ public interface ITrayService
 
 public interface ISessionInhibitor
 {
-    ValueTask<IAsyncDisposable?> InhibitAsync(string reason, CancellationToken cancellationToken = default);
+    ValueTask<IAsyncDisposable?> InhibitAsync(
+        string reason,
+        bool inhibitSuspend,
+        bool inhibitIdle,
+        CancellationToken cancellationToken = default);
 }
 
 public interface IAudioAlertService
