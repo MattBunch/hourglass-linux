@@ -166,6 +166,23 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
+    public void TickTransitionsExpiredTimerPlaysAudioOnce()
+    {
+        var clock = new ManualMonotonicClock();
+        var audioAlertService = new RecordingAudioAlertService();
+        var viewModel = CreateViewModel(clock, audioAlertService: audioAlertService);
+
+        viewModel.TimerInput = "1 second";
+        viewModel.StartCommand.Execute(null);
+        clock.Advance(TimeSpan.FromSeconds(2));
+        viewModel.Tick();
+        viewModel.Tick();
+
+        Assert.Equal(1, audioAlertService.CallCount);
+        Assert.Equal(AudioAlertSoundIds.NormalBeep, audioAlertService.SoundId);
+    }
+
+    [Fact]
     public void NotificationFailureDoesNotPreventCompleteDisplay()
     {
         var clock = new ManualMonotonicClock();
@@ -181,6 +198,49 @@ public sealed class MainWindowViewModelTests
         Assert.Equal(TimerState.Expired, viewModel.State);
         Assert.Equal("Timer complete", viewModel.StatusText);
         Assert.Equal("00:00:00", viewModel.RemainingTime);
+    }
+
+    [Fact]
+    public void AudioFailureDoesNotPreventCompleteDisplayOrNotification()
+    {
+        var clock = new ManualMonotonicClock();
+        var audioAlertService = new RecordingAudioAlertService { ThrowOnPlay = true };
+        var notificationService = new RecordingNotificationService();
+        var viewModel = CreateViewModel(
+            clock,
+            notificationService: notificationService,
+            audioAlertService: audioAlertService);
+
+        viewModel.TimerInput = "1 second";
+        viewModel.StartCommand.Execute(null);
+        clock.Advance(TimeSpan.FromSeconds(2));
+        viewModel.Tick();
+
+        Assert.Equal(1, audioAlertService.CallCount);
+        Assert.Equal(1, notificationService.CallCount);
+        Assert.Equal(TimerState.Expired, viewModel.State);
+        Assert.Equal("Timer complete", viewModel.StatusText);
+    }
+
+    [Fact]
+    public void NotificationFailureDoesNotPreventAudio()
+    {
+        var clock = new ManualMonotonicClock();
+        var notificationService = new RecordingNotificationService { ThrowOnNotify = true };
+        var audioAlertService = new RecordingAudioAlertService();
+        var viewModel = CreateViewModel(
+            clock,
+            notificationService: notificationService,
+            audioAlertService: audioAlertService);
+
+        viewModel.TimerInput = "1 second";
+        viewModel.StartCommand.Execute(null);
+        clock.Advance(TimeSpan.FromSeconds(2));
+        viewModel.Tick();
+
+        Assert.Equal(1, notificationService.CallCount);
+        Assert.Equal(1, audioAlertService.CallCount);
+        Assert.Equal(AudioAlertSoundIds.NormalBeep, audioAlertService.SoundId);
     }
 
     [Fact]
@@ -228,6 +288,7 @@ public sealed class MainWindowViewModelTests
     {
         var clock = new ManualMonotonicClock();
         var notificationService = new RecordingNotificationService();
+        var audioAlertService = new RecordingAudioAlertService();
         var settingsStore = new RecordingSettingsStore
         {
             LoadedSettings = new LinuxAppSettings(["1 second"], notificationsEnabled: false)
@@ -235,6 +296,7 @@ public sealed class MainWindowViewModelTests
         var viewModel = CreateViewModel(
             clock,
             notificationService: notificationService,
+            audioAlertService: audioAlertService,
             settingsStore: settingsStore);
 
         await viewModel.LoadSettingsAsync();
@@ -244,6 +306,36 @@ public sealed class MainWindowViewModelTests
 
         Assert.Equal(TimerState.Expired, viewModel.State);
         Assert.Equal(0, notificationService.CallCount);
+        Assert.Equal(1, audioAlertService.CallCount);
+    }
+
+    [Fact]
+    public async Task ExpiredTimerDoesNotPlayAudioWhenAudioAlertsAreDisabled()
+    {
+        var clock = new ManualMonotonicClock();
+        var notificationService = new RecordingNotificationService();
+        var audioAlertService = new RecordingAudioAlertService();
+        var settingsStore = new RecordingSettingsStore
+        {
+            LoadedSettings = new LinuxAppSettings(
+                ["1 second"],
+                notificationsEnabled: true,
+                audioAlertsEnabled: false)
+        };
+        var viewModel = CreateViewModel(
+            clock,
+            notificationService: notificationService,
+            audioAlertService: audioAlertService,
+            settingsStore: settingsStore);
+
+        await viewModel.LoadSettingsAsync();
+        viewModel.StartCommand.Execute(null);
+        clock.Advance(TimeSpan.FromSeconds(2));
+        viewModel.Tick();
+
+        Assert.Equal(TimerState.Expired, viewModel.State);
+        Assert.Equal(1, notificationService.CallCount);
+        Assert.Equal(0, audioAlertService.CallCount);
     }
 
     [Theory]
@@ -295,14 +387,16 @@ public sealed class MainWindowViewModelTests
         Func<DateTime>? wallClockNow = null,
         INotificationService? notificationService = null,
         ISessionInhibitor? sessionInhibitor = null,
-        ISettingsStore? settingsStore = null)
+        ISettingsStore? settingsStore = null,
+        IAudioAlertService? audioAlertService = null)
     {
         return new MainWindowViewModel(
             new CountdownEngine(clock),
             wallClockNow ?? (() => new DateTime(2026, 6, 8, 10, 0, 0)),
             notificationService ?? new RecordingNotificationService(),
             sessionInhibitor ?? new RecordingSessionInhibitor(),
-            settingsStore ?? new RecordingSettingsStore());
+            settingsStore ?? new RecordingSettingsStore(),
+            audioAlertService ?? new RecordingAudioAlertService());
     }
 
     private sealed class ManualMonotonicClock : IMonotonicClock
@@ -334,6 +428,28 @@ public sealed class MainWindowViewModelTests
             if (this.ThrowOnNotify)
             {
                 return Task.FromException(new InvalidOperationException("Notification failed."));
+            }
+
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class RecordingAudioAlertService : IAudioAlertService
+    {
+        public int CallCount { get; private set; }
+
+        public string? SoundId { get; private set; }
+
+        public bool ThrowOnPlay { get; init; }
+
+        public Task PlayAlertAsync(string soundId, CancellationToken cancellationToken = default)
+        {
+            this.CallCount++;
+            this.SoundId = soundId;
+
+            if (this.ThrowOnPlay)
+            {
+                return Task.FromException(new InvalidOperationException("Audio failed."));
             }
 
             return Task.CompletedTask;

@@ -42,10 +42,15 @@ The publish output is generated content and should not be committed.
 The app currently needs:
 
 - desktop notifications for timer completion
+- bundled timer audio at `Assets/Sounds/BeepNormal.wav`
 - user configuration storage under XDG config paths
 - session inhibition for keep-awake behavior
 
 The current `systemd-inhibit` backend is suitable for unpackaged developer builds. A portal backend should be evaluated before Flatpak is treated as production-ready.
+
+Audio playback uses command-line players in developer and AppImage-style builds: `pw-play`, `paplay`, then `aplay --quiet`. The AppImage prototype copies the full publish directory, so the bundled WAV file is included automatically.
+
+The Flatpak prototype installs the WAV asset beside the app binary. The command-line player backend is not guaranteed to work inside a Flatpak sandbox unless the runtime exposes the required tools and audio session access. Treat Flatpak audio as a packaging validation item, not proven production behavior.
 
 ## Updates And Privacy
 

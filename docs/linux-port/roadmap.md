@@ -34,6 +34,19 @@ Tray support remains optional for the first Linux UI.
 - Add AppImage as a secondary portable artifact.
 - Evaluate distro-native packaging after the MVP stabilizes.
 
+## Phase 11: Linux Audio Alerts
+
+- Play the built-in Normal beep when a timer expires.
+- Keep audio playback behind `IAudioAlertService`.
+- Treat Linux audio playback as best-effort and independent from notifications.
+- Preserve old settings files while adding an audio-enabled preference.
+
+## Phase 12: Single-Instance Behavior
+
+- Add Linux single-instance behavior behind `ISingleInstanceService`.
+- Preserve command-line handoff as a later or explicit follow-up if needed.
+- Avoid tray, startup, or background behavior changes in this phase.
+
 ## Phase 5: Advanced Parity
 
 - Evaluate optional tray/status notifier support across desktop environments.
