@@ -11,7 +11,7 @@
 | Keep awake | Windows execution state APIs | Not implemented | Add Linux session inhibition later. |
 | Wake from suspend | Windows waitable timer resume behavior | Out of scope | Defer until after MVP. |
 | Audio alerts | Windows-focused implementation | Not implemented | Add Linux audio alert service later. |
-| Settings | .NET Framework settings | Storage not migrated; some timer option DTOs extracted | Add Linux settings paths and migration plan later. |
+| Settings | .NET Framework settings | Linux JSON settings store for recent timer inputs and notification preference | Add broader preferences and explicit migration decisions later. |
 | Single instance | Windows Forms application base | Not implemented | Add Linux single-instance service later. |
 | Updates | Windows in-app update check | Not implemented | Disable or replace for Linux packaging. |
 | Packaging | MSI, bundle, portable Windows build | Not implemented | Flatpak first, AppImage second. |
