@@ -145,13 +145,29 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     public TimerState State => this.viewState.State;
 
+    public double ProgressPercent => this.viewState.ProgressPercent;
+
+    public bool IsTimerInputVisible => this.viewState.IsTimerInputVisible;
+
+    public bool IsRemainingTimeVisible => this.viewState.IsRemainingTimeVisible;
+
+    public bool IsCompletionTextVisible => this.viewState.IsCompletionTextVisible;
+
+    public bool IsStartVisible => this.viewState.IsStartVisible;
+
+    public bool IsPauseVisible => this.viewState.IsPauseVisible;
+
+    public bool IsResumeVisible => this.viewState.IsResumeVisible;
+
+    public bool IsStopVisible => this.viewState.IsStopVisible;
+
     public async Task LoadSettingsAsync(CancellationToken cancellationToken = default)
     {
         LinuxAppSettings loadedSettings;
 
         try
         {
-            loadedSettings = await this.settingsStore.LoadAsync<LinuxAppSettings>(SettingsKey, cancellationToken).ConfigureAwait(false)
+            loadedSettings = await this.settingsStore.LoadAsync<LinuxAppSettings>(SettingsKey, cancellationToken)
                 ?? LinuxAppSettings.Default;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -242,6 +258,14 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         this.OnPropertyChanged(nameof(this.IsInputEnabled));
         this.OnPropertyChanged(nameof(this.IsRunning));
         this.OnPropertyChanged(nameof(this.State));
+        this.OnPropertyChanged(nameof(this.ProgressPercent));
+        this.OnPropertyChanged(nameof(this.IsTimerInputVisible));
+        this.OnPropertyChanged(nameof(this.IsRemainingTimeVisible));
+        this.OnPropertyChanged(nameof(this.IsCompletionTextVisible));
+        this.OnPropertyChanged(nameof(this.IsStartVisible));
+        this.OnPropertyChanged(nameof(this.IsPauseVisible));
+        this.OnPropertyChanged(nameof(this.IsResumeVisible));
+        this.OnPropertyChanged(nameof(this.IsStopVisible));
         this.StartCommand.RaiseCanExecuteChanged();
         this.PauseResumeCommand.RaiseCanExecuteChanged();
         this.ResetCommand.RaiseCanExecuteChanged();

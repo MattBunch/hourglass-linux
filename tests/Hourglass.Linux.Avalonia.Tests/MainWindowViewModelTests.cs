@@ -1,5 +1,6 @@
 namespace Hourglass.Linux.Avalonia.Tests;
 
+using System.Globalization;
 using Hourglass.Linux.Avalonia;
 using Hourglass.Platform;
 using Hourglass.Settings;
@@ -259,6 +260,47 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
+    public async Task LoadSettingsResumesOnCapturedSchedulerBeforePublishingState()
+    {
+        var scheduler = new QueuedTaskScheduler();
+        var taskFactory = new TaskFactory(
+            CancellationToken.None,
+            TaskCreationOptions.None,
+            TaskContinuationOptions.None,
+            scheduler);
+        var settingsStore = new DeferredSettingsStore();
+        var viewModel = CreateViewModel(new ManualMonotonicClock(), settingsStore: settingsStore);
+
+        Task<Task> scheduledLoadTask = taskFactory.StartNew(() =>
+        {
+            SynchronizationContext? originalContext = SynchronizationContext.Current;
+            try
+            {
+                SynchronizationContext.SetSynchronizationContext(null);
+                return viewModel.LoadSettingsAsync();
+            }
+            finally
+            {
+                SynchronizationContext.SetSynchronizationContext(originalContext);
+            }
+        });
+        scheduler.RunNext();
+        Task loadTask = await scheduledLoadTask;
+
+        settingsStore.Complete(new LinuxAppSettings(["15 minutes"], notificationsEnabled: true));
+
+        Assert.False(loadTask.IsCompleted);
+        Assert.Equal(1, scheduler.PendingCount);
+        Assert.Equal("5 minutes", viewModel.TimerInput);
+
+        scheduler.RunNext();
+        await loadTask;
+
+        Assert.Equal("15 minutes", viewModel.TimerInput);
+        Assert.Equal("Ready", viewModel.StatusText);
+    }
+
+    [Fact]
     public async Task LoadSettingsFailureKeepsDefaultTimerInput()
     {
         var settingsStore = new RecordingSettingsStore { ThrowOnLoad = true };
@@ -339,17 +381,25 @@ public sealed class MainWindowViewModelTests
     }
 
     [Theory]
-    [InlineData(TimerState.Stopped, "Ready", "Pause", true, false, "00:00:00")]
-    [InlineData(TimerState.Running, "Running", "Pause", false, true, "00:01:05")]
-    [InlineData(TimerState.Paused, "Paused", "Resume", false, false, "00:01:05")]
-    [InlineData(TimerState.Expired, "Timer complete", "Pause", false, false, "00:00:00")]
+    [InlineData(TimerState.Stopped, "Ready", "Pause", true, false, "00:00:00", 0, true, false, false, true, false, false, false)]
+    [InlineData(TimerState.Running, "Running", "Pause", false, true, "00:01:05", 0, false, true, false, false, true, false, true)]
+    [InlineData(TimerState.Paused, "Paused", "Resume", false, false, "00:01:05", 0, false, true, false, false, false, true, true)]
+    [InlineData(TimerState.Expired, "Timer complete", "Pause", false, false, "00:00:00", 100, false, false, true, false, false, false, true)]
     public void TimerViewStateProjectsDomainState(
         TimerState state,
         string statusText,
         string pauseResumeText,
         bool isInputEnabled,
         bool isRunning,
-        string remainingTime)
+        string remainingTime,
+        double progressPercent,
+        bool isTimerInputVisible,
+        bool isRemainingTimeVisible,
+        bool isCompletionTextVisible,
+        bool isStartVisible,
+        bool isPauseVisible,
+        bool isResumeVisible,
+        bool isStopVisible)
     {
         CountdownState countdownState = CreateCountdownState(state);
 
@@ -361,6 +411,86 @@ public sealed class MainWindowViewModelTests
         Assert.Equal(isInputEnabled, viewState.IsInputEnabled);
         Assert.Equal(isRunning, viewState.IsRunning);
         Assert.Equal(state, viewState.State);
+        Assert.Equal(progressPercent, viewState.ProgressPercent);
+        Assert.Equal(isTimerInputVisible, viewState.IsTimerInputVisible);
+        Assert.Equal(isRemainingTimeVisible, viewState.IsRemainingTimeVisible);
+        Assert.Equal(isCompletionTextVisible, viewState.IsCompletionTextVisible);
+        Assert.Equal(isStartVisible, viewState.IsStartVisible);
+        Assert.Equal(isPauseVisible, viewState.IsPauseVisible);
+        Assert.Equal(isResumeVisible, viewState.IsResumeVisible);
+        Assert.Equal(isStopVisible, viewState.IsStopVisible);
+    }
+
+    [Fact]
+    public void TimerViewStateCalculatesRunningProgress()
+    {
+        CountdownState running = CountdownTransitions.StartDuration(
+            CountdownState.Stopped,
+            TimeSpan.FromSeconds(10),
+            new DateTime(2026, 6, 8, 10, 0, 0),
+            TimeSpan.Zero).State;
+        CountdownState halfway = CountdownTransitions.Tick(running, TimeSpan.FromSeconds(5)).State;
+
+        TimerViewState viewState = TimerViewState.FromTimerState("10 seconds", halfway);
+
+        Assert.Equal(50, viewState.ProgressPercent);
+    }
+
+    [Fact]
+    public void TimerViewStateKeepsPausedProgress()
+    {
+        CountdownState running = CountdownTransitions.StartDuration(
+            CountdownState.Stopped,
+            TimeSpan.FromSeconds(10),
+            new DateTime(2026, 6, 8, 10, 0, 0),
+            TimeSpan.Zero).State;
+        CountdownState halfway = CountdownTransitions.Tick(running, TimeSpan.FromSeconds(5)).State;
+        CountdownState paused = CountdownTransitions.Pause(halfway, TimeSpan.FromSeconds(5)).State;
+
+        TimerViewState viewState = TimerViewState.FromTimerState("10 seconds", paused);
+
+        Assert.Equal(50, viewState.ProgressPercent);
+    }
+
+    [Fact]
+    public void TimerViewStateClampsProgress()
+    {
+        CountdownState running = CountdownTransitions.StartDuration(
+            CountdownState.Stopped,
+            TimeSpan.FromSeconds(10),
+            new DateTime(2026, 6, 8, 10, 0, 0),
+            TimeSpan.Zero).State;
+        CountdownState expired = CountdownTransitions.Tick(running, TimeSpan.FromSeconds(60)).State;
+
+        Assert.Equal(100, TimerViewState.GetProgressPercent(expired));
+        Assert.Equal(0, TimerViewState.GetProgressPercent(CountdownState.Stopped));
+        Assert.InRange(TimerViewState.GetProgressPercent(running), 0, 100);
+    }
+
+    [Fact]
+    public void TimerViewStateProgressHandlesZeroDuration()
+    {
+        CountdownState zeroDuration = CountdownTransitions.StartDuration(
+            CountdownState.Stopped,
+            TimeSpan.Zero,
+            new DateTime(2026, 6, 8, 10, 0, 0),
+            TimeSpan.Zero).State;
+
+        double progress = TimerViewState.GetProgressPercent(zeroDuration);
+
+        Assert.False(double.IsNaN(progress));
+        Assert.False(double.IsInfinity(progress));
+        Assert.Equal(100, progress);
+    }
+
+    [Fact]
+    public void ProgressWidthConverterUsesClampedProgressAndAvailableWidth()
+    {
+        var converter = new ProgressWidthConverter();
+
+        Assert.Equal(175d, converter.Convert([50d, 350d], typeof(double), null, CultureInfo.InvariantCulture));
+        Assert.Equal(350d, converter.Convert([150d, 350d], typeof(double), null, CultureInfo.InvariantCulture));
+        Assert.Equal(0d, converter.Convert([double.NaN, 350d], typeof(double), null, CultureInfo.InvariantCulture));
     }
 
     private static CountdownState CreateCountdownState(TimerState state)
@@ -516,6 +646,56 @@ public sealed class MainWindowViewModelTests
         {
             this.SavedSettings = Assert.IsType<LinuxAppSettings>(value);
             return Task.CompletedTask;
+        }
+    }
+
+    private sealed class DeferredSettingsStore : ISettingsStore
+    {
+        private readonly TaskCompletionSource<LinuxAppSettings?> loadTask = new();
+
+        public Task<T?> LoadAsync<T>(string key, CancellationToken cancellationToken = default)
+        {
+            Assert.Equal("app", key);
+            Assert.Equal(typeof(LinuxAppSettings), typeof(T));
+
+            return (Task<T?>)(object)this.loadTask.Task;
+        }
+
+        public Task SaveAsync<T>(string key, T value, CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException();
+        }
+
+        public void Complete(LinuxAppSettings settings)
+        {
+            this.loadTask.SetResult(settings);
+        }
+    }
+
+    private sealed class QueuedTaskScheduler : TaskScheduler
+    {
+        private readonly Queue<Task> tasks = [];
+
+        public int PendingCount => this.tasks.Count;
+
+        protected override IEnumerable<Task>? GetScheduledTasks()
+        {
+            return this.tasks.ToArray();
+        }
+
+        protected override void QueueTask(Task task)
+        {
+            this.tasks.Enqueue(task);
+        }
+
+        protected override bool TryExecuteTaskInline(Task task, bool taskWasPreviouslyQueued)
+        {
+            return false;
+        }
+
+        public void RunNext()
+        {
+            this.TryExecuteTask(this.tasks.Dequeue());
         }
     }
 }

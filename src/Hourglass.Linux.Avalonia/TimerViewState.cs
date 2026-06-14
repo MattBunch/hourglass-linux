@@ -9,7 +9,15 @@ public sealed record TimerViewState(
     string PauseResumeText,
     bool IsInputEnabled,
     bool IsRunning,
-    TimerState State)
+    TimerState State,
+    double ProgressPercent,
+    bool IsTimerInputVisible,
+    bool IsRemainingTimeVisible,
+    bool IsCompletionTextVisible,
+    bool IsStartVisible,
+    bool IsPauseVisible,
+    bool IsResumeVisible,
+    bool IsStopVisible)
 {
     internal const string DefaultTimerInput = "5 minutes";
     internal const string ReadyStatusText = "Ready";
@@ -36,7 +44,15 @@ public sealed record TimerViewState(
             timerState.State == TimerState.Paused ? ResumeCommandText : PauseCommandText,
             timerState.State == TimerState.Stopped,
             timerState.State == TimerState.Running,
-            timerState.State);
+            timerState.State,
+            GetProgressPercent(timerState),
+            timerState.State == TimerState.Stopped,
+            timerState.State is TimerState.Running or TimerState.Paused,
+            timerState.State == TimerState.Expired,
+            timerState.State == TimerState.Stopped,
+            timerState.State == TimerState.Running,
+            timerState.State == TimerState.Paused,
+            timerState.State is TimerState.Running or TimerState.Paused or TimerState.Expired);
     }
 
     public static string FormatRemainingTime(TimeSpan remaining)
@@ -59,5 +75,31 @@ public sealed record TimerViewState(
             TimerState.Expired => TimerCompleteStatusText,
             _ => ReadyStatusText
         };
+    }
+
+    public static double GetProgressPercent(CountdownState timerState)
+    {
+        ArgumentNullException.ThrowIfNull(timerState);
+
+        if (timerState.State == TimerState.Expired)
+        {
+            return 100;
+        }
+
+        TimeSpan total = timerState.TotalTime ?? TimeSpan.Zero;
+        if (timerState.State == TimerState.Stopped || total <= TimeSpan.Zero)
+        {
+            return 0;
+        }
+
+        TimeSpan elapsed = timerState.TimeElapsed ?? TimeSpan.Zero;
+        double progress = elapsed.TotalMilliseconds / total.TotalMilliseconds * 100;
+
+        if (double.IsNaN(progress) || double.IsInfinity(progress))
+        {
+            return 0;
+        }
+
+        return Math.Clamp(progress, 0, 100);
     }
 }

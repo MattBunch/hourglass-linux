@@ -1,4 +1,6 @@
 using Avalonia.Controls;
+using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Threading;
 using Hourglass.Linux.Services;
 using Hourglass.Timing;
@@ -17,6 +19,8 @@ public sealed partial class MainWindow : Window
 
     private readonly DispatcherTimer refreshTimer;
     private readonly MainWindowViewModel viewModel;
+    private bool focusWithinContent;
+    private bool pointerWithinContent = true;
 
     public MainWindow()
         : this(new MainWindowViewModel(
@@ -45,5 +49,37 @@ public sealed partial class MainWindow : Window
 
         this.Closed += (_, _) => this.refreshTimer.Stop();
         this.Opened += async (_, _) => await this.viewModel.LoadSettingsAsync();
+        this.viewModel.PropertyChanged += (_, args) =>
+        {
+            if (args.PropertyName == nameof(MainWindowViewModel.State))
+            {
+                this.UpdatePresentationClasses();
+            }
+        };
+        this.UpdatePresentationClasses();
+    }
+
+    private void InnerGridPointerEntered(object? sender, PointerEventArgs e)
+    {
+        this.pointerWithinContent = true;
+        this.UpdatePresentationClasses();
+    }
+
+    private void InnerGridPointerExited(object? sender, PointerEventArgs e)
+    {
+        this.pointerWithinContent = false;
+        this.UpdatePresentationClasses();
+    }
+
+    private void InnerGridFocusChanged(object? sender, RoutedEventArgs e)
+    {
+        this.focusWithinContent = this.InnerGrid.IsKeyboardFocusWithin;
+        this.UpdatePresentationClasses();
+    }
+
+    private void UpdatePresentationClasses()
+    {
+        this.RootGrid.Classes.Set("timer-active", this.viewModel.State is TimerState.Running or TimerState.Expired);
+        this.RootGrid.Classes.Set("content-active", this.pointerWithinContent || this.focusWithinContent);
     }
 }
