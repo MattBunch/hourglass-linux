@@ -12,7 +12,8 @@ public sealed class MainWindowViewModelTests
     public void StartWithValidInputRunsTimer()
     {
         var clock = new ManualMonotonicClock();
-        var viewModel = CreateViewModel(clock);
+        var sessionInhibitor = new RecordingSessionInhibitor();
+        var viewModel = CreateViewModel(clock, sessionInhibitor: sessionInhibitor);
 
         viewModel.TimerInput = "90 seconds";
         viewModel.StartCommand.Execute(null);
@@ -25,6 +26,8 @@ public sealed class MainWindowViewModelTests
         Assert.False(viewModel.StartCommand.CanExecute(null));
         Assert.True(viewModel.PauseResumeCommand.CanExecute(null));
         Assert.True(viewModel.ResetCommand.CanExecute(null));
+        Assert.Equal(1, sessionInhibitor.AcquireCount);
+        Assert.Equal(0, sessionInhibitor.ReleaseCount);
     }
 
     [Fact]
@@ -44,8 +47,9 @@ public sealed class MainWindowViewModelTests
     public void PauseAndResumePreserveRemainingTime()
     {
         var clock = new ManualMonotonicClock();
+        var sessionInhibitor = new RecordingSessionInhibitor();
         DateTime now = new(2026, 6, 8, 10, 0, 0);
-        var viewModel = CreateViewModel(clock, () => now);
+        var viewModel = CreateViewModel(clock, () => now, sessionInhibitor: sessionInhibitor);
 
         viewModel.TimerInput = "10 seconds";
         viewModel.StartCommand.Execute(null);
@@ -59,6 +63,7 @@ public sealed class MainWindowViewModelTests
         Assert.Equal(TimerState.Paused, viewModel.State);
         Assert.Equal("00:00:07", viewModel.RemainingTime);
         Assert.Equal("Resume", viewModel.PauseResumeText);
+        Assert.Equal(1, sessionInhibitor.ReleaseCount);
 
         now = now.AddSeconds(8);
         viewModel.PauseResumeCommand.Execute(null);
@@ -68,13 +73,15 @@ public sealed class MainWindowViewModelTests
         Assert.Equal(TimerState.Running, viewModel.State);
         Assert.Equal("00:00:05", viewModel.RemainingTime);
         Assert.Equal("Pause", viewModel.PauseResumeText);
+        Assert.Equal(2, sessionInhibitor.AcquireCount);
     }
 
     [Fact]
     public void ResetReturnsTimerToReadyState()
     {
         var clock = new ManualMonotonicClock();
-        var viewModel = CreateViewModel(clock);
+        var sessionInhibitor = new RecordingSessionInhibitor();
+        var viewModel = CreateViewModel(clock, sessionInhibitor: sessionInhibitor);
 
         viewModel.TimerInput = "10 seconds";
         viewModel.StartCommand.Execute(null);
@@ -90,13 +97,15 @@ public sealed class MainWindowViewModelTests
         Assert.True(viewModel.StartCommand.CanExecute(null));
         Assert.False(viewModel.PauseResumeCommand.CanExecute(null));
         Assert.False(viewModel.ResetCommand.CanExecute(null));
+        Assert.Equal(1, sessionInhibitor.ReleaseCount);
     }
 
     [Fact]
     public void TickTransitionsExpiredTimerToCompleteDisplay()
     {
         var clock = new ManualMonotonicClock();
-        var viewModel = CreateViewModel(clock);
+        var sessionInhibitor = new RecordingSessionInhibitor();
+        var viewModel = CreateViewModel(clock, sessionInhibitor: sessionInhibitor);
 
         viewModel.TimerInput = "1 second";
         viewModel.StartCommand.Execute(null);
@@ -108,6 +117,34 @@ public sealed class MainWindowViewModelTests
         Assert.Equal("00:00:00", viewModel.RemainingTime);
         Assert.False(viewModel.IsRunning);
         Assert.False(viewModel.IsInputEnabled);
+        Assert.Equal(1, sessionInhibitor.ReleaseCount);
+    }
+
+    [Fact]
+    public void InhibitionFailureDoesNotPreventTimerStart()
+    {
+        var clock = new ManualMonotonicClock();
+        var sessionInhibitor = new RecordingSessionInhibitor { ThrowOnAcquire = true };
+        var viewModel = CreateViewModel(clock, sessionInhibitor: sessionInhibitor);
+
+        viewModel.TimerInput = "90 seconds";
+        viewModel.StartCommand.Execute(null);
+
+        Assert.Equal(TimerState.Running, viewModel.State);
+        Assert.Equal(1, sessionInhibitor.AcquireCount);
+    }
+
+    [Fact]
+    public void DisposeReleasesActiveInhibition()
+    {
+        var sessionInhibitor = new RecordingSessionInhibitor();
+        var viewModel = CreateViewModel(new ManualMonotonicClock(), sessionInhibitor: sessionInhibitor);
+
+        viewModel.TimerInput = "90 seconds";
+        viewModel.StartCommand.Execute(null);
+        viewModel.Dispose();
+
+        Assert.Equal(1, sessionInhibitor.ReleaseCount);
     }
 
     [Fact]
@@ -257,12 +294,14 @@ public sealed class MainWindowViewModelTests
         ManualMonotonicClock clock,
         Func<DateTime>? wallClockNow = null,
         INotificationService? notificationService = null,
+        ISessionInhibitor? sessionInhibitor = null,
         ISettingsStore? settingsStore = null)
     {
         return new MainWindowViewModel(
             new CountdownEngine(clock),
             wallClockNow ?? (() => new DateTime(2026, 6, 8, 10, 0, 0)),
             notificationService ?? new RecordingNotificationService(),
+            sessionInhibitor ?? new RecordingSessionInhibitor(),
             settingsStore ?? new RecordingSettingsStore());
     }
 
@@ -298,6 +337,44 @@ public sealed class MainWindowViewModelTests
             }
 
             return Task.CompletedTask;
+        }
+    }
+
+    private sealed class RecordingSessionInhibitor : ISessionInhibitor
+    {
+        public int AcquireCount { get; private set; }
+
+        public int ReleaseCount { get; private set; }
+
+        public bool ThrowOnAcquire { get; init; }
+
+        public ValueTask<IAsyncDisposable?> InhibitAsync(
+            string reason,
+            bool inhibitSuspend,
+            bool inhibitIdle,
+            CancellationToken cancellationToken = default)
+        {
+            this.AcquireCount++;
+
+            if (this.ThrowOnAcquire)
+            {
+                throw new InvalidOperationException("Inhibition failed.");
+            }
+
+            Assert.Equal("Hourglass timer is running", reason);
+            Assert.True(inhibitSuspend);
+            Assert.True(inhibitIdle);
+
+            return ValueTask.FromResult<IAsyncDisposable?>(new RecordingInhibitionLease(this));
+        }
+
+        private sealed class RecordingInhibitionLease(RecordingSessionInhibitor owner) : IAsyncDisposable
+        {
+            public ValueTask DisposeAsync()
+            {
+                owner.ReleaseCount++;
+                return ValueTask.CompletedTask;
+            }
         }
     }
 

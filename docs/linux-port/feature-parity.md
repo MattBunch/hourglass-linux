@@ -8,7 +8,7 @@
 | Timer UI | WPF | Minimal Avalonia timer UI backed by `Hourglass.Core` | Expand behavior after MVP platform services are in place. |
 | Notifications | Windows notification area balloon behavior | `INotificationService` with Linux `notify-send` backend | Keep notification delivery best-effort; app UI remains recoverable state. |
 | Tray/status icon | WinForms `NotifyIcon` | Not implemented | Optional; abstract behind platform interfaces. |
-| Keep awake | Windows execution state APIs | Not implemented | Add Linux session inhibition later. |
+| Keep awake | Windows execution state APIs | `ISessionInhibitor` with Linux `systemd-inhibit` backend | Add portal backend later if packaging requires it. |
 | Wake from suspend | Windows waitable timer resume behavior | Out of scope | Defer until after MVP. |
 | Audio alerts | Windows-focused implementation | Not implemented | Add Linux audio alert service later. |
 | Settings | .NET Framework settings | Linux JSON settings store for recent timer inputs and notification preference | Add broader preferences and explicit migration decisions later. |

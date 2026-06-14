@@ -28,4 +28,6 @@ Timer-expiry notifications are routed through `INotificationService`; the Linux 
 
 Linux settings storage is routed through `ISettingsStore`; the storage location and privacy decisions are documented in [settings.md](settings.md).
 
+Keep-awake behavior is routed through `ISessionInhibitor`; the Linux implementation is documented in [session-inhibition.md](session-inhibition.md). Inhibition is best-effort and is separate from wake-from-suspend scheduling.
+
 Wake-from-suspend scheduling is explicitly out of scope for the Linux MVP. It may require distro-specific or privilege-sensitive backends and should be evaluated after the core Linux app is usable.
