@@ -32,6 +32,8 @@ Keep-awake behavior is routed through `ISessionInhibitor`; the Linux implementat
 
 Timer-expiry audio alerts are routed through `IAudioAlertService`; the Linux implementation is documented in [audio-alerts.md](audio-alerts.md). Audio playback is best-effort and independent from desktop notifications.
 
+Single-instance startup is routed through `ISingleInstanceService`; the Linux implementation is documented in [single-instance.md](single-instance.md). Secondary launches exit cleanly without command-line forwarding or window activation in the MVP.
+
 Wake-from-suspend scheduling is explicitly out of scope for the Linux MVP. It may require distro-specific or privilege-sensitive backends and should be evaluated after the core Linux app is usable.
 
 Packaging prototypes live under `packaging/`; publishing and permissions are documented in [packaging.md](packaging.md).

@@ -41,7 +41,7 @@ public interface ISettingsStore
     Task SaveAsync<T>(string key, T value, CancellationToken cancellationToken = default);
 }
 
-public interface ISingleInstanceService
+public interface ISingleInstanceService : IDisposable
 {
     Task<bool> TryAcquireAsync(CancellationToken cancellationToken = default);
 }

@@ -52,6 +52,8 @@ Audio playback uses command-line players in developer and AppImage-style builds:
 
 The Flatpak prototype installs the WAV asset beside the app binary. The command-line player backend is not guaranteed to work inside a Flatpak sandbox unless the runtime exposes the required tools and audio session access. Treat Flatpak audio as a packaging validation item, not proven production behavior.
 
+Single-instance behavior uses a per-user XDG lock file. Native developer builds and AppImage builds share the host user's XDG runtime/cache namespace. Flatpak builds may use a sandbox-specific namespace, so this phase does not guarantee single-instance ownership across native/AppImage and Flatpak package boundaries. Desktop-file activation forwarding is not implemented yet.
+
 ## Updates And Privacy
 
 Linux packages must not reuse the legacy Windows in-app updater or its persistent UUID behavior. Package channels should own updates where possible, and any future AppImage update metadata must be designed separately from the Windows updater.

@@ -12,7 +12,7 @@
 | Wake from suspend | Windows waitable timer resume behavior | Out of scope | Defer until after MVP. |
 | Audio alerts | Windows-focused implementation | `IAudioAlertService` with best-effort Linux process backend | Supports the built-in Normal beep. |
 | Settings | .NET Framework settings | Linux JSON settings store for recent timer inputs and notification preference | Add broader preferences and explicit migration decisions later. |
-| Single instance | Windows Forms application base | Not implemented | Add Linux single-instance service later. |
+| Single instance | Windows Forms application base with command-line handoff | `ISingleInstanceService` with Linux advisory file lock | Secondary launches exit cleanly; handoff and window activation are deferred. |
 | Updates | Windows in-app update check | Not implemented | Disable or replace for Linux packaging. |
 | Packaging | MSI, bundle, portable Windows build | Publish docs plus Flatpak and AppImage prototype files | Flatpak first, AppImage second. |
 

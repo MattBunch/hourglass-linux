@@ -18,12 +18,12 @@
 
 ## Phase 3: Linux MVP
 
-- Build the primary timer UI in Avalonia.
-- Add notification-first timer expiry behavior.
-- Add audio alerts.
-- Add settings storage under Linux user config/data paths.
-- Add single-instance behavior.
-- Add session inhibition for keep-awake behavior.
+- Primary timer UI in Avalonia is implemented.
+- Notification-first timer expiry behavior is implemented.
+- Audio alerts are implemented.
+- Settings storage under Linux user config/data paths is implemented.
+- Single-instance behavior is implemented.
+- Session inhibition for keep-awake behavior is implemented.
 
 Tray support remains optional for the first Linux UI.
 
@@ -43,9 +43,9 @@ Tray support remains optional for the first Linux UI.
 
 ## Phase 12: Single-Instance Behavior
 
-- Add Linux single-instance behavior behind `ISingleInstanceService`.
-- Preserve command-line handoff as a later or explicit follow-up if needed.
-- Avoid tray, startup, or background behavior changes in this phase.
+- Linux single-instance behavior is implemented behind `ISingleInstanceService`.
+- Command-line handoff remains deferred.
+- Existing-window activation remains deferred.
 
 ## Phase 5: Advanced Parity
 
