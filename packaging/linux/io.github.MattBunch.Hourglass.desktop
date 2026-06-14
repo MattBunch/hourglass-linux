@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Hourglass
+Comment=Simple timer for Linux
+Exec=hourglass-linux
+Icon=io.github.MattBunch.Hourglass
+Terminal=false
+Categories=Utility;
+StartupNotify=true

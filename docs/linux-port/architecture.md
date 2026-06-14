@@ -31,3 +31,5 @@ Linux settings storage is routed through `ISettingsStore`; the storage location 
 Keep-awake behavior is routed through `ISessionInhibitor`; the Linux implementation is documented in [session-inhibition.md](session-inhibition.md). Inhibition is best-effort and is separate from wake-from-suspend scheduling.
 
 Wake-from-suspend scheduling is explicitly out of scope for the Linux MVP. It may require distro-specific or privilege-sensitive backends and should be evaluated after the core Linux app is usable.
+
+Packaging prototypes live under `packaging/`; publishing and permissions are documented in [packaging.md](packaging.md).

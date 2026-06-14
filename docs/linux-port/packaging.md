@@ -1,0 +1,52 @@
+# Linux Packaging Prototype
+
+Stage 10 prepares Hourglass Linux for local publishing and future package work. It does not create release artifacts in the repository.
+
+## Runtime Targets
+
+The initial runtime target is `linux-x64`.
+
+`linux-arm64` remains future work after the first publish path is stable.
+
+## Local Publish
+
+Restore the app project for the target runtime before publishing:
+
+```bash
+dotnet restore src/Hourglass.Linux.Avalonia/Hourglass.Linux.Avalonia.csproj --runtime linux-x64
+dotnet publish src/Hourglass.Linux.Avalonia/Hourglass.Linux.Avalonia.csproj \
+  --configuration Release \
+  --runtime linux-x64 \
+  --self-contained true \
+  --no-restore \
+  --output /tmp/hourglass-linux-publish
+```
+
+The publish output is generated content and should not be committed.
+
+## Package Strategy
+
+- Flatpak is the primary future package format because it provides cross-distro delivery and portal-oriented desktop integration.
+- AppImage is the secondary portable package format for users who want a single-file app outside a store or repository.
+- Snap, `.deb`, RPM, AUR, release signing, auto-update metadata, and CI release jobs are out of scope for this prototype.
+
+## Prototype Files
+
+- `packaging/flatpak/io.github.MattBunch.Hourglass.yml` is a draft Flatpak manifest.
+- `packaging/linux/io.github.MattBunch.Hourglass.desktop` is desktop launcher metadata.
+- `packaging/linux/io.github.MattBunch.Hourglass.metainfo.xml` is draft AppStream metadata.
+- `packaging/appimage/build-appdir.sh` assembles an AppDir from a `dotnet publish` output.
+
+## Permissions
+
+The app currently needs:
+
+- desktop notifications for timer completion
+- user configuration storage under XDG config paths
+- session inhibition for keep-awake behavior
+
+The current `systemd-inhibit` backend is suitable for unpackaged developer builds. A portal backend should be evaluated before Flatpak is treated as production-ready.
+
+## Updates And Privacy
+
+Linux packages must not reuse the legacy Windows in-app updater or its persistent UUID behavior. Package channels should own updates where possible, and any future AppImage update metadata must be designed separately from the Windows updater.

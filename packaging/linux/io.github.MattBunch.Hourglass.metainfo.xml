@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.MattBunch.Hourglass</id>
+  <name>Hourglass</name>
+  <summary>Simple timer for Linux</summary>
+  <metadata_license>MIT</metadata_license>
+  <project_license>MIT</project_license>
+  <description>
+    <p>Hourglass Linux is a native Avalonia-based port of the Hourglass timer.</p>
+  </description>
+  <launchable type="desktop-id">io.github.MattBunch.Hourglass.desktop</launchable>
+  <provides>
+    <binary>hourglass-linux</binary>
+  </provides>
+</component>
