@@ -1,6 +1,7 @@
 namespace Hourglass.Linux.Avalonia.Tests;
 
 using System.Globalization;
+using System.Xml.Linq;
 using Hourglass.Linux.Avalonia;
 using Hourglass.Platform;
 using Hourglass.Settings;
@@ -16,12 +17,12 @@ public sealed class MainWindowViewModelTests
         var sessionInhibitor = new RecordingSessionInhibitor();
         var viewModel = CreateViewModel(clock, sessionInhibitor: sessionInhibitor);
 
-        viewModel.TimerInput = "90 seconds";
+        viewModel.TimerInput = "2 min";
         viewModel.StartCommand.Execute(null);
 
         Assert.Equal(TimerState.Running, viewModel.State);
         Assert.Equal("Running", viewModel.StatusText);
-        Assert.Equal("00:01:30", viewModel.RemainingTime);
+        Assert.Equal("00:02:00", viewModel.RemainingTime);
         Assert.False(viewModel.IsInputEnabled);
         Assert.True(viewModel.IsRunning);
         Assert.False(viewModel.StartCommand.CanExecute(null));
@@ -29,6 +30,21 @@ public sealed class MainWindowViewModelTests
         Assert.True(viewModel.ResetCommand.CanExecute(null));
         Assert.Equal(1, sessionInhibitor.AcquireCount);
         Assert.Equal(0, sessionInhibitor.ReleaseCount);
+    }
+
+    [Fact]
+    public void StartWithAbsoluteTimeInputRunsTimer()
+    {
+        var clock = new ManualMonotonicClock();
+        DateTime now = new(2026, 6, 8, 12, 30, 0);
+        var viewModel = CreateViewModel(clock, () => now);
+
+        viewModel.TimerInput = "1pm";
+        viewModel.StartCommand.Execute(null);
+
+        Assert.Equal(TimerState.Running, viewModel.State);
+        Assert.Equal("Running", viewModel.StatusText);
+        Assert.Equal("00:30:00", viewModel.RemainingTime);
     }
 
     [Fact]
@@ -42,6 +58,58 @@ public sealed class MainWindowViewModelTests
         Assert.Equal(TimerState.Stopped, viewModel.State);
         Assert.Equal("Enter a valid current timer.", viewModel.StatusText);
         Assert.Equal("00:00:00", viewModel.RemainingTime);
+    }
+
+    [Fact]
+    public void StartCommandDoesNotRestartRunningTimer()
+    {
+        var clock = new ManualMonotonicClock();
+        var sessionInhibitor = new RecordingSessionInhibitor();
+        var viewModel = CreateViewModel(clock, sessionInhibitor: sessionInhibitor);
+
+        viewModel.TimerInput = "2 min";
+        viewModel.StartCommand.Execute(null);
+        clock.Advance(TimeSpan.FromSeconds(30));
+        viewModel.Tick();
+
+        viewModel.TimerInput = "5 minutes";
+        viewModel.StartCommand.Execute(null);
+
+        Assert.Equal(TimerState.Running, viewModel.State);
+        Assert.Equal("00:01:30", viewModel.RemainingTime);
+        Assert.Equal(1, sessionInhibitor.AcquireCount);
+    }
+
+    [Fact]
+    public void RelayCommandDoesNotExecuteWhenCanExecuteIsFalse()
+    {
+        int callCount = 0;
+        var command = new RelayCommand(() => callCount++, () => false);
+
+        command.Execute(null);
+
+        Assert.Equal(0, callCount);
+    }
+
+    [Fact]
+    public void TimerInputEnterKeyBindingsUseStartCommand()
+    {
+        XNamespace avalonia = "https://github.com/avaloniaui";
+        XNamespace xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
+        XDocument document = XDocument.Load(FindRepositoryFile("src/Hourglass.Linux.Avalonia/MainWindow.axaml"));
+        XElement timerInput = Assert.Single(
+            document.Descendants(avalonia + "TextBox"),
+            element => element.Attribute(xaml + "Name")?.Value == "TimerInputTextBox");
+        string[] gestures = timerInput
+            .Element(avalonia + "TextBox.KeyBindings")?
+            .Elements(avalonia + "KeyBinding")
+            .Where(element => element.Attribute("Command")?.Value == "{Binding StartCommand}")
+            .Select(element => element.Attribute("Gesture")?.Value)
+            .OfType<string>()
+            .Order()
+            .ToArray() ?? [];
+
+        Assert.Equal(["Enter", "Return"], gestures);
     }
 
     [Fact]
@@ -491,6 +559,25 @@ public sealed class MainWindowViewModelTests
         Assert.Equal(175d, converter.Convert([50d, 350d], typeof(double), null, CultureInfo.InvariantCulture));
         Assert.Equal(350d, converter.Convert([150d, 350d], typeof(double), null, CultureInfo.InvariantCulture));
         Assert.Equal(0d, converter.Convert([double.NaN, 350d], typeof(double), null, CultureInfo.InvariantCulture));
+    }
+
+    private static string FindRepositoryFile(string relativePath)
+    {
+        DirectoryInfo? directory = new(AppContext.BaseDirectory);
+
+        while (directory != null)
+        {
+            string path = Path.Combine(directory.FullName, relativePath);
+
+            if (File.Exists(path))
+            {
+                return path;
+            }
+
+            directory = directory.Parent;
+        }
+
+        throw new FileNotFoundException($"Could not find repository file '{relativePath}'.", relativePath);
     }
 
     private static CountdownState CreateCountdownState(TimerState state)
