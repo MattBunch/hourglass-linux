@@ -116,7 +116,14 @@
                    Classes="timerInput"
                    Text="{Binding TimerInput, Mode=TwoWay}"
                    IsVisible="{Binding IsTimerInputVisible}"
-                   PlaceholderText="5 minutes" />
+                   PlaceholderText="5 minutes">
+            <TextBox.KeyBindings>
+              <KeyBinding Gesture="Return"
+                          Command="{Binding StartCommand}" />
+              <KeyBinding Gesture="Enter"
+                          Command="{Binding StartCommand}" />
+            </TextBox.KeyBindings>
+          </TextBox>
 
           <Viewbox Stretch="Uniform"
                    StretchDirection="DownOnly"

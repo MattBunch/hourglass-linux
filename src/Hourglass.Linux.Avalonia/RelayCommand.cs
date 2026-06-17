@@ -22,6 +22,11 @@ public sealed class RelayCommand : ICommand
 
     public void Execute(object? parameter)
     {
+        if (!this.CanExecute(parameter))
+        {
+            return;
+        }
+
         this.execute();
     }
 
