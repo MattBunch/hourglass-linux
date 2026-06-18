@@ -8,6 +8,7 @@ namespace Hourglass.Linux.Avalonia;
 
 public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 {
+    private const string ApplicationTitle = "Hourglass";
     private const string InvalidTimerStatusText = "Enter a valid current timer.";
     private const string SessionInhibitionReason = "Hourglass timer is running";
     private const string NotificationBody = "Timer complete";
@@ -133,6 +134,30 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         }
     }
 
+    public string? TimerTitle
+    {
+        get => this.viewState.TimerTitle;
+        set
+        {
+            string nextTitle = value ?? string.Empty;
+
+            if (nextTitle == this.viewState.TimerTitle)
+            {
+                return;
+            }
+
+            string previousWindowTitle = this.WindowTitle;
+            this.ReplaceViewState(this.viewState with { TimerTitle = nextTitle }, nameof(this.TimerTitle));
+
+            if (previousWindowTitle != this.WindowTitle)
+            {
+                this.OnPropertyChanged(nameof(this.WindowTitle));
+            }
+        }
+    }
+
+    public string WindowTitle => FormatWindowTitle(this.TimerTitle);
+
     public string RemainingTime => this.viewState.RemainingTime;
 
     public string StatusText => this.viewState.StatusText;
@@ -250,7 +275,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     private void RefreshDisplay(string? explicitStatus = null)
     {
-        this.ReplaceViewState(TimerViewState.FromTimerState(this.TimerInput, this.engine.Snapshot, explicitStatus));
+        this.ReplaceViewState(TimerViewState.FromTimerState(
+            this.TimerInput,
+            this.engine.Snapshot,
+            this.TimerTitle ?? string.Empty,
+            explicitStatus));
         this.OnPropertyChanged(nameof(this.TimerInput));
         this.OnPropertyChanged(nameof(this.RemainingTime));
         this.OnPropertyChanged(nameof(this.StatusText));
@@ -269,6 +298,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         this.StartCommand.RaiseCanExecuteChanged();
         this.PauseResumeCommand.RaiseCanExecuteChanged();
         this.ResetCommand.RaiseCanExecuteChanged();
+    }
+
+    private static string FormatWindowTitle(string? timerTitle)
+    {
+        return string.IsNullOrWhiteSpace(timerTitle) ? ApplicationTitle : timerTitle;
     }
 
     private void ReplaceViewState(TimerViewState next, string? changedPropertyName = null)

@@ -3,7 +3,7 @@
         xmlns:local="clr-namespace:Hourglass.Linux.Avalonia"
         x:Class="Hourglass.Linux.Avalonia.MainWindow"
         x:DataType="local:MainWindowViewModel"
-        Title="Hourglass"
+        Title="{Binding WindowTitle}"
         Width="350"
         Height="150"
         MinWidth="250"
@@ -28,6 +28,27 @@
       <Setter Property="FontSize" Value="20" />
       <Setter Property="Foreground" Value="{DynamicResource TextControlForeground}" />
       <Setter Property="CaretBrush" Value="{DynamicResource TextControlForeground}" />
+    </Style>
+
+    <Style Selector="TextBox.titleInput">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="FontFamily" Value="Segoe UI, Inter, Noto Sans, sans-serif" />
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="Foreground" Value="{DynamicResource TextControlForeground}" />
+      <Setter Property="CaretBrush" Value="{DynamicResource TextControlForeground}" />
+      <Setter Property="Opacity" Value="0.72" />
+    </Style>
+
+    <Style Selector="TextBox.titleInput:focus">
+      <Setter Property="BorderBrush" Value="{DynamicResource AccentFillColorDefaultBrush}" />
+      <Setter Property="BorderThickness" Value="0 0 0 1" />
+      <Setter Property="Opacity" Value="1" />
     </Style>
 
     <Style Selector="TextBox.timerInput:focus">
@@ -111,6 +132,11 @@
       <StackPanel Margin="20 0"
                   VerticalAlignment="Center"
                   Spacing="4">
+        <TextBox x:Name="TimerTitleTextBox"
+                 Classes="titleInput"
+                 Text="{Binding TimerTitle, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                 PlaceholderText="Click to enter title" />
+
         <Grid MinHeight="42">
           <TextBox x:Name="TimerInputTextBox"
                    Classes="timerInput"
