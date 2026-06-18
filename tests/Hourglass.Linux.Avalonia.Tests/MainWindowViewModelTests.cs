@@ -329,6 +329,50 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
+    public void ProgressAdvancesFreezesResumesExpiresAndResets()
+    {
+        var clock = new ManualMonotonicClock();
+        var viewModel = CreateViewModel(clock);
+
+        viewModel.TimerInput = "10 seconds";
+        viewModel.StartCommand.Execute(null);
+
+        Assert.Equal(0, viewModel.ProgressPercent);
+
+        clock.Advance(TimeSpan.FromSeconds(2.5));
+        viewModel.Tick();
+
+        Assert.Equal(25, viewModel.ProgressPercent);
+
+        viewModel.PauseResumeCommand.Execute(null);
+        clock.Advance(TimeSpan.FromSeconds(4));
+        viewModel.Tick();
+
+        Assert.Equal(25, viewModel.ProgressPercent);
+
+        viewModel.PauseResumeCommand.Execute(null);
+        clock.Advance(TimeSpan.FromSeconds(2.5));
+        viewModel.Tick();
+
+        Assert.Equal(50, viewModel.ProgressPercent);
+
+        clock.Advance(TimeSpan.FromSeconds(5));
+        viewModel.Tick();
+
+        Assert.Equal(TimerState.Expired, viewModel.State);
+        Assert.Equal(100, viewModel.ProgressPercent);
+
+        clock.Advance(TimeSpan.FromSeconds(5));
+        viewModel.Tick();
+
+        Assert.Equal(100, viewModel.ProgressPercent);
+
+        viewModel.ResetCommand.Execute(null);
+
+        Assert.Equal(0, viewModel.ProgressPercent);
+    }
+
+    [Fact]
     public void TickTransitionsExpiredTimerToCompleteDisplay()
     {
         var clock = new ManualMonotonicClock();
@@ -710,14 +754,103 @@ public sealed class MainWindowViewModelTests
         Assert.Equal(100, progress);
     }
 
+    [Theory]
+    [InlineData(0, 400, 0)]
+    [InlineData(25, 400, 100)]
+    [InlineData(50, 400, 200)]
+    [InlineData(100, 400, 400)]
+    [InlineData(-25, 400, 0)]
+    [InlineData(125, 400, 400)]
+    public void ProgressWidthConverterMapsClampedProgressToAvailableWidth(
+        double progressPercent,
+        double availableWidth,
+        double expectedWidth)
+    {
+        double width = ProgressWidthConverter.CalculateWidth(progressPercent, availableWidth);
+
+        Assert.Equal(expectedWidth, width);
+    }
+
+    [Theory]
+    [InlineData(double.NaN)]
+    [InlineData(double.PositiveInfinity)]
+    [InlineData(double.NegativeInfinity)]
+    [InlineData(-1)]
+    public void ProgressWidthConverterRejectsInvalidAvailableWidth(double availableWidth)
+    {
+        double width = ProgressWidthConverter.CalculateWidth(50, availableWidth);
+
+        Assert.Equal(0, width);
+    }
+
+    [Theory]
+    [InlineData(double.NaN)]
+    [InlineData(double.PositiveInfinity)]
+    [InlineData(double.NegativeInfinity)]
+    public void ProgressWidthConverterRejectsNonFiniteProgress(double progressPercent)
+    {
+        double width = ProgressWidthConverter.CalculateWidth(progressPercent, 400);
+
+        Assert.Equal(0, width);
+    }
+
     [Fact]
-    public void ProgressWidthConverterUsesClampedProgressAndAvailableWidth()
+    public void ProgressWidthConverterHandlesUnavailableBindingValues()
     {
         var converter = new ProgressWidthConverter();
 
-        Assert.Equal(175d, converter.Convert([50d, 350d], typeof(double), null, CultureInfo.InvariantCulture));
-        Assert.Equal(350d, converter.Convert([150d, 350d], typeof(double), null, CultureInfo.InvariantCulture));
-        Assert.Equal(0d, converter.Convert([double.NaN, 350d], typeof(double), null, CultureInfo.InvariantCulture));
+        Assert.Equal(0d, converter.Convert([], typeof(double), null, CultureInfo.InvariantCulture));
+        Assert.Equal(0d, converter.Convert([50d, null], typeof(double), null, CultureInfo.InvariantCulture));
+        Assert.Equal(0d, converter.Convert([50d, new object()], typeof(double), null, CultureInfo.InvariantCulture));
+    }
+
+    [Fact]
+    public void ProgressWidthConverterRecalculatesForResizedWidth()
+    {
+        const double progressPercent = 50;
+
+        double initialWidth = ProgressWidthConverter.CalculateWidth(progressPercent, 250);
+        double resizedWidth = ProgressWidthConverter.CalculateWidth(progressPercent, 500);
+
+        Assert.Equal(125, initialWidth);
+        Assert.Equal(250, resizedWidth);
+        Assert.Equal(50, progressPercent);
+    }
+
+    [Fact]
+    public void ProgressLayerMatchesLegacyFullWindowBackgroundTreatment()
+    {
+        XNamespace avalonia = "https://github.com/avaloniaui";
+        XNamespace xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
+        XDocument document = XDocument.Load(FindRepositoryFile("src/Hourglass.Linux.Avalonia/MainWindow.axaml"));
+        XElement rootGrid = Assert.Single(
+            document.Descendants(avalonia + "Grid"),
+            element => element.Attribute(xaml + "Name")?.Value == "RootGrid");
+        XElement progressLayer = Assert.Single(
+            rootGrid.Elements(avalonia + "Grid"),
+            element => element.Attribute(xaml + "Name")?.Value == "ProgressLayer");
+        XElement innerGrid = Assert.Single(
+            rootGrid.Elements(avalonia + "Grid"),
+            element => element.Attribute(xaml + "Name")?.Value == "InnerGrid");
+        XElement progressIndicator = Assert.Single(progressLayer.Elements(avalonia + "Border"));
+        XElement fillBrush = Assert.Single(
+            document.Descendants(avalonia + "SolidColorBrush"),
+            element => element.Attribute(xaml + "Key")?.Value == "TimerProgressFillBrush");
+        XElement widthBinding = Assert.Single(progressIndicator.Elements(avalonia + "Border.Width"));
+        XElement multiBinding = Assert.Single(widthBinding.Elements(avalonia + "MultiBinding"));
+        XElement[] bindings = multiBinding.Elements(avalonia + "Binding").ToArray();
+
+        Assert.Equal("True", progressLayer.Attribute("ClipToBounds")?.Value);
+        Assert.Equal("False", progressLayer.Attribute("IsHitTestVisible")?.Value);
+        Assert.Equal("Left", progressIndicator.Attribute("HorizontalAlignment")?.Value);
+        Assert.Equal("{StaticResource TimerProgressFillBrush}", progressIndicator.Attribute("Background")?.Value);
+        Assert.Equal("#3665B3", fillBrush.Attribute("Color")?.Value);
+        Assert.Equal("0.45", fillBrush.Attribute("Opacity")?.Value);
+        Assert.Contains(innerGrid, progressLayer.ElementsAfterSelf());
+        Assert.Equal("{StaticResource ProgressWidthConverter}", multiBinding.Attribute("Converter")?.Value);
+        Assert.Equal("ProgressPercent", bindings[0].Attribute("Path")?.Value);
+        Assert.Equal("ProgressLayer", bindings[1].Attribute("ElementName")?.Value);
+        Assert.Equal("Bounds.Width", bindings[1].Attribute("Path")?.Value);
     }
 
     private static string FindRepositoryFile(string relativePath)

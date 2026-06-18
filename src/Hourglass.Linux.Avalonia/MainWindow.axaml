@@ -10,6 +10,9 @@
         MinHeight="150">
   <Window.Resources>
     <local:ProgressWidthConverter x:Key="ProgressWidthConverter" />
+    <SolidColorBrush x:Key="TimerProgressFillBrush"
+                     Color="#3665B3"
+                     Opacity="0.45" />
   </Window.Resources>
 
   <Window.Styles>
@@ -112,7 +115,7 @@
           IsHitTestVisible="False">
       <Border x:Name="ProgressIndicator"
               HorizontalAlignment="Left"
-              Background="{DynamicResource AccentFillColorDefaultBrush}">
+              Background="{StaticResource TimerProgressFillBrush}">
         <Border.Width>
           <MultiBinding Converter="{StaticResource ProgressWidthConverter}">
             <Binding Path="ProgressPercent" />

@@ -15,6 +15,11 @@ public sealed class ProgressWidthConverter : IMultiValueConverter
             return 0d;
         }
 
+        return CalculateWidth(progressPercent, availableWidth);
+    }
+
+    internal static double CalculateWidth(double progressPercent, double availableWidth)
+    {
         if (!double.IsFinite(progressPercent) || !double.IsFinite(availableWidth))
         {
             return 0d;
