@@ -4,6 +4,7 @@ using Hourglass.Timing;
 
 public sealed record TimerViewState(
     string TimerInput,
+    string TimerTitle,
     string RemainingTime,
     string StatusText,
     string PauseResumeText,
@@ -32,13 +33,16 @@ public sealed record TimerViewState(
     public static TimerViewState FromTimerState(
         string timerInput,
         CountdownState timerState,
+        string timerTitle = "",
         string? explicitStatus = null)
     {
         ArgumentNullException.ThrowIfNull(timerInput);
         ArgumentNullException.ThrowIfNull(timerState);
+        ArgumentNullException.ThrowIfNull(timerTitle);
 
         return new TimerViewState(
             timerInput,
+            timerTitle,
             FormatRemainingTime(timerState.TimeLeft ?? TimeSpan.Zero),
             explicitStatus ?? GetStatusText(timerState.State),
             timerState.State == TimerState.Paused ? ResumeCommandText : PauseCommandText,

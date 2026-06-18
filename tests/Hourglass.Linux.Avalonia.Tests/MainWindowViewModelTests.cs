@@ -10,6 +10,165 @@ using Xunit;
 
 public sealed class MainWindowViewModelTests
 {
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void EmptyTimerTitleUsesApplicationWindowTitle(string? timerTitle)
+    {
+        var viewModel = CreateViewModel(new ManualMonotonicClock());
+
+        viewModel.TimerTitle = timerTitle;
+
+        Assert.Equal(timerTitle ?? string.Empty, viewModel.TimerTitle);
+        Assert.Equal("Hourglass", viewModel.WindowTitle);
+    }
+
+    [Fact]
+    public void ChangingTimerTitleImmediatelyUpdatesWindowTitleAndRaisesNotifications()
+    {
+        var viewModel = CreateViewModel(new ManualMonotonicClock());
+        var changedProperties = new List<string?>();
+        viewModel.PropertyChanged += (_, args) => changedProperties.Add(args.PropertyName);
+
+        viewModel.TimerTitle = "Tea";
+
+        Assert.Equal("Tea", viewModel.TimerTitle);
+        Assert.Equal("Tea", viewModel.WindowTitle);
+        Assert.Equal([nameof(viewModel.TimerTitle), nameof(viewModel.WindowTitle)], changedProperties);
+    }
+
+    [Fact]
+    public void WhitespaceTimerTitlePreservesInputWithoutRepublishingFallbackWindowTitle()
+    {
+        var viewModel = CreateViewModel(new ManualMonotonicClock());
+        var changedProperties = new List<string?>();
+        viewModel.PropertyChanged += (_, args) => changedProperties.Add(args.PropertyName);
+
+        viewModel.TimerTitle = "   ";
+
+        Assert.Equal("   ", viewModel.TimerTitle);
+        Assert.Equal("Hourglass", viewModel.WindowTitle);
+        Assert.Equal([nameof(viewModel.TimerTitle)], changedProperties);
+    }
+
+    [Fact]
+    public void TimerTickDoesNotRepublishUnchangedWindowTitle()
+    {
+        var viewModel = CreateViewModel(new ManualMonotonicClock());
+        var changedProperties = new List<string?>();
+        viewModel.TimerTitle = "Tea";
+        viewModel.PropertyChanged += (_, args) => changedProperties.Add(args.PropertyName);
+
+        viewModel.Tick();
+
+        Assert.DoesNotContain(nameof(viewModel.WindowTitle), changedProperties);
+    }
+
+    [Fact]
+    public void ChangingTimerTitleWhileRunningDoesNotAlterCountdown()
+    {
+        var clock = new ManualMonotonicClock();
+        var viewModel = CreateViewModel(clock);
+        viewModel.TimerInput = "2 min";
+        viewModel.TimerTitle = "Tea";
+        viewModel.StartCommand.Execute(null);
+        clock.Advance(TimeSpan.FromSeconds(30));
+        viewModel.Tick();
+        string remainingTime = viewModel.RemainingTime;
+
+        viewModel.TimerTitle = "Coffee";
+
+        Assert.Equal("Coffee", viewModel.WindowTitle);
+        Assert.Equal(TimerState.Running, viewModel.State);
+        Assert.Equal(remainingTime, viewModel.RemainingTime);
+    }
+
+    [Fact]
+    public void ChangingTimerTitleWhilePausedDoesNotAlterCountdown()
+    {
+        var clock = new ManualMonotonicClock();
+        var viewModel = CreateViewModel(clock);
+        viewModel.TimerInput = "2 min";
+        viewModel.StartCommand.Execute(null);
+        clock.Advance(TimeSpan.FromSeconds(30));
+        viewModel.Tick();
+        viewModel.PauseResumeCommand.Execute(null);
+        string remainingTime = viewModel.RemainingTime;
+
+        viewModel.TimerTitle = "Paused tea";
+
+        Assert.Equal("Paused tea", viewModel.WindowTitle);
+        Assert.Equal(TimerState.Paused, viewModel.State);
+        Assert.Equal(remainingTime, viewModel.RemainingTime);
+    }
+
+    [Fact]
+    public void ExpiredAndResetTimerRetainTimerTitle()
+    {
+        var clock = new ManualMonotonicClock();
+        var viewModel = CreateViewModel(clock);
+        viewModel.TimerInput = "1 second";
+        viewModel.TimerTitle = "Eggs";
+        viewModel.StartCommand.Execute(null);
+        clock.Advance(TimeSpan.FromSeconds(1));
+        viewModel.Tick();
+
+        Assert.Equal(TimerState.Expired, viewModel.State);
+        Assert.Equal("Eggs", viewModel.TimerTitle);
+        Assert.Equal("Eggs", viewModel.WindowTitle);
+
+        viewModel.ResetCommand.Execute(null);
+
+        Assert.Equal(TimerState.Stopped, viewModel.State);
+        Assert.Equal("Eggs", viewModel.TimerTitle);
+        Assert.Equal("Eggs", viewModel.WindowTitle);
+    }
+
+    [Fact]
+    public void TimerTitleAndTimerInputRemainIndependent()
+    {
+        var viewModel = CreateViewModel(new ManualMonotonicClock());
+        string initialTimerInput = viewModel.TimerInput;
+
+        viewModel.TimerTitle = "Laundry";
+
+        Assert.Equal(initialTimerInput, viewModel.TimerInput);
+        Assert.Equal(TimerState.Stopped, viewModel.State);
+
+        viewModel.TimerInput = "10 minutes";
+
+        Assert.Equal("Laundry", viewModel.TimerTitle);
+        Assert.Equal("Laundry", viewModel.WindowTitle);
+        Assert.Equal(TimerState.Stopped, viewModel.State);
+    }
+
+    [Fact]
+    public void TimerTitleControlUsesImmediateBindingAndDrivesWindowTitle()
+    {
+        XNamespace avalonia = "https://github.com/avaloniaui";
+        XNamespace xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
+        XDocument document = XDocument.Load(FindRepositoryFile("src/Hourglass.Linux.Avalonia/MainWindow.axaml"));
+        XElement window = Assert.IsType<XElement>(document.Root);
+        XElement titleInput = Assert.Single(
+            document.Descendants(avalonia + "TextBox"),
+            element => element.Attribute(xaml + "Name")?.Value == "TimerTitleTextBox");
+        XElement timerInput = Assert.Single(
+            document.Descendants(avalonia + "TextBox"),
+            element => element.Attribute(xaml + "Name")?.Value == "TimerInputTextBox");
+        XElement timerDisplay = Assert.IsType<XElement>(timerInput.Parent);
+
+        Assert.Equal("{Binding WindowTitle}", window.Attribute("Title")?.Value);
+        Assert.Equal(
+            "{Binding TimerTitle, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}",
+            titleInput.Attribute("Text")?.Value);
+        Assert.Equal("Click to enter title", titleInput.Attribute("PlaceholderText")?.Value);
+        Assert.Equal("titleInput", titleInput.Attribute("Classes")?.Value);
+        Assert.Null(titleInput.Attribute("IsVisible"));
+        Assert.Same(titleInput.Parent, timerDisplay.Parent);
+        Assert.Contains(timerDisplay, titleInput.ElementsAfterSelf());
+    }
+
     [Fact]
     public void StartWithValidInputRunsTimer()
     {
