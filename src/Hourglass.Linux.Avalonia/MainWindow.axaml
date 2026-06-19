@@ -4,6 +4,7 @@
         x:Class="Hourglass.Linux.Avalonia.MainWindow"
         x:DataType="local:MainWindowViewModel"
         Title="{Binding WindowTitle}"
+        Topmost="{Binding AlwaysOnTop}"
         Width="350"
         Height="150"
         MinWidth="250"
@@ -108,7 +109,35 @@
   </Window.Styles>
 
   <Grid x:Name="RootGrid"
+        Background="Transparent"
         Classes="content-active">
+    <Grid.ContextMenu>
+      <ContextMenu>
+        <MenuItem Header="Start"
+                  Command="{Binding StartCommand}" />
+        <MenuItem Header="{Binding PauseResumeText}"
+                  Command="{Binding PauseResumeCommand}" />
+        <MenuItem Header="Stop"
+                  Command="{Binding ResetCommand}" />
+        <Separator />
+        <MenuItem Header="Notifications"
+                  ToggleType="CheckBox"
+                  IsChecked="{Binding NotificationsEnabled, Mode=OneWay}"
+                  Command="{Binding ToggleNotificationsCommand}" />
+        <MenuItem Header="Sound"
+                  ToggleType="CheckBox"
+                  IsChecked="{Binding AudioAlertsEnabled, Mode=OneWay}"
+                  Command="{Binding ToggleAudioAlertsCommand}" />
+        <MenuItem Header="Always on top"
+                  ToggleType="CheckBox"
+                  IsChecked="{Binding AlwaysOnTop, Mode=OneWay}"
+                  Command="{Binding ToggleAlwaysOnTopCommand}" />
+        <Separator />
+        <MenuItem Header="Exit"
+                  Click="ExitMenuItemClick" />
+      </ContextMenu>
+    </Grid.ContextMenu>
+
     <Grid x:Name="ProgressLayer"
           Classes="progressTrack"
           ClipToBounds="True"

@@ -7,13 +7,14 @@ using Xunit;
 public sealed class LinuxAppSettingsTests
 {
     [Fact]
-    public void DefaultSettingsUseDefaultTimerInputNotificationsAndAudioAlerts()
+    public void DefaultSettingsUseDefaultTimerInputAndAlertOptions()
     {
         LinuxAppSettings settings = LinuxAppSettings.Default;
 
         Assert.Equal("5 minutes", settings.GetInitialTimerInput("5 minutes"));
         Assert.True(settings.NotificationsEnabled);
         Assert.True(settings.AudioAlertsEnabled);
+        Assert.False(settings.AlwaysOnTop);
         Assert.Empty(settings.RecentTimerInputs);
     }
 
@@ -32,6 +33,7 @@ public sealed class LinuxAppSettingsTests
         Assert.Equal("10 seconds", updated.GetInitialTimerInput("default"));
         Assert.True(updated.NotificationsEnabled);
         Assert.True(updated.AudioAlertsEnabled);
+        Assert.False(updated.AlwaysOnTop);
     }
 
     [Fact]
@@ -40,27 +42,34 @@ public sealed class LinuxAppSettingsTests
         var settings = new LinuxAppSettings(
             ["", "  15 minutes ", "15 minutes", "  "],
             notificationsEnabled: false,
-            audioAlertsEnabled: false);
+            audioAlertsEnabled: false,
+            alwaysOnTop: true);
 
         Assert.Equal(["15 minutes"], settings.RecentTimerInputs);
         Assert.False(settings.NotificationsEnabled);
         Assert.False(settings.AudioAlertsEnabled);
+        Assert.True(settings.AlwaysOnTop);
     }
 
     [Fact]
-    public void AddRecentTimerInputPreservesDisabledAudioAlerts()
+    public void AddRecentTimerInputPreservesOptions()
     {
-        var settings = new LinuxAppSettings(["1 second"], notificationsEnabled: false, audioAlertsEnabled: false);
+        var settings = new LinuxAppSettings(
+            ["1 second"],
+            notificationsEnabled: false,
+            audioAlertsEnabled: false,
+            alwaysOnTop: true);
 
         LinuxAppSettings updated = settings.AddRecentTimerInput("2 seconds");
 
         Assert.Equal(["2 seconds", "1 second"], updated.RecentTimerInputs);
         Assert.False(updated.NotificationsEnabled);
         Assert.False(updated.AudioAlertsEnabled);
+        Assert.True(updated.AlwaysOnTop);
     }
 
     [Fact]
-    public void OldJsonWithoutAudioAlertsEnabledDeserializesWithAudioEnabled()
+    public void OlderJsonWithoutNewOptionsUsesDefaults()
     {
         const string json = """{"RecentTimerInputs":["10 seconds"],"NotificationsEnabled":false}""";
 
@@ -70,12 +79,17 @@ public sealed class LinuxAppSettingsTests
         Assert.Equal(["10 seconds"], settings.RecentTimerInputs);
         Assert.False(settings.NotificationsEnabled);
         Assert.True(settings.AudioAlertsEnabled);
+        Assert.False(settings.AlwaysOnTop);
     }
 
     [Fact]
-    public void SerializationRoundTripsAudioAlertPreference()
+    public void SerializationRoundTripsAllPreferences()
     {
-        var settings = new LinuxAppSettings(["10 seconds"], notificationsEnabled: true, audioAlertsEnabled: false);
+        var settings = new LinuxAppSettings(
+            ["10 seconds"],
+            notificationsEnabled: true,
+            audioAlertsEnabled: false,
+            alwaysOnTop: true);
 
         string json = JsonSerializer.Serialize(settings);
         LinuxAppSettings? roundTripped = JsonSerializer.Deserialize<LinuxAppSettings>(json);
@@ -84,5 +98,6 @@ public sealed class LinuxAppSettingsTests
         Assert.Equal(["10 seconds"], roundTripped.RecentTimerInputs);
         Assert.True(roundTripped.NotificationsEnabled);
         Assert.False(roundTripped.AudioAlertsEnabled);
+        Assert.True(roundTripped.AlwaysOnTop);
     }
 }

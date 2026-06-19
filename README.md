@@ -30,6 +30,11 @@ Run the Avalonia Linux app from a graphical Linux desktop session:
 dotnet run --project src/Hourglass.Linux.Avalonia/Hourglass.Linux.Avalonia.csproj
 ```
 
+Right-click the timer surface to open timer actions and persistent notification, sound, and always-on-top options.
+Settings are stored in `hourglass-linux/app.json` under `$XDG_CONFIG_HOME`, or under `~/.config` when
+`XDG_CONFIG_HOME` is not set. Always-on-top uses Avalonia's standard `Topmost` window hint; some Wayland
+compositors may ignore that hint.
+
 ## Restricted Environments
 
 If the local environment blocks writes under the default .NET CLI home, prefix the commands with a writable CLI home:
