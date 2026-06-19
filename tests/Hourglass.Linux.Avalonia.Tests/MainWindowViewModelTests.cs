@@ -289,6 +289,7 @@ public sealed class MainWindowViewModelTests
             .ToDictionary(element => element.Attribute("Header")!.Value, StringComparer.Ordinal);
 
         Assert.Equal("{Binding AlwaysOnTop}", window.Attribute("Topmost")?.Value);
+        Assert.Equal("Transparent", rootGrid.Attribute("Background")?.Value);
         Assert.Equal("{Binding StartCommand}", menuItems["Start"].Attribute("Command")?.Value);
         Assert.Equal("{Binding PauseResumeCommand}", menuItems["{Binding PauseResumeText}"].Attribute("Command")?.Value);
         Assert.Equal("{Binding ResetCommand}", menuItems["Stop"].Attribute("Command")?.Value);
