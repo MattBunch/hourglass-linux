@@ -125,6 +125,99 @@ public sealed class MainWindowViewModelTests
         Assert.Equal("Eggs", viewModel.WindowTitle);
     }
 
+    [Theory]
+    [InlineData("2")]
+    [InlineData("m")]
+    public void TypingPrintableTextWhileExpiredBeginsNewTimerInput(string initialText)
+    {
+        var clock = new ManualMonotonicClock();
+        var viewModel = CreateViewModel(clock);
+        viewModel.TimerInput = "5 minutes";
+        viewModel.StartCommand.Execute(null);
+        clock.Advance(TimeSpan.FromMinutes(6));
+        viewModel.Tick();
+
+        bool transitioned = viewModel.TryBeginNewTimerInput(initialText);
+
+        Assert.True(transitioned);
+        Assert.Equal(initialText, viewModel.TimerInput);
+        Assert.Equal(TimerState.Stopped, viewModel.State);
+        Assert.Equal(0, viewModel.ProgressPercent);
+        Assert.Equal("Ready", viewModel.StatusText);
+        Assert.True(viewModel.IsTimerInputVisible);
+        Assert.False(viewModel.IsCompletionTextVisible);
+        Assert.True(viewModel.IsStartVisible);
+        Assert.False(viewModel.IsPauseVisible);
+        Assert.False(viewModel.IsResumeVisible);
+        Assert.False(viewModel.IsStopVisible);
+        Assert.True(viewModel.StartCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public void TypingAfterExpiryReplacesPreviousExpressionAndSubsequentTextEditsNormally()
+    {
+        var clock = new ManualMonotonicClock();
+        var viewModel = CreateViewModel(clock);
+        viewModel.TimerInput = "1 second";
+        viewModel.StartCommand.Execute(null);
+        clock.Advance(TimeSpan.FromSeconds(1));
+        viewModel.Tick();
+
+        Assert.True(viewModel.TryBeginNewTimerInput("2"));
+        viewModel.TimerInput += " min";
+
+        Assert.Equal("2 min", viewModel.TimerInput);
+        Assert.Equal(TimerState.Stopped, viewModel.State);
+    }
+
+    [Fact]
+    public void PrintableTextDoesNotResetRunningOrPausedTimer()
+    {
+        var viewModel = CreateViewModel(new ManualMonotonicClock());
+        viewModel.TimerInput = "2 min";
+        viewModel.StartCommand.Execute(null);
+
+        Assert.False(viewModel.TryBeginNewTimerInput("3"));
+        Assert.Equal(TimerState.Running, viewModel.State);
+        Assert.Equal("2 min", viewModel.TimerInput);
+
+        viewModel.PauseResumeCommand.Execute(null);
+
+        Assert.False(viewModel.TryBeginNewTimerInput("4"));
+        Assert.Equal(TimerState.Paused, viewModel.State);
+        Assert.Equal("2 min", viewModel.TimerInput);
+    }
+
+    [Theory]
+    [InlineData("2")]
+    [InlineData("m")]
+    [InlineData(" ")]
+    [InlineData("!")]
+    [InlineData("2 min")]
+    public void WindowAcceptsPrintableTextForNewTimerInput(string text)
+    {
+        Assert.True(MainWindow.ShouldBeginNewTimerInput(text, isEditableTextSource: false));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("\r")]
+    [InlineData("\n")]
+    [InlineData("\t")]
+    [InlineData("\u001b")]
+    [InlineData("\u0003")]
+    public void WindowRejectsEmptyNavigationAndShortcutControlText(string? text)
+    {
+        Assert.False(MainWindow.ShouldBeginNewTimerInput(text, isEditableTextSource: false));
+    }
+
+    [Fact]
+    public void WindowDoesNotRedirectTextFromEditableTextBox()
+    {
+        Assert.False(MainWindow.ShouldBeginNewTimerInput("title text", isEditableTextSource: true));
+    }
+
     [Fact]
     public void TimerTitleAndTimerInputRemainIndependent()
     {
@@ -167,6 +260,16 @@ public sealed class MainWindowViewModelTests
         Assert.Null(titleInput.Attribute("IsVisible"));
         Assert.Same(titleInput.Parent, timerDisplay.Parent);
         Assert.Contains(timerDisplay, titleInput.ElementsAfterSelf());
+    }
+
+    [Fact]
+    public void WindowUsesTextInputForExpiredTimerTyping()
+    {
+        XDocument document = XDocument.Load(FindRepositoryFile("src/Hourglass.Linux.Avalonia/MainWindow.axaml"));
+        XElement window = Assert.IsType<XElement>(document.Root);
+
+        Assert.Equal("WindowTextInput", window.Attribute("TextInput")?.Value);
+        Assert.Null(window.Attribute("KeyDown"));
     }
 
     [Fact]

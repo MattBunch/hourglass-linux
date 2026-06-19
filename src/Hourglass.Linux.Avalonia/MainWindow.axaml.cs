@@ -77,6 +77,31 @@ public sealed partial class MainWindow : Window
         this.UpdatePresentationClasses();
     }
 
+    private void WindowTextInput(object? sender, TextInputEventArgs e)
+    {
+        string? text = e.Text;
+        if (text is null
+            || !ShouldBeginNewTimerInput(text, e.Source is TextBox)
+            || !this.viewModel.TryBeginNewTimerInput(text))
+        {
+            return;
+        }
+
+        e.Handled = true;
+        Dispatcher.UIThread.Post(() =>
+        {
+            this.TimerInputTextBox.Focus();
+            this.TimerInputTextBox.CaretIndex = this.TimerInputTextBox.Text?.Length ?? 0;
+        });
+    }
+
+    internal static bool ShouldBeginNewTimerInput(string? text, bool isEditableTextSource)
+    {
+        return !isEditableTextSource
+            && !string.IsNullOrEmpty(text)
+            && text.All(character => !char.IsControl(character));
+    }
+
     private async void ExitMenuItemClick(object? sender, RoutedEventArgs e)
     {
         await this.viewModel.PendingSettingsSave;

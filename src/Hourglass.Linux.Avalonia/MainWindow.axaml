@@ -8,7 +8,8 @@
         Width="350"
         Height="150"
         MinWidth="250"
-        MinHeight="150">
+        MinHeight="150"
+        TextInput="WindowTextInput">
   <Window.Resources>
     <local:ProgressWidthConverter x:Key="ProgressWidthConverter" />
     <SolidColorBrush x:Key="TimerProgressFillBrush"

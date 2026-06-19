@@ -243,6 +243,19 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         this.RefreshDisplay();
     }
 
+    internal bool TryBeginNewTimerInput(string initialText)
+    {
+        ArgumentNullException.ThrowIfNull(initialText);
+
+        if (this.engine.State != TimerState.Expired)
+        {
+            return false;
+        }
+
+        this.StopAndShowInput(initialText);
+        return true;
+    }
+
     private void Start()
     {
         DateTime now = this.wallClockNow();
@@ -285,7 +298,13 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     private void Reset()
     {
+        this.StopAndShowInput(this.TimerInput);
+    }
+
+    private void StopAndShowInput(string timerInput)
+    {
         this.engine.Stop();
+        this.ReplaceViewState(this.viewState with { TimerInput = timerInput });
         this.RefreshDisplay(TimerViewState.ReadyStatusText);
         _ = this.ReleaseInhibitionAsync();
     }
