@@ -77,6 +77,12 @@ public sealed partial class MainWindow : Window
         this.UpdatePresentationClasses();
     }
 
+    private async void ExitMenuItemClick(object? sender, RoutedEventArgs e)
+    {
+        await this.viewModel.PendingSettingsSave;
+        this.Close();
+    }
+
     private void UpdatePresentationClasses()
     {
         this.RootGrid.Classes.Set("timer-active", this.viewModel.State is TimerState.Running or TimerState.Expired);

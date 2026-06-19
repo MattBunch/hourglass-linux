@@ -22,6 +22,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private readonly ISettingsStore settingsStore;
     private readonly Func<DateTime> wallClockNow;
     private IAsyncDisposable? inhibitionLease;
+    private Task pendingSettingsSave = Task.CompletedTask;
     private LinuxAppSettings settings = LinuxAppSettings.Default;
     private TimerViewState viewState = TimerViewState.Initial;
 
@@ -107,6 +108,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             this.PauseOrResume,
             () => this.engine.State is TimerState.Running or TimerState.Paused);
         this.ResetCommand = new RelayCommand(this.Reset, () => this.engine.State != TimerState.Stopped);
+        this.ToggleNotificationsCommand = new RelayCommand(this.ToggleNotifications);
+        this.ToggleAudioAlertsCommand = new RelayCommand(this.ToggleAudioAlerts);
+        this.ToggleAlwaysOnTopCommand = new RelayCommand(this.ToggleAlwaysOnTop);
 
         this.RefreshDisplay();
     }
@@ -118,6 +122,12 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     public RelayCommand PauseResumeCommand { get; }
 
     public RelayCommand ResetCommand { get; }
+
+    public RelayCommand ToggleNotificationsCommand { get; }
+
+    public RelayCommand ToggleAudioAlertsCommand { get; }
+
+    public RelayCommand ToggleAlwaysOnTopCommand { get; }
 
     public string TimerInput
     {
@@ -186,6 +196,14 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     public bool IsStopVisible => this.viewState.IsStopVisible;
 
+    public bool NotificationsEnabled => this.settings.NotificationsEnabled;
+
+    public bool AudioAlertsEnabled => this.settings.AudioAlertsEnabled;
+
+    public bool AlwaysOnTop => this.settings.AlwaysOnTop;
+
+    internal Task PendingSettingsSave => this.pendingSettingsSave;
+
     public async Task LoadSettingsAsync(CancellationToken cancellationToken = default)
     {
         LinuxAppSettings loadedSettings;
@@ -204,7 +222,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             loadedSettings = LinuxAppSettings.Default;
         }
 
-        this.settings = loadedSettings;
+        this.ReplaceSettings(loadedSettings, save: false);
 
         if (this.engine.State == TimerState.Stopped)
         {
@@ -244,8 +262,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
         this.RefreshDisplay(TimerViewState.RunningStatusText);
         _ = this.AcquireInhibitionAsync();
-        this.settings = this.settings.AddRecentTimerInput(this.TimerInput);
-        _ = this.SaveSettingsAsync();
+        this.ReplaceSettings(this.settings.AddRecentTimerInput(this.TimerInput), save: true);
     }
 
     private void PauseOrResume()
@@ -271,6 +288,27 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         this.engine.Stop();
         this.RefreshDisplay(TimerViewState.ReadyStatusText);
         _ = this.ReleaseInhibitionAsync();
+    }
+
+    private void ToggleNotifications()
+    {
+        this.ReplaceSettings(
+            this.settings with { NotificationsEnabled = !this.settings.NotificationsEnabled },
+            save: true);
+    }
+
+    private void ToggleAudioAlerts()
+    {
+        this.ReplaceSettings(
+            this.settings with { AudioAlertsEnabled = !this.settings.AudioAlertsEnabled },
+            save: true);
+    }
+
+    private void ToggleAlwaysOnTop()
+    {
+        this.ReplaceSettings(
+            this.settings with { AlwaysOnTop = !this.settings.AlwaysOnTop },
+            save: true);
     }
 
     private void RefreshDisplay(string? explicitStatus = null)
@@ -314,6 +352,34 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
         this.viewState = next;
         this.OnPropertyChanged(changedPropertyName);
+    }
+
+    private void ReplaceSettings(LinuxAppSettings next, bool save)
+    {
+        ArgumentNullException.ThrowIfNull(next);
+
+        LinuxAppSettings previous = this.settings;
+        this.settings = next;
+
+        if (previous.NotificationsEnabled != next.NotificationsEnabled)
+        {
+            this.OnPropertyChanged(nameof(this.NotificationsEnabled));
+        }
+
+        if (previous.AudioAlertsEnabled != next.AudioAlertsEnabled)
+        {
+            this.OnPropertyChanged(nameof(this.AudioAlertsEnabled));
+        }
+
+        if (previous.AlwaysOnTop != next.AlwaysOnTop)
+        {
+            this.OnPropertyChanged(nameof(this.AlwaysOnTop));
+        }
+
+        if (save)
+        {
+            this.QueueSettingsSave(next);
+        }
     }
 
     private async void OnEngineExpired(object? sender, EventArgs e)
@@ -397,11 +463,18 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         }
     }
 
-    private async Task SaveSettingsAsync()
+    private void QueueSettingsSave(LinuxAppSettings settingsSnapshot)
     {
+        this.pendingSettingsSave = this.SaveSettingsAfterAsync(this.pendingSettingsSave, settingsSnapshot);
+    }
+
+    private async Task SaveSettingsAfterAsync(Task previousSave, LinuxAppSettings settingsSnapshot)
+    {
+        await previousSave.ConfigureAwait(false);
+
         try
         {
-            await this.settingsStore.SaveAsync(SettingsKey, this.settings).ConfigureAwait(false);
+            await this.settingsStore.SaveAsync(SettingsKey, settingsSnapshot).ConfigureAwait(false);
         }
         catch (Exception)
         {

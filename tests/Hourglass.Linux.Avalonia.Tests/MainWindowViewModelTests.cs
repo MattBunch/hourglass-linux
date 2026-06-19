@@ -272,6 +272,62 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
+    public void ContextMenuUsesExistingTimerCommandsAndPersistentOptionBindings()
+    {
+        XNamespace avalonia = "https://github.com/avaloniaui";
+        XNamespace xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
+        XDocument document = XDocument.Load(FindRepositoryFile("src/Hourglass.Linux.Avalonia/MainWindow.axaml"));
+        XElement window = Assert.IsType<XElement>(document.Root);
+        XElement rootGrid = Assert.Single(
+            document.Descendants(avalonia + "Grid"),
+            element => element.Attribute(xaml + "Name")?.Value == "RootGrid");
+        XElement contextMenu = Assert.Single(
+            rootGrid.Element(avalonia + "Grid.ContextMenu")?.Elements(avalonia + "ContextMenu") ?? []);
+        Dictionary<string, XElement> menuItems = contextMenu
+            .Elements(avalonia + "MenuItem")
+            .Where(element => element.Attribute("Header") != null)
+            .ToDictionary(element => element.Attribute("Header")!.Value, StringComparer.Ordinal);
+
+        Assert.Equal("{Binding AlwaysOnTop}", window.Attribute("Topmost")?.Value);
+        Assert.Equal("{Binding StartCommand}", menuItems["Start"].Attribute("Command")?.Value);
+        Assert.Equal("{Binding PauseResumeCommand}", menuItems["{Binding PauseResumeText}"].Attribute("Command")?.Value);
+        Assert.Equal("{Binding ResetCommand}", menuItems["Stop"].Attribute("Command")?.Value);
+        Assert.Equal("CheckBox", menuItems["Notifications"].Attribute("ToggleType")?.Value);
+        Assert.Equal("{Binding NotificationsEnabled, Mode=OneWay}", menuItems["Notifications"].Attribute("IsChecked")?.Value);
+        Assert.Equal("{Binding ToggleNotificationsCommand}", menuItems["Notifications"].Attribute("Command")?.Value);
+        Assert.Equal("CheckBox", menuItems["Sound"].Attribute("ToggleType")?.Value);
+        Assert.Equal("{Binding AudioAlertsEnabled, Mode=OneWay}", menuItems["Sound"].Attribute("IsChecked")?.Value);
+        Assert.Equal("{Binding ToggleAudioAlertsCommand}", menuItems["Sound"].Attribute("Command")?.Value);
+        Assert.Equal("CheckBox", menuItems["Always on top"].Attribute("ToggleType")?.Value);
+        Assert.Equal("{Binding AlwaysOnTop, Mode=OneWay}", menuItems["Always on top"].Attribute("IsChecked")?.Value);
+        Assert.Equal("{Binding ToggleAlwaysOnTopCommand}", menuItems["Always on top"].Attribute("Command")?.Value);
+        Assert.Equal("ExitMenuItemClick", menuItems["Exit"].Attribute("Click")?.Value);
+    }
+
+    [Fact]
+    public void ContextMenuTimerCommandAvailabilityMatchesEveryTimerState()
+    {
+        var clock = new ManualMonotonicClock();
+        var viewModel = CreateViewModel(clock);
+
+        AssertCommandAvailability(viewModel, canStart: true, canPauseResume: false, canStop: false);
+
+        viewModel.TimerInput = "1 second";
+        viewModel.StartCommand.Execute(null);
+        AssertCommandAvailability(viewModel, canStart: false, canPauseResume: true, canStop: true);
+
+        viewModel.PauseResumeCommand.Execute(null);
+        Assert.Equal("Resume", viewModel.PauseResumeText);
+        AssertCommandAvailability(viewModel, canStart: false, canPauseResume: true, canStop: true);
+
+        viewModel.PauseResumeCommand.Execute(null);
+        clock.Advance(TimeSpan.FromSeconds(1));
+        viewModel.Tick();
+        Assert.Equal(TimerState.Expired, viewModel.State);
+        AssertCommandAvailability(viewModel, canStart: false, canPauseResume: false, canStop: true);
+    }
+
+    [Fact]
     public void PauseAndResumePreserveRemainingTime()
     {
         var clock = new ManualMonotonicClock();
@@ -531,6 +587,81 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
+    public async Task LoadSettingsRestoresAllOptions()
+    {
+        var settingsStore = new RecordingSettingsStore
+        {
+            LoadedSettings = new LinuxAppSettings(
+                notificationsEnabled: false,
+                audioAlertsEnabled: false,
+                alwaysOnTop: true)
+        };
+        var viewModel = CreateViewModel(new ManualMonotonicClock(), settingsStore: settingsStore);
+
+        await viewModel.LoadSettingsAsync();
+
+        Assert.False(viewModel.NotificationsEnabled);
+        Assert.False(viewModel.AudioAlertsEnabled);
+        Assert.True(viewModel.AlwaysOnTop);
+    }
+
+    [Fact]
+    public async Task ToggleNotificationsChangesStateAndSavesSettings()
+    {
+        var settingsStore = new RecordingSettingsStore();
+        var viewModel = CreateViewModel(new ManualMonotonicClock(), settingsStore: settingsStore);
+
+        viewModel.ToggleNotificationsCommand.Execute(null);
+        await viewModel.PendingSettingsSave;
+
+        Assert.False(viewModel.NotificationsEnabled);
+        Assert.NotNull(settingsStore.SavedSettings);
+        Assert.False(settingsStore.SavedSettings.NotificationsEnabled);
+    }
+
+    [Fact]
+    public async Task ToggleAudioAlertsChangesStateAndSavesSettings()
+    {
+        var settingsStore = new RecordingSettingsStore();
+        var viewModel = CreateViewModel(new ManualMonotonicClock(), settingsStore: settingsStore);
+
+        viewModel.ToggleAudioAlertsCommand.Execute(null);
+        await viewModel.PendingSettingsSave;
+
+        Assert.False(viewModel.AudioAlertsEnabled);
+        Assert.NotNull(settingsStore.SavedSettings);
+        Assert.False(settingsStore.SavedSettings.AudioAlertsEnabled);
+    }
+
+    [Fact]
+    public async Task ToggleAlwaysOnTopChangesStateAndSavesSettings()
+    {
+        var settingsStore = new RecordingSettingsStore();
+        var viewModel = CreateViewModel(new ManualMonotonicClock(), settingsStore: settingsStore);
+
+        viewModel.ToggleAlwaysOnTopCommand.Execute(null);
+        await viewModel.PendingSettingsSave;
+
+        Assert.True(viewModel.AlwaysOnTop);
+        Assert.NotNull(settingsStore.SavedSettings);
+        Assert.True(settingsStore.SavedSettings.AlwaysOnTop);
+    }
+
+    [Fact]
+    public async Task SettingsSaveFailureDoesNotCrashOrChangeTimerState()
+    {
+        var settingsStore = new RecordingSettingsStore { ThrowOnSave = true };
+        var viewModel = CreateViewModel(new ManualMonotonicClock(), settingsStore: settingsStore);
+
+        viewModel.ToggleNotificationsCommand.Execute(null);
+        await viewModel.PendingSettingsSave;
+
+        Assert.False(viewModel.NotificationsEnabled);
+        Assert.Equal(TimerState.Stopped, viewModel.State);
+        Assert.Equal("Ready", viewModel.StatusText);
+    }
+
+    [Fact]
     public async Task LoadSettingsResumesOnCapturedSchedulerBeforePublishingState()
     {
         var scheduler = new QueuedTaskScheduler();
@@ -648,6 +779,32 @@ public sealed class MainWindowViewModelTests
 
         Assert.Equal(TimerState.Expired, viewModel.State);
         Assert.Equal(1, notificationService.CallCount);
+        Assert.Equal(0, audioAlertService.CallCount);
+    }
+
+    [Fact]
+    public async Task ExpiredTimerUsesLatestNotificationAndAudioSettings()
+    {
+        var clock = new ManualMonotonicClock();
+        var notificationService = new RecordingNotificationService();
+        var audioAlertService = new RecordingAudioAlertService();
+        var settingsStore = new RecordingSettingsStore();
+        var viewModel = CreateViewModel(
+            clock,
+            notificationService: notificationService,
+            audioAlertService: audioAlertService,
+            settingsStore: settingsStore);
+
+        viewModel.ToggleNotificationsCommand.Execute(null);
+        viewModel.ToggleAudioAlertsCommand.Execute(null);
+        await viewModel.PendingSettingsSave;
+        viewModel.TimerInput = "1 second";
+        viewModel.StartCommand.Execute(null);
+        clock.Advance(TimeSpan.FromSeconds(1));
+        viewModel.Tick();
+
+        Assert.Equal(TimerState.Expired, viewModel.State);
+        Assert.Equal(0, notificationService.CallCount);
         Assert.Equal(0, audioAlertService.CallCount);
     }
 
@@ -891,6 +1048,17 @@ public sealed class MainWindowViewModelTests
         };
     }
 
+    private static void AssertCommandAvailability(
+        MainWindowViewModel viewModel,
+        bool canStart,
+        bool canPauseResume,
+        bool canStop)
+    {
+        Assert.Equal(canStart, viewModel.StartCommand.CanExecute(null));
+        Assert.Equal(canPauseResume, viewModel.PauseResumeCommand.CanExecute(null));
+        Assert.Equal(canStop, viewModel.ResetCommand.CanExecute(null));
+    }
+
     private static MainWindowViewModel CreateViewModel(
         ManualMonotonicClock clock,
         Func<DateTime>? wallClockNow = null,
@@ -1011,6 +1179,8 @@ public sealed class MainWindowViewModelTests
 
         public bool ThrowOnLoad { get; init; }
 
+        public bool ThrowOnSave { get; init; }
+
         public Task<T?> LoadAsync<T>(string key, CancellationToken cancellationToken = default)
         {
             if (this.ThrowOnLoad)
@@ -1023,6 +1193,13 @@ public sealed class MainWindowViewModelTests
 
         public Task SaveAsync<T>(string key, T value, CancellationToken cancellationToken = default)
         {
+            Assert.Equal("app", key);
+
+            if (this.ThrowOnSave)
+            {
+                return Task.FromException(new InvalidOperationException("Settings save failed."));
+            }
+
             this.SavedSettings = Assert.IsType<LinuxAppSettings>(value);
             return Task.CompletedTask;
         }
