@@ -167,7 +167,8 @@
         <TextBox x:Name="TimerTitleTextBox"
                  Classes="titleInput"
                  Text="{Binding TimerTitle, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                 PlaceholderText="Click to enter title" />
+                 PlaceholderText="Click to enter title"
+                 GotFocus="TimerTitleTextBoxGotFocus" />
 
         <Grid MinHeight="42">
           <TextBox x:Name="TimerInputTextBox"
@@ -191,13 +192,13 @@
                        Text="{Binding RemainingTime}" />
           </Viewbox>
 
-          <Viewbox Stretch="Uniform"
-                   StretchDirection="DownOnly"
-                   IsVisible="{Binding IsCompletionTextVisible}">
-            <TextBlock x:Name="CompletionText"
-                       Classes="timerText"
-                       Text="{Binding StatusText}" />
-          </Viewbox>
+          <TextBox x:Name="CompletionTextBox"
+                   Classes="timerInput"
+                   Text="{Binding StatusText, Mode=OneWay}"
+                   IsReadOnly="True"
+                   IsVisible="{Binding IsCompletionTextVisible}"
+                   GotFocus="CompletionTextBoxGotFocus"
+                   PointerPressed="CompletionTextBoxPointerPressed" />
         </Grid>
 
         <StackPanel x:Name="CommandPanel"

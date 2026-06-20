@@ -77,6 +77,39 @@ public sealed partial class MainWindow : Window
         this.UpdatePresentationClasses();
     }
 
+    private void TimerTitleTextBoxGotFocus(object? sender, RoutedEventArgs e)
+    {
+        this.TryEnterInputMode(this.TimerTitleTextBox);
+    }
+
+    private void CompletionTextBoxGotFocus(object? sender, RoutedEventArgs e)
+    {
+        this.TryEnterInputMode(this.TimerInputTextBox);
+    }
+
+    private void CompletionTextBoxPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (this.TryEnterInputMode(this.TimerInputTextBox))
+        {
+            e.Handled = true;
+        }
+    }
+
+    private bool TryEnterInputMode(TextBox textBoxToFocus)
+    {
+        if (!this.viewModel.TryEnterInputModeFromExpired())
+        {
+            return false;
+        }
+
+        Dispatcher.UIThread.Post(() =>
+        {
+            textBoxToFocus.Focus();
+            textBoxToFocus.SelectAll();
+        });
+        return true;
+    }
+
     private async void ExitMenuItemClick(object? sender, RoutedEventArgs e)
     {
         await this.viewModel.PendingSettingsSave;

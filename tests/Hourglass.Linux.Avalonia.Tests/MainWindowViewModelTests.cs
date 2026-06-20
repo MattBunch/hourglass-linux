@@ -126,6 +126,110 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
+    public void EnteringInputModeWhileExpiredResetsCompletedPresentationWithoutStopCommand()
+    {
+        var clock = new ManualMonotonicClock();
+        var viewModel = CreateViewModel(clock);
+        viewModel.TimerInput = "5 minutes";
+        viewModel.StartCommand.Execute(null);
+        clock.Advance(TimeSpan.FromMinutes(6));
+        viewModel.Tick();
+
+        bool transitioned = viewModel.TryEnterInputModeFromExpired();
+
+        Assert.True(transitioned);
+        Assert.Equal("5 minutes", viewModel.TimerInput);
+        Assert.Equal(TimerState.Stopped, viewModel.State);
+        Assert.Equal(0, viewModel.ProgressPercent);
+        Assert.Equal("Ready", viewModel.StatusText);
+        Assert.True(viewModel.IsTimerInputVisible);
+        Assert.False(viewModel.IsCompletionTextVisible);
+        Assert.True(viewModel.IsStartVisible);
+        Assert.False(viewModel.IsPauseVisible);
+        Assert.False(viewModel.IsResumeVisible);
+        Assert.False(viewModel.IsStopVisible);
+        Assert.True(viewModel.StartCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public void EnteringInputModePreservesExpressionUntilNativeTextEditingReplacesSelection()
+    {
+        var clock = new ManualMonotonicClock();
+        var viewModel = CreateViewModel(clock);
+        viewModel.TimerInput = "1 second";
+        viewModel.StartCommand.Execute(null);
+        clock.Advance(TimeSpan.FromSeconds(1));
+        viewModel.Tick();
+
+        Assert.True(viewModel.TryEnterInputModeFromExpired());
+        Assert.Equal("1 second", viewModel.TimerInput);
+
+        viewModel.TimerInput = "2";
+        viewModel.TimerInput += " min";
+
+        Assert.Equal("2 min", viewModel.TimerInput);
+        Assert.Equal(TimerState.Stopped, viewModel.State);
+    }
+
+    [Theory]
+    [InlineData("2")]
+    [InlineData("m")]
+    [InlineData("1pm")]
+    public void NativeTimerEditingPreservesFirstTextAfterExpiredModeSwitch(string text)
+    {
+        var clock = new ManualMonotonicClock();
+        var viewModel = CreateViewModel(clock);
+        viewModel.TimerInput = "1 second";
+        viewModel.StartCommand.Execute(null);
+        clock.Advance(TimeSpan.FromSeconds(1));
+        viewModel.Tick();
+
+        Assert.True(viewModel.TryEnterInputModeFromExpired());
+        viewModel.TimerInput = text;
+
+        Assert.Equal(text, viewModel.TimerInput);
+        Assert.Equal(TimerState.Stopped, viewModel.State);
+    }
+
+    [Fact]
+    public void EnteringInputModeDoesNotResetRunningOrPausedTimer()
+    {
+        var viewModel = CreateViewModel(new ManualMonotonicClock());
+        viewModel.TimerInput = "2 min";
+        viewModel.StartCommand.Execute(null);
+
+        Assert.False(viewModel.TryEnterInputModeFromExpired());
+        Assert.Equal(TimerState.Running, viewModel.State);
+        Assert.Equal("2 min", viewModel.TimerInput);
+
+        viewModel.PauseResumeCommand.Execute(null);
+
+        Assert.False(viewModel.TryEnterInputModeFromExpired());
+        Assert.Equal(TimerState.Paused, viewModel.State);
+        Assert.Equal("2 min", viewModel.TimerInput);
+    }
+
+    [Fact]
+    public void EditingTitleWhileExpiredEntersInputModeAndPreservesFirstEdit()
+    {
+        var clock = new ManualMonotonicClock();
+        var viewModel = CreateViewModel(clock);
+        viewModel.TimerInput = "1 second";
+        viewModel.TimerTitle = "Eggs";
+        viewModel.StartCommand.Execute(null);
+        clock.Advance(TimeSpan.FromSeconds(1));
+        viewModel.Tick();
+
+        viewModel.TimerTitle = "Eggs!";
+
+        Assert.Equal(TimerState.Stopped, viewModel.State);
+        Assert.Equal("Eggs!", viewModel.TimerTitle);
+        Assert.Equal("1 second", viewModel.TimerInput);
+        Assert.True(viewModel.IsTimerInputVisible);
+        Assert.False(viewModel.IsCompletionTextVisible);
+    }
+
+    [Fact]
     public void TimerTitleAndTimerInputRemainIndependent()
     {
         var viewModel = CreateViewModel(new ManualMonotonicClock());
@@ -164,9 +268,29 @@ public sealed class MainWindowViewModelTests
             titleInput.Attribute("Text")?.Value);
         Assert.Equal("Click to enter title", titleInput.Attribute("PlaceholderText")?.Value);
         Assert.Equal("titleInput", titleInput.Attribute("Classes")?.Value);
+        Assert.Equal("TimerTitleTextBoxGotFocus", titleInput.Attribute("GotFocus")?.Value);
         Assert.Null(titleInput.Attribute("IsVisible"));
         Assert.Same(titleInput.Parent, timerDisplay.Parent);
         Assert.Contains(timerDisplay, titleInput.ElementsAfterSelf());
+    }
+
+    [Fact]
+    public void CompletedDisplayUsesWindowsStyleFocusableTimerField()
+    {
+        XNamespace avalonia = "https://github.com/avaloniaui";
+        XNamespace xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
+        XDocument document = XDocument.Load(FindRepositoryFile("src/Hourglass.Linux.Avalonia/MainWindow.axaml"));
+        XElement window = Assert.IsType<XElement>(document.Root);
+        XElement completionInput = Assert.Single(
+            document.Descendants(avalonia + "TextBox"),
+            element => element.Attribute(xaml + "Name")?.Value == "CompletionTextBox");
+
+        Assert.Null(window.Attribute("TextInput"));
+        Assert.Equal("{Binding StatusText, Mode=OneWay}", completionInput.Attribute("Text")?.Value);
+        Assert.Equal("True", completionInput.Attribute("IsReadOnly")?.Value);
+        Assert.Equal("{Binding IsCompletionTextVisible}", completionInput.Attribute("IsVisible")?.Value);
+        Assert.Equal("CompletionTextBoxGotFocus", completionInput.Attribute("GotFocus")?.Value);
+        Assert.Equal("CompletionTextBoxPointerPressed", completionInput.Attribute("PointerPressed")?.Value);
     }
 
     [Fact]
