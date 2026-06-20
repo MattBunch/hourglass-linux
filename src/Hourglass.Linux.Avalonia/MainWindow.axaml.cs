@@ -77,29 +77,37 @@ public sealed partial class MainWindow : Window
         this.UpdatePresentationClasses();
     }
 
-    private void WindowTextInput(object? sender, TextInputEventArgs e)
+    private void TimerTitleTextBoxGotFocus(object? sender, RoutedEventArgs e)
     {
-        string? text = e.Text;
-        if (text is null
-            || !ShouldBeginNewTimerInput(text, e.Source is TextBox)
-            || !this.viewModel.TryBeginNewTimerInput(text))
-        {
-            return;
-        }
-
-        e.Handled = true;
-        Dispatcher.UIThread.Post(() =>
-        {
-            this.TimerInputTextBox.Focus();
-            this.TimerInputTextBox.CaretIndex = this.TimerInputTextBox.Text?.Length ?? 0;
-        });
+        this.TryEnterInputMode(this.TimerTitleTextBox);
     }
 
-    internal static bool ShouldBeginNewTimerInput(string? text, bool isEditableTextSource)
+    private void CompletionTextBoxGotFocus(object? sender, RoutedEventArgs e)
     {
-        return !isEditableTextSource
-            && !string.IsNullOrEmpty(text)
-            && text.All(character => !char.IsControl(character));
+        this.TryEnterInputMode(this.TimerInputTextBox);
+    }
+
+    private void CompletionTextBoxPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (this.TryEnterInputMode(this.TimerInputTextBox))
+        {
+            e.Handled = true;
+        }
+    }
+
+    private bool TryEnterInputMode(TextBox textBoxToFocus)
+    {
+        if (!this.viewModel.TryEnterInputModeFromExpired())
+        {
+            return false;
+        }
+
+        Dispatcher.UIThread.Post(() =>
+        {
+            textBoxToFocus.Focus();
+            textBoxToFocus.SelectAll();
+        });
+        return true;
     }
 
     private async void ExitMenuItemClick(object? sender, RoutedEventArgs e)

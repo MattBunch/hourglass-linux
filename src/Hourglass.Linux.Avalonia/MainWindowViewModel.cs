@@ -157,6 +157,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             }
 
             string previousWindowTitle = this.WindowTitle;
+            this.TryEnterInputModeFromExpired();
             this.ReplaceViewState(this.viewState with { TimerTitle = nextTitle }, nameof(this.TimerTitle));
 
             if (previousWindowTitle != this.WindowTitle)
@@ -243,16 +244,14 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         this.RefreshDisplay();
     }
 
-    internal bool TryBeginNewTimerInput(string initialText)
+    internal bool TryEnterInputModeFromExpired()
     {
-        ArgumentNullException.ThrowIfNull(initialText);
-
         if (this.engine.State != TimerState.Expired)
         {
             return false;
         }
 
-        this.StopAndShowInput(initialText);
+        this.StopAndShowInput(this.TimerInput);
         return true;
     }
 
