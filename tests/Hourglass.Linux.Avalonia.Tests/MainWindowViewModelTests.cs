@@ -192,21 +192,117 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
-    public void EnteringInputModeDoesNotResetRunningOrPausedTimer()
+    public void EnteringInputModeWhileRunningKeepsCountdownActiveAndShowsEditCommands()
+    {
+        var clock = new ManualMonotonicClock();
+        var viewModel = CreateViewModel(clock);
+        viewModel.TimerInput = "2 min";
+        viewModel.StartCommand.Execute(null);
+        clock.Advance(TimeSpan.FromSeconds(30));
+        viewModel.Tick();
+
+        Assert.True(viewModel.TryEnterTimerInputMode());
+        Assert.Equal(TimerState.Running, viewModel.State);
+        Assert.Equal("2 min", viewModel.TimerInput);
+        Assert.Equal("00:01:30", viewModel.RemainingTime);
+        Assert.True(viewModel.IsTimerInputVisible);
+        Assert.False(viewModel.IsRemainingTimeVisible);
+        Assert.True(viewModel.IsStartVisible);
+        Assert.True(viewModel.IsCancelVisible);
+        Assert.False(viewModel.IsPauseVisible);
+        Assert.False(viewModel.IsStopVisible);
+        Assert.True(viewModel.StartCommand.CanExecute(null));
+        Assert.True(viewModel.CancelEditCommand.CanExecute(null));
+
+        clock.Advance(TimeSpan.FromSeconds(15));
+        viewModel.Tick();
+
+        Assert.Equal(TimerState.Running, viewModel.State);
+        Assert.Equal("00:01:15", viewModel.RemainingTime);
+        Assert.True(viewModel.IsTimerInputVisible);
+    }
+
+    [Fact]
+    public void EnteringInputModeWhilePausedKeepsCountdownPaused()
+    {
+        var clock = new ManualMonotonicClock();
+        var viewModel = CreateViewModel(clock);
+        viewModel.TimerInput = "2 min";
+        viewModel.StartCommand.Execute(null);
+        clock.Advance(TimeSpan.FromSeconds(30));
+        viewModel.Tick();
+
+        viewModel.PauseResumeCommand.Execute(null);
+        Assert.True(viewModel.TryEnterTimerInputMode());
+        clock.Advance(TimeSpan.FromSeconds(15));
+        viewModel.Tick();
+
+        Assert.Equal(TimerState.Paused, viewModel.State);
+        Assert.Equal("2 min", viewModel.TimerInput);
+        Assert.Equal("00:01:30", viewModel.RemainingTime);
+        Assert.True(viewModel.IsCancelVisible);
+    }
+
+    [Fact]
+    public void CancellingActiveTimerEditRestoresOriginalExpressionAndLiveDisplay()
     {
         var viewModel = CreateViewModel(new ManualMonotonicClock());
         viewModel.TimerInput = "2 min";
         viewModel.StartCommand.Execute(null);
+        Assert.True(viewModel.TryEnterTimerInputMode());
+        viewModel.TimerInput = "45 seconds";
 
-        Assert.False(viewModel.TryEnterInputModeFromExpired());
+        viewModel.CancelEditCommand.Execute(null);
+
         Assert.Equal(TimerState.Running, viewModel.State);
         Assert.Equal("2 min", viewModel.TimerInput);
+        Assert.False(viewModel.IsTimerInputVisible);
+        Assert.True(viewModel.IsRemainingTimeVisible);
+        Assert.False(viewModel.IsCancelVisible);
+        Assert.False(viewModel.StartCommand.CanExecute(null));
+    }
 
-        viewModel.PauseResumeCommand.Execute(null);
+    [Fact]
+    public void StartingEditedInputReplacesActiveTimer()
+    {
+        var clock = new ManualMonotonicClock();
+        var viewModel = CreateViewModel(clock);
+        viewModel.TimerInput = "2 min";
+        viewModel.StartCommand.Execute(null);
+        clock.Advance(TimeSpan.FromSeconds(30));
+        viewModel.Tick();
+        Assert.True(viewModel.TryEnterTimerInputMode());
+        viewModel.TimerInput = "5 minutes";
 
-        Assert.False(viewModel.TryEnterInputModeFromExpired());
-        Assert.Equal(TimerState.Paused, viewModel.State);
-        Assert.Equal("2 min", viewModel.TimerInput);
+        viewModel.StartCommand.Execute(null);
+
+        Assert.Equal(TimerState.Running, viewModel.State);
+        Assert.Equal("5 minutes", viewModel.TimerInput);
+        Assert.Equal("00:05:00", viewModel.RemainingTime);
+        Assert.False(viewModel.IsTimerInputVisible);
+        Assert.True(viewModel.IsRemainingTimeVisible);
+        Assert.False(viewModel.IsCancelVisible);
+    }
+
+    [Fact]
+    public void InvalidEditedInputKeepsOriginalTimerRunningAndEditorOpen()
+    {
+        var clock = new ManualMonotonicClock();
+        var viewModel = CreateViewModel(clock);
+        viewModel.TimerInput = "2 min";
+        viewModel.StartCommand.Execute(null);
+        Assert.True(viewModel.TryEnterTimerInputMode());
+        viewModel.TimerInput = "not a timer";
+
+        viewModel.StartCommand.Execute(null);
+        clock.Advance(TimeSpan.FromSeconds(10));
+        viewModel.Tick();
+
+        Assert.Equal(TimerState.Running, viewModel.State);
+        Assert.Equal("not a timer", viewModel.TimerInput);
+        Assert.Equal("00:01:50", viewModel.RemainingTime);
+        Assert.True(viewModel.IsTimerInputVisible);
+        Assert.True(viewModel.IsCancelVisible);
     }
 
     [Fact]
@@ -250,15 +346,15 @@ public sealed class MainWindowViewModelTests
     [Fact]
     public void TimerTitleControlUsesImmediateBindingAndDrivesWindowTitle()
     {
-        XNamespace avalonia = "https://github.com/avaloniaui";
+        XNamespace controls = "clr-namespace:Hourglass.Linux.Avalonia";
         XNamespace xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
         XDocument document = XDocument.Load(FindRepositoryFile("src/Hourglass.Linux.Avalonia/MainWindow.axaml"));
         XElement window = Assert.IsType<XElement>(document.Root);
         XElement titleInput = Assert.Single(
-            document.Descendants(avalonia + "TextBox"),
+            document.Descendants(controls + "ResponsiveTextBox"),
             element => element.Attribute(xaml + "Name")?.Value == "TimerTitleTextBox");
         XElement timerInput = Assert.Single(
-            document.Descendants(avalonia + "TextBox"),
+            document.Descendants(controls + "ResponsiveTextBox"),
             element => element.Attribute(xaml + "Name")?.Value == "TimerInputTextBox");
         XElement timerDisplay = Assert.IsType<XElement>(timerInput.Parent);
 
@@ -277,12 +373,12 @@ public sealed class MainWindowViewModelTests
     [Fact]
     public void CompletedDisplayUsesWindowsStyleFocusableTimerField()
     {
-        XNamespace avalonia = "https://github.com/avaloniaui";
+        XNamespace controls = "clr-namespace:Hourglass.Linux.Avalonia";
         XNamespace xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
         XDocument document = XDocument.Load(FindRepositoryFile("src/Hourglass.Linux.Avalonia/MainWindow.axaml"));
         XElement window = Assert.IsType<XElement>(document.Root);
         XElement completionInput = Assert.Single(
-            document.Descendants(avalonia + "TextBox"),
+            document.Descendants(controls + "ResponsiveTextBox"),
             element => element.Attribute(xaml + "Name")?.Value == "CompletionTextBox");
 
         Assert.Null(window.Attribute("TextInput"));
@@ -291,6 +387,64 @@ public sealed class MainWindowViewModelTests
         Assert.Equal("{Binding IsCompletionTextVisible}", completionInput.Attribute("IsVisible")?.Value);
         Assert.Equal("CompletionTextBoxGotFocus", completionInput.Attribute("GotFocus")?.Value);
         Assert.Equal("CompletionTextBoxPointerPressed", completionInput.Attribute("PointerPressed")?.Value);
+    }
+
+    [Fact]
+    public void RunningDisplayUsesWindowsStyleFocusableTimerField()
+    {
+        XNamespace controls = "clr-namespace:Hourglass.Linux.Avalonia";
+        XNamespace xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
+        XDocument document = XDocument.Load(FindRepositoryFile("src/Hourglass.Linux.Avalonia/MainWindow.axaml"));
+        XElement remainingTime = FindNamedElement(document, controls + "ResponsiveTextBox", xaml, "RemainingTimeTextBox");
+
+        Assert.Equal("timerInput", remainingTime.Attribute("Classes")?.Value);
+        Assert.Equal("{Binding RemainingTime, Mode=OneWay}", remainingTime.Attribute("Text")?.Value);
+        Assert.Equal("True", remainingTime.Attribute("IsReadOnly")?.Value);
+        Assert.Equal("RemainingTimeTextBoxGotFocus", remainingTime.Attribute("GotFocus")?.Value);
+        Assert.Equal("RemainingTimeTextBoxPointerPressed", remainingTime.Attribute("PointerPressed")?.Value);
+    }
+
+    [Fact]
+    public void ResponsiveTextBoxesRetainFramelessNativeTextBoxStyles()
+    {
+        XNamespace avalonia = "https://github.com/avaloniaui";
+        XDocument document = XDocument.Load(FindRepositoryFile("src/Hourglass.Linux.Avalonia/MainWindow.axaml"));
+        string[] selectors = document
+            .Descendants(avalonia + "Style")
+            .Select(style => style.Attribute("Selector")?.Value)
+            .OfType<string>()
+            .ToArray();
+
+        Assert.Contains("TextBox.timerInput", selectors);
+        Assert.Contains("TextBox.titleInput", selectors);
+        Assert.Contains("TextBox.timerInput:focus", selectors);
+        Assert.Contains("TextBox.titleInput:focus", selectors);
+        Assert.DoesNotContain("local|ResponsiveTextBox.timerInput", selectors);
+        Assert.DoesNotContain("local|ResponsiveTextBox.titleInput", selectors);
+    }
+
+    [Fact]
+    public void PrimaryAndTitleTextUseResponsiveControlsWithSafeLimits()
+    {
+        XNamespace avalonia = "https://github.com/avaloniaui";
+        XNamespace controls = "clr-namespace:Hourglass.Linux.Avalonia";
+        XNamespace xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
+        XDocument document = XDocument.Load(FindRepositoryFile("src/Hourglass.Linux.Avalonia/MainWindow.axaml"));
+
+        XElement title = FindNamedElement(document, controls + "ResponsiveTextBox", xaml, "TimerTitleTextBox");
+        XElement timerInput = FindNamedElement(document, controls + "ResponsiveTextBox", xaml, "TimerInputTextBox");
+        XElement remainingTime = FindNamedElement(document, controls + "ResponsiveTextBox", xaml, "RemainingTimeTextBox");
+        XElement completion = FindNamedElement(document, controls + "ResponsiveTextBox", xaml, "CompletionTextBox");
+
+        Assert.Equal("8", title.Attribute("MinFontSize")?.Value);
+        Assert.Equal("12", title.Attribute("MaxFontSize")?.Value);
+        foreach (XElement primaryText in new[] { timerInput, remainingTime, completion })
+        {
+            Assert.Equal("8", primaryText.Attribute("MinFontSize")?.Value);
+            Assert.Equal("18", primaryText.Attribute("MaxFontSize")?.Value);
+        }
+
+        Assert.DoesNotContain(remainingTime.Ancestors(), element => element.Name == avalonia + "Viewbox");
     }
 
     [Fact]
@@ -378,13 +532,14 @@ public sealed class MainWindowViewModelTests
     public void TimerInputEnterKeyBindingsUseStartCommand()
     {
         XNamespace avalonia = "https://github.com/avaloniaui";
+        XNamespace controls = "clr-namespace:Hourglass.Linux.Avalonia";
         XNamespace xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
         XDocument document = XDocument.Load(FindRepositoryFile("src/Hourglass.Linux.Avalonia/MainWindow.axaml"));
         XElement timerInput = Assert.Single(
-            document.Descendants(avalonia + "TextBox"),
+            document.Descendants(controls + "ResponsiveTextBox"),
             element => element.Attribute(xaml + "Name")?.Value == "TimerInputTextBox");
         string[] gestures = timerInput
-            .Element(avalonia + "TextBox.KeyBindings")?
+            .Element(controls + "ResponsiveTextBox.KeyBindings")?
             .Elements(avalonia + "KeyBinding")
             .Where(element => element.Attribute("Command")?.Value == "{Binding StartCommand}")
             .Select(element => element.Attribute("Gesture")?.Value)
@@ -393,6 +548,13 @@ public sealed class MainWindowViewModelTests
             .ToArray() ?? [];
 
         Assert.Equal(["Enter", "Return"], gestures);
+
+        XElement escapeBinding = Assert.Single(
+            timerInput
+                .Element(controls + "ResponsiveTextBox.KeyBindings")?
+                .Elements(avalonia + "KeyBinding") ?? [],
+            element => element.Attribute("Gesture")?.Value == "Escape");
+        Assert.Equal("{Binding CancelEditCommand}", escapeBinding.Attribute("Command")?.Value);
     }
 
     [Fact]
@@ -1133,6 +1295,17 @@ public sealed class MainWindowViewModelTests
         Assert.Equal("ProgressPercent", bindings[0].Attribute("Path")?.Value);
         Assert.Equal("ProgressLayer", bindings[1].Attribute("ElementName")?.Value);
         Assert.Equal("Bounds.Width", bindings[1].Attribute("Path")?.Value);
+    }
+
+    private static XElement FindNamedElement(
+        XDocument document,
+        XName elementName,
+        XNamespace xamlNamespace,
+        string name)
+    {
+        return Assert.Single(
+            document.Descendants(elementName),
+            element => element.Attribute(xamlNamespace + "Name")?.Value == name);
     }
 
     private static string FindRepositoryFile(string relativePath)

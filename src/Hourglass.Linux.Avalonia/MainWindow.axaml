@@ -29,7 +29,6 @@
       <Setter Property="HorizontalContentAlignment" Value="Center" />
       <Setter Property="VerticalContentAlignment" Value="Center" />
       <Setter Property="FontFamily" Value="Segoe UI Light, Inter, Noto Sans, sans-serif" />
-      <Setter Property="FontSize" Value="20" />
       <Setter Property="Foreground" Value="{DynamicResource TextControlForeground}" />
       <Setter Property="CaretBrush" Value="{DynamicResource TextControlForeground}" />
     </Style>
@@ -43,7 +42,6 @@
       <Setter Property="HorizontalContentAlignment" Value="Center" />
       <Setter Property="VerticalContentAlignment" Value="Center" />
       <Setter Property="FontFamily" Value="Segoe UI, Inter, Noto Sans, sans-serif" />
-      <Setter Property="FontSize" Value="12" />
       <Setter Property="Foreground" Value="{DynamicResource TextControlForeground}" />
       <Setter Property="CaretBrush" Value="{DynamicResource TextControlForeground}" />
       <Setter Property="Opacity" Value="0.72" />
@@ -58,16 +56,6 @@
     <Style Selector="TextBox.timerInput:focus">
       <Setter Property="BorderBrush" Value="{DynamicResource AccentFillColorDefaultBrush}" />
       <Setter Property="BorderThickness" Value="0 0 0 1" />
-    </Style>
-
-    <Style Selector="TextBlock.timerText">
-      <Setter Property="FontFamily" Value="Segoe UI Light, Inter, Noto Sans, sans-serif" />
-      <Setter Property="FontSize" Value="24" />
-      <Setter Property="FontWeight" Value="Light" />
-      <Setter Property="Foreground" Value="{DynamicResource TextControlForeground}" />
-      <Setter Property="HorizontalAlignment" Value="Center" />
-      <Setter Property="VerticalAlignment" Value="Center" />
-      <Setter Property="TextAlignment" Value="Center" />
     </Style>
 
     <Style Selector="Button.textCommand">
@@ -161,44 +149,56 @@
           PointerExited="InnerGridPointerExited"
           GotFocus="InnerGridFocusChanged"
           LostFocus="InnerGridFocusChanged">
-      <StackPanel Margin="20 0"
+      <StackPanel x:Name="ControlsPanel"
+                  Margin="20 0"
                   VerticalAlignment="Center"
                   Spacing="4">
-        <TextBox x:Name="TimerTitleTextBox"
-                 Classes="titleInput"
-                 Text="{Binding TimerTitle, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                 PlaceholderText="Click to enter title"
-                 GotFocus="TimerTitleTextBoxGotFocus" />
+        <local:ResponsiveTextBox x:Name="TimerTitleTextBox"
+                                 Classes="titleInput"
+                                 Text="{Binding TimerTitle, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                 PlaceholderText="Click to enter title"
+                                 MinFontSize="8"
+                                 MaxFontSize="12"
+                                 GotFocus="TimerTitleTextBoxGotFocus" />
 
-        <Grid MinHeight="42">
-          <TextBox x:Name="TimerInputTextBox"
-                   Classes="timerInput"
-                   Text="{Binding TimerInput, Mode=TwoWay}"
-                   IsVisible="{Binding IsTimerInputVisible}"
-                   PlaceholderText="5 minutes">
-            <TextBox.KeyBindings>
+        <Grid x:Name="PrimaryTextGrid"
+              MinHeight="42">
+          <local:ResponsiveTextBox x:Name="TimerInputTextBox"
+                                   Classes="timerInput"
+                                   Text="{Binding TimerInput, Mode=TwoWay}"
+                                   IsVisible="{Binding IsTimerInputVisible}"
+                                   PlaceholderText="5 minutes"
+                                   MinFontSize="8"
+                                   MaxFontSize="18">
+            <local:ResponsiveTextBox.KeyBindings>
               <KeyBinding Gesture="Return"
                           Command="{Binding StartCommand}" />
               <KeyBinding Gesture="Enter"
                           Command="{Binding StartCommand}" />
-            </TextBox.KeyBindings>
-          </TextBox>
+              <KeyBinding Gesture="Escape"
+                          Command="{Binding CancelEditCommand}" />
+            </local:ResponsiveTextBox.KeyBindings>
+          </local:ResponsiveTextBox>
 
-          <Viewbox Stretch="Uniform"
-                   StretchDirection="DownOnly"
-                   IsVisible="{Binding IsRemainingTimeVisible}">
-            <TextBlock x:Name="RemainingTimeText"
-                       Classes="timerText"
-                       Text="{Binding RemainingTime}" />
-          </Viewbox>
+          <local:ResponsiveTextBox x:Name="RemainingTimeTextBox"
+                                   Classes="timerInput"
+                                   Text="{Binding RemainingTime, Mode=OneWay}"
+                                   IsReadOnly="True"
+                                   IsVisible="{Binding IsRemainingTimeVisible}"
+                                   MinFontSize="8"
+                                   MaxFontSize="18"
+                                   GotFocus="RemainingTimeTextBoxGotFocus"
+                                   PointerPressed="RemainingTimeTextBoxPointerPressed" />
 
-          <TextBox x:Name="CompletionTextBox"
-                   Classes="timerInput"
-                   Text="{Binding StatusText, Mode=OneWay}"
-                   IsReadOnly="True"
-                   IsVisible="{Binding IsCompletionTextVisible}"
-                   GotFocus="CompletionTextBoxGotFocus"
-                   PointerPressed="CompletionTextBoxPointerPressed" />
+          <local:ResponsiveTextBox x:Name="CompletionTextBox"
+                                   Classes="timerInput"
+                                   Text="{Binding StatusText, Mode=OneWay}"
+                                   IsReadOnly="True"
+                                   IsVisible="{Binding IsCompletionTextVisible}"
+                                   MinFontSize="8"
+                                   MaxFontSize="18"
+                                   GotFocus="CompletionTextBoxGotFocus"
+                                   PointerPressed="CompletionTextBoxPointerPressed" />
         </Grid>
 
         <StackPanel x:Name="CommandPanel"
@@ -225,6 +225,11 @@
                   Content="Stop"
                   Command="{Binding ResetCommand}"
                   IsVisible="{Binding IsStopVisible}" />
+          <Button x:Name="CancelButton"
+                  Classes="textCommand"
+                  Content="Cancel"
+                  Command="{Binding CancelEditCommand}"
+                  IsVisible="{Binding IsCancelVisible}" />
         </StackPanel>
       </StackPanel>
     </Grid>

@@ -2,6 +2,12 @@ namespace Hourglass.Linux.Avalonia;
 
 using Hourglass.Timing;
 
+public enum TimerPresentationMode
+{
+    Input,
+    Status
+}
+
 public sealed record TimerViewState(
     string TimerInput,
     string TimerTitle,
@@ -18,7 +24,10 @@ public sealed record TimerViewState(
     bool IsStartVisible,
     bool IsPauseVisible,
     bool IsResumeVisible,
-    bool IsStopVisible)
+    bool IsStopVisible,
+    bool IsCancelVisible,
+    TimerPresentationMode PresentationMode,
+    string? InputBeforeEdit)
 {
     internal const string DefaultTimerInput = "5 minutes";
     internal const string ReadyStatusText = "Ready";
@@ -34,11 +43,17 @@ public sealed record TimerViewState(
         string timerInput,
         CountdownState timerState,
         string timerTitle = "",
-        string? explicitStatus = null)
+        string? explicitStatus = null,
+        TimerPresentationMode? presentationMode = null,
+        string? inputBeforeEdit = null)
     {
         ArgumentNullException.ThrowIfNull(timerInput);
         ArgumentNullException.ThrowIfNull(timerState);
         ArgumentNullException.ThrowIfNull(timerTitle);
+
+        TimerPresentationMode resolvedPresentationMode = presentationMode
+            ?? (timerState.State == TimerState.Stopped ? TimerPresentationMode.Input : TimerPresentationMode.Status);
+        bool isInputMode = resolvedPresentationMode == TimerPresentationMode.Input;
 
         return new TimerViewState(
             timerInput,
@@ -46,17 +61,20 @@ public sealed record TimerViewState(
             FormatRemainingTime(timerState.TimeLeft ?? TimeSpan.Zero),
             explicitStatus ?? GetStatusText(timerState.State),
             timerState.State == TimerState.Paused ? ResumeCommandText : PauseCommandText,
-            timerState.State == TimerState.Stopped,
+            isInputMode,
             timerState.State == TimerState.Running,
             timerState.State,
             GetProgressPercent(timerState),
-            timerState.State == TimerState.Stopped,
-            timerState.State is TimerState.Running or TimerState.Paused,
-            timerState.State == TimerState.Expired,
-            timerState.State == TimerState.Stopped,
-            timerState.State == TimerState.Running,
-            timerState.State == TimerState.Paused,
-            timerState.State is TimerState.Running or TimerState.Paused or TimerState.Expired);
+            isInputMode,
+            !isInputMode && timerState.State is TimerState.Running or TimerState.Paused,
+            !isInputMode && timerState.State == TimerState.Expired,
+            isInputMode,
+            !isInputMode && timerState.State == TimerState.Running,
+            !isInputMode && timerState.State == TimerState.Paused,
+            !isInputMode && timerState.State is TimerState.Running or TimerState.Paused or TimerState.Expired,
+            isInputMode && timerState.State is TimerState.Running or TimerState.Paused,
+            resolvedPresentationMode,
+            inputBeforeEdit);
     }
 
     public static string FormatRemainingTime(TimeSpan remaining)
