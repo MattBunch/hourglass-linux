@@ -103,11 +103,16 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         this.audioAlertService = audioAlertService ?? throw new ArgumentNullException(nameof(audioAlertService));
         this.engine.Expired += this.OnEngineExpired;
 
-        this.StartCommand = new RelayCommand(this.Start, () => this.engine.State == TimerState.Stopped);
+        this.StartCommand = new RelayCommand(
+            this.Start,
+            () => this.viewState.PresentationMode == TimerPresentationMode.Input);
         this.PauseResumeCommand = new RelayCommand(
             this.PauseOrResume,
             () => this.engine.State is TimerState.Running or TimerState.Paused);
         this.ResetCommand = new RelayCommand(this.Reset, () => this.engine.State != TimerState.Stopped);
+        this.CancelEditCommand = new RelayCommand(
+            this.CancelActiveTimerEdit,
+            () => this.viewState.IsCancelVisible);
         this.ToggleNotificationsCommand = new RelayCommand(this.ToggleNotifications);
         this.ToggleAudioAlertsCommand = new RelayCommand(this.ToggleAudioAlerts);
         this.ToggleAlwaysOnTopCommand = new RelayCommand(this.ToggleAlwaysOnTop);
@@ -122,6 +127,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     public RelayCommand PauseResumeCommand { get; }
 
     public RelayCommand ResetCommand { get; }
+
+    public RelayCommand CancelEditCommand { get; }
 
     public RelayCommand ToggleNotificationsCommand { get; }
 
@@ -197,6 +204,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     public bool IsStopVisible => this.viewState.IsStopVisible;
 
+    public bool IsCancelVisible => this.viewState.IsCancelVisible;
+
     public bool NotificationsEnabled => this.settings.NotificationsEnabled;
 
     public bool AudioAlertsEnabled => this.settings.AudioAlertsEnabled;
@@ -255,6 +264,32 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         return true;
     }
 
+    internal bool TryEnterTimerInputMode()
+    {
+        if (this.viewState.PresentationMode == TimerPresentationMode.Input)
+        {
+            return false;
+        }
+
+        if (this.engine.State == TimerState.Expired)
+        {
+            return this.TryEnterInputModeFromExpired();
+        }
+
+        if (this.engine.State is not (TimerState.Running or TimerState.Paused))
+        {
+            return false;
+        }
+
+        this.ReplaceViewState(this.viewState with
+        {
+            PresentationMode = TimerPresentationMode.Input,
+            InputBeforeEdit = this.TimerInput
+        });
+        this.RefreshDisplay();
+        return true;
+    }
+
     private void Start()
     {
         DateTime now = this.wallClockNow();
@@ -272,6 +307,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             return;
         }
 
+        this.ReplaceViewState(this.viewState with
+        {
+            PresentationMode = TimerPresentationMode.Status,
+            InputBeforeEdit = null
+        });
         this.RefreshDisplay(TimerViewState.RunningStatusText);
         _ = this.AcquireInhibitionAsync();
         this.ReplaceSettings(this.settings.AddRecentTimerInput(this.TimerInput), save: true);
@@ -300,10 +340,31 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         this.StopAndShowInput(this.TimerInput);
     }
 
+    private void CancelActiveTimerEdit()
+    {
+        if (!this.viewState.IsCancelVisible || this.viewState.InputBeforeEdit is not string originalInput)
+        {
+            return;
+        }
+
+        this.ReplaceViewState(this.viewState with
+        {
+            TimerInput = originalInput,
+            PresentationMode = TimerPresentationMode.Status,
+            InputBeforeEdit = null
+        });
+        this.RefreshDisplay();
+    }
+
     private void StopAndShowInput(string timerInput)
     {
         this.engine.Stop();
-        this.ReplaceViewState(this.viewState with { TimerInput = timerInput });
+        this.ReplaceViewState(this.viewState with
+        {
+            TimerInput = timerInput,
+            PresentationMode = TimerPresentationMode.Input,
+            InputBeforeEdit = null
+        });
         this.RefreshDisplay(TimerViewState.ReadyStatusText);
         _ = this.ReleaseInhibitionAsync();
     }
@@ -335,7 +396,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             this.TimerInput,
             this.engine.Snapshot,
             this.TimerTitle ?? string.Empty,
-            explicitStatus));
+            explicitStatus,
+            this.viewState.PresentationMode,
+            this.viewState.InputBeforeEdit));
         this.OnPropertyChanged(nameof(this.TimerInput));
         this.OnPropertyChanged(nameof(this.RemainingTime));
         this.OnPropertyChanged(nameof(this.StatusText));
@@ -351,9 +414,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         this.OnPropertyChanged(nameof(this.IsPauseVisible));
         this.OnPropertyChanged(nameof(this.IsResumeVisible));
         this.OnPropertyChanged(nameof(this.IsStopVisible));
+        this.OnPropertyChanged(nameof(this.IsCancelVisible));
         this.StartCommand.RaiseCanExecuteChanged();
         this.PauseResumeCommand.RaiseCanExecuteChanged();
         this.ResetCommand.RaiseCanExecuteChanged();
+        this.CancelEditCommand.RaiseCanExecuteChanged();
     }
 
     private static string FormatWindowTitle(string? timerTitle)

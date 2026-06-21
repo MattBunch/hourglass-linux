@@ -1,3 +1,4 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
@@ -48,7 +49,12 @@ public sealed partial class MainWindow : Window
         this.refreshTimer.Start();
 
         this.Closed += (_, _) => this.refreshTimer.Stop();
-        this.Opened += async (_, _) => await this.viewModel.LoadSettingsAsync();
+        this.Opened += async (_, _) =>
+        {
+            this.UpdateResponsiveLayout();
+            await this.viewModel.LoadSettingsAsync();
+        };
+        this.SizeChanged += (_, _) => this.UpdateResponsiveLayout();
         this.viewModel.PropertyChanged += (_, args) =>
         {
             if (args.PropertyName == nameof(MainWindowViewModel.State))
@@ -57,6 +63,35 @@ public sealed partial class MainWindow : Window
             }
         };
         this.UpdatePresentationClasses();
+    }
+
+    private void UpdateResponsiveLayout()
+    {
+        ResponsiveInterfaceScale scale = ResponsiveTextSizing.CalculateInterfaceScale(
+            this.Bounds.Width,
+            this.Bounds.Height);
+
+        this.InnerGrid.Margin = new Thickness(scale.InnerMargin);
+        this.ControlsPanel.Margin = new Thickness(scale.ContentHorizontalMargin, 0);
+        this.ControlsPanel.Spacing = scale.ContentSpacing;
+        this.PrimaryTextGrid.MinHeight = scale.PrimaryRowMinimumHeight;
+
+        this.TimerTitleTextBox.MaxFontSize = scale.SecondaryMaximumFontSize;
+        this.TimerInputTextBox.MaxFontSize = scale.PrimaryMaximumFontSize;
+        this.RemainingTimeTextBox.MaxFontSize = scale.PrimaryMaximumFontSize;
+        this.CompletionTextBox.MaxFontSize = scale.PrimaryMaximumFontSize;
+
+        ApplyCommandScale(this.StartButton, scale);
+        ApplyCommandScale(this.PauseButton, scale);
+        ApplyCommandScale(this.ResumeButton, scale);
+        ApplyCommandScale(this.StopButton, scale);
+        ApplyCommandScale(this.CancelButton, scale);
+    }
+
+    private static void ApplyCommandScale(Button button, ResponsiveInterfaceScale scale)
+    {
+        button.FontSize = scale.CommandFontSize;
+        button.Padding = new Thickness(scale.CommandHorizontalPadding, 0);
     }
 
     private void InnerGridPointerEntered(object? sender, PointerEventArgs e)
@@ -85,6 +120,34 @@ public sealed partial class MainWindow : Window
     private void CompletionTextBoxGotFocus(object? sender, RoutedEventArgs e)
     {
         this.TryEnterInputMode(this.TimerInputTextBox);
+    }
+
+    private void RemainingTimeTextBoxGotFocus(object? sender, RoutedEventArgs e)
+    {
+        this.TryEnterTimerInputMode();
+    }
+
+    private void RemainingTimeTextBoxPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (this.TryEnterTimerInputMode())
+        {
+            e.Handled = true;
+        }
+    }
+
+    private bool TryEnterTimerInputMode()
+    {
+        if (!this.viewModel.TryEnterTimerInputMode())
+        {
+            return false;
+        }
+
+        Dispatcher.UIThread.Post(() =>
+        {
+            this.TimerInputTextBox.Focus();
+            this.TimerInputTextBox.SelectAll();
+        });
+        return true;
     }
 
     private void CompletionTextBoxPointerPressed(object? sender, PointerPressedEventArgs e)
