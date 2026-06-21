@@ -8,6 +8,8 @@ internal interface IWindowAttentionTarget
 
     WindowState WindowState { get; set; }
 
+    void Hide();
+
     void Show();
 
     void Activate();
@@ -40,6 +42,11 @@ internal sealed class WindowAttentionController(IWindowAttentionTarget target)
         if (currentState == WindowState.Minimized)
         {
             this.TryRestore();
+
+            if (this.TryGetWindowState() == WindowState.Minimized)
+            {
+                this.TryRemapAndRestore();
+            }
         }
 
         this.TryActivate();
@@ -80,6 +87,17 @@ internal sealed class WindowAttentionController(IWindowAttentionTarget target)
         }
     }
 
+    private void TryHide()
+    {
+        try
+        {
+            this.target.Hide();
+        }
+        catch (Exception)
+        {
+        }
+    }
+
     private void TryRestore()
     {
         try
@@ -89,6 +107,14 @@ internal sealed class WindowAttentionController(IWindowAttentionTarget target)
         catch (Exception)
         {
         }
+    }
+
+    private void TryRemapAndRestore()
+    {
+        this.TryHide();
+        this.TryRestore();
+        this.TryShow();
+        this.TryRestore();
     }
 
     private void TryActivate()
