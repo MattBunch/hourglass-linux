@@ -15,6 +15,7 @@ public sealed class LinuxAppSettingsTests
         Assert.True(settings.NotificationsEnabled);
         Assert.True(settings.AudioAlertsEnabled);
         Assert.False(settings.AlwaysOnTop);
+        Assert.True(settings.PopUpWhenExpired);
         Assert.Empty(settings.RecentTimerInputs);
     }
 
@@ -34,6 +35,7 @@ public sealed class LinuxAppSettingsTests
         Assert.True(updated.NotificationsEnabled);
         Assert.True(updated.AudioAlertsEnabled);
         Assert.False(updated.AlwaysOnTop);
+        Assert.True(updated.PopUpWhenExpired);
     }
 
     [Fact]
@@ -43,12 +45,14 @@ public sealed class LinuxAppSettingsTests
             ["", "  15 minutes ", "15 minutes", "  "],
             notificationsEnabled: false,
             audioAlertsEnabled: false,
-            alwaysOnTop: true);
+            alwaysOnTop: true,
+            popUpWhenExpired: false);
 
         Assert.Equal(["15 minutes"], settings.RecentTimerInputs);
         Assert.False(settings.NotificationsEnabled);
         Assert.False(settings.AudioAlertsEnabled);
         Assert.True(settings.AlwaysOnTop);
+        Assert.False(settings.PopUpWhenExpired);
     }
 
     [Fact]
@@ -58,7 +62,8 @@ public sealed class LinuxAppSettingsTests
             ["1 second"],
             notificationsEnabled: false,
             audioAlertsEnabled: false,
-            alwaysOnTop: true);
+            alwaysOnTop: true,
+            popUpWhenExpired: false);
 
         LinuxAppSettings updated = settings.AddRecentTimerInput("2 seconds");
 
@@ -66,6 +71,7 @@ public sealed class LinuxAppSettingsTests
         Assert.False(updated.NotificationsEnabled);
         Assert.False(updated.AudioAlertsEnabled);
         Assert.True(updated.AlwaysOnTop);
+        Assert.False(updated.PopUpWhenExpired);
     }
 
     [Fact]
@@ -80,6 +86,7 @@ public sealed class LinuxAppSettingsTests
         Assert.False(settings.NotificationsEnabled);
         Assert.True(settings.AudioAlertsEnabled);
         Assert.False(settings.AlwaysOnTop);
+        Assert.True(settings.PopUpWhenExpired);
     }
 
     [Fact]
@@ -89,7 +96,8 @@ public sealed class LinuxAppSettingsTests
             ["10 seconds"],
             notificationsEnabled: true,
             audioAlertsEnabled: false,
-            alwaysOnTop: true);
+            alwaysOnTop: true,
+            popUpWhenExpired: false);
 
         string json = JsonSerializer.Serialize(settings);
         LinuxAppSettings? roundTripped = JsonSerializer.Deserialize<LinuxAppSettings>(json);
@@ -99,5 +107,6 @@ public sealed class LinuxAppSettingsTests
         Assert.True(roundTripped.NotificationsEnabled);
         Assert.False(roundTripped.AudioAlertsEnabled);
         Assert.True(roundTripped.AlwaysOnTop);
+        Assert.False(roundTripped.PopUpWhenExpired);
     }
 }

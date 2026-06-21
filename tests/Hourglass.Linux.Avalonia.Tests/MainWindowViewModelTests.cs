@@ -115,12 +115,14 @@ public sealed class MainWindowViewModelTests
         viewModel.Tick();
 
         Assert.Equal(TimerState.Expired, viewModel.State);
+        Assert.True(viewModel.HasCompletionEmphasis);
         Assert.Equal("Eggs", viewModel.TimerTitle);
         Assert.Equal("Eggs", viewModel.WindowTitle);
 
         viewModel.ResetCommand.Execute(null);
 
         Assert.Equal(TimerState.Stopped, viewModel.State);
+        Assert.False(viewModel.HasCompletionEmphasis);
         Assert.Equal("Eggs", viewModel.TimerTitle);
         Assert.Equal("Eggs", viewModel.WindowTitle);
     }
@@ -140,6 +142,7 @@ public sealed class MainWindowViewModelTests
         Assert.True(transitioned);
         Assert.Equal("5 minutes", viewModel.TimerInput);
         Assert.Equal(TimerState.Stopped, viewModel.State);
+        Assert.False(viewModel.HasCompletionEmphasis);
         Assert.Equal(0, viewModel.ProgressPercent);
         Assert.Equal("Ready", viewModel.StatusText);
         Assert.True(viewModel.IsTimerInputVisible);
@@ -498,6 +501,58 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
+    public void InvalidInputSetsDurableErrorAndReplaysFeedbackWithoutSideEffects()
+    {
+        var notificationService = new RecordingNotificationService();
+        var audioAlertService = new RecordingAudioAlertService();
+        var sessionInhibitor = new RecordingSessionInhibitor();
+        var settingsStore = new RecordingSettingsStore();
+        var viewModel = CreateViewModel(
+            new ManualMonotonicClock(),
+            notificationService: notificationService,
+            sessionInhibitor: sessionInhibitor,
+            settingsStore: settingsStore,
+            audioAlertService: audioAlertService);
+        int feedbackCount = 0;
+        viewModel.ValidationFeedbackRequested += (_, _) => feedbackCount++;
+
+        viewModel.TimerInput = "not a timer";
+        viewModel.StartCommand.Execute(null);
+        viewModel.StartCommand.Execute(null);
+
+        Assert.Equal(TimerState.Stopped, viewModel.State);
+        Assert.Equal("not a timer", viewModel.TimerInput);
+        Assert.Equal("Enter a valid current timer.", viewModel.StatusText);
+        Assert.True(viewModel.HasValidationError);
+        Assert.Equal(2, feedbackCount);
+        Assert.Equal(0, notificationService.CallCount);
+        Assert.Equal(0, audioAlertService.CallCount);
+        Assert.Equal(0, sessionInhibitor.AcquireCount);
+        Assert.Null(settingsStore.SavedSettings);
+    }
+
+    [Fact]
+    public void EditingOrValidStartingClearsValidationError()
+    {
+        var viewModel = CreateViewModel(new ManualMonotonicClock());
+
+        viewModel.TimerInput = "invalid";
+        viewModel.StartCommand.Execute(null);
+        Assert.True(viewModel.HasValidationError);
+
+        viewModel.TimerInput = "still invalid";
+        Assert.False(viewModel.HasValidationError);
+
+        viewModel.StartCommand.Execute(null);
+        Assert.True(viewModel.HasValidationError);
+        viewModel.TimerInput = "10 seconds";
+        viewModel.StartCommand.Execute(null);
+
+        Assert.Equal(TimerState.Running, viewModel.State);
+        Assert.False(viewModel.HasValidationError);
+    }
+
+    [Fact]
     public void StartCommandDoesNotRestartRunningTimer()
     {
         var clock = new ManualMonotonicClock();
@@ -585,6 +640,9 @@ public sealed class MainWindowViewModelTests
         Assert.Equal("CheckBox", menuItems["Sound"].Attribute("ToggleType")?.Value);
         Assert.Equal("{Binding AudioAlertsEnabled, Mode=OneWay}", menuItems["Sound"].Attribute("IsChecked")?.Value);
         Assert.Equal("{Binding ToggleAudioAlertsCommand}", menuItems["Sound"].Attribute("Command")?.Value);
+        Assert.Equal("CheckBox", menuItems["Pop up when expired"].Attribute("ToggleType")?.Value);
+        Assert.Equal("{Binding PopUpWhenExpired, Mode=OneWay}", menuItems["Pop up when expired"].Attribute("IsChecked")?.Value);
+        Assert.Equal("{Binding TogglePopUpWhenExpiredCommand}", menuItems["Pop up when expired"].Attribute("Command")?.Value);
         Assert.Equal("CheckBox", menuItems["Always on top"].Attribute("ToggleType")?.Value);
         Assert.Equal("{Binding AlwaysOnTop, Mode=OneWay}", menuItems["Always on top"].Attribute("IsChecked")?.Value);
         Assert.Equal("{Binding ToggleAlwaysOnTopCommand}", menuItems["Always on top"].Attribute("Command")?.Value);
@@ -612,6 +670,27 @@ public sealed class MainWindowViewModelTests
         viewModel.Tick();
         Assert.Equal(TimerState.Expired, viewModel.State);
         AssertCommandAvailability(viewModel, canStart: false, canPauseResume: false, canStop: true);
+    }
+
+    [Fact]
+    public void CompletionAndValidationStylesUseExplicitReplayableClasses()
+    {
+        XNamespace avalonia = "https://github.com/avaloniaui";
+        XDocument document = XDocument.Load(FindRepositoryFile("src/Hourglass.Linux.Avalonia/MainWindow.axaml"));
+        string[] selectors = document
+            .Descendants(avalonia + "Style")
+            .Select(style => style.Attribute("Selector")?.Value)
+            .OfType<string>()
+            .ToArray();
+
+        Assert.Contains("Grid.timer-expired Border#CompletionEmphasisBorder", selectors);
+        Assert.Contains("Grid.timer-expiry-flash Border#ExpiryFlashLayer", selectors);
+        Assert.Contains("TextBox.timerInput.validation-error", selectors);
+        Assert.Contains("TextBox.timerInput.validation-feedback", selectors);
+
+        string codeBehind = File.ReadAllText(FindRepositoryFile("src/Hourglass.Linux.Avalonia/MainWindow.axaml.cs"));
+        Assert.Contains("Classes.Set(\"timer-expired\", this.viewModel.HasCompletionEmphasis)", codeBehind);
+        Assert.Contains("Classes.Set(\"validation-error\", this.viewModel.HasValidationError)", codeBehind);
     }
 
     [Fact]
@@ -798,6 +877,91 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
+    public void ExpiryPublishesAttentionAndVisualFeedbackOncePerTimerCycle()
+    {
+        var clock = new ManualMonotonicClock();
+        var viewModel = CreateViewModel(clock);
+        int attentionCount = 0;
+        int flashCount = 0;
+        viewModel.WindowAttentionRequested += (_, _) => attentionCount++;
+        viewModel.ExpiryVisualFeedbackRequested += (_, _) => flashCount++;
+
+        viewModel.TimerInput = "1 second";
+        viewModel.StartCommand.Execute(null);
+        clock.Advance(TimeSpan.FromSeconds(2));
+        viewModel.Tick();
+        viewModel.Tick();
+
+        Assert.Equal(1, attentionCount);
+        Assert.Equal(1, flashCount);
+        Assert.True(viewModel.HasCompletionEmphasis);
+
+        viewModel.ResetCommand.Execute(null);
+        Assert.False(viewModel.HasCompletionEmphasis);
+        viewModel.StartCommand.Execute(null);
+        clock.Advance(TimeSpan.FromSeconds(2));
+        viewModel.Tick();
+
+        Assert.Equal(2, attentionCount);
+        Assert.Equal(2, flashCount);
+    }
+
+    [Fact]
+    public async Task DisabledAttentionLeavesOtherExpiryEffectsIntact()
+    {
+        var clock = new ManualMonotonicClock();
+        var notificationService = new RecordingNotificationService();
+        var audioAlertService = new RecordingAudioAlertService();
+        var sessionInhibitor = new RecordingSessionInhibitor();
+        var settingsStore = new RecordingSettingsStore
+        {
+            LoadedSettings = new LinuxAppSettings(popUpWhenExpired: false)
+        };
+        var viewModel = CreateViewModel(
+            clock,
+            notificationService: notificationService,
+            sessionInhibitor: sessionInhibitor,
+            settingsStore: settingsStore,
+            audioAlertService: audioAlertService);
+        int attentionCount = 0;
+        viewModel.WindowAttentionRequested += (_, _) => attentionCount++;
+
+        await viewModel.LoadSettingsAsync();
+        viewModel.TimerInput = "1 second";
+        viewModel.StartCommand.Execute(null);
+        clock.Advance(TimeSpan.FromSeconds(2));
+        viewModel.Tick();
+
+        Assert.Equal(0, attentionCount);
+        Assert.Equal(1, notificationService.CallCount);
+        Assert.Equal(1, audioAlertService.CallCount);
+        Assert.Equal(1, sessionInhibitor.ReleaseCount);
+        Assert.True(viewModel.HasCompletionEmphasis);
+    }
+
+    [Fact]
+    public void AttentionHandlerFailureDoesNotPreventNotificationOrAudio()
+    {
+        var clock = new ManualMonotonicClock();
+        var notificationService = new RecordingNotificationService();
+        var audioAlertService = new RecordingAudioAlertService();
+        var viewModel = CreateViewModel(
+            clock,
+            notificationService: notificationService,
+            audioAlertService: audioAlertService);
+        viewModel.WindowAttentionRequested += (_, _) => throw new InvalidOperationException("Attention failed.");
+
+        viewModel.TimerInput = "1 second";
+        viewModel.StartCommand.Execute(null);
+        clock.Advance(TimeSpan.FromSeconds(2));
+        viewModel.Tick();
+
+        Assert.Equal(TimerState.Expired, viewModel.State);
+        Assert.Equal(1, notificationService.CallCount);
+        Assert.Equal(1, audioAlertService.CallCount);
+    }
+
+    [Fact]
     public void NotificationFailureDoesNotPreventCompleteDisplay()
     {
         var clock = new ManualMonotonicClock();
@@ -881,7 +1045,8 @@ public sealed class MainWindowViewModelTests
             LoadedSettings = new LinuxAppSettings(
                 notificationsEnabled: false,
                 audioAlertsEnabled: false,
-                alwaysOnTop: true)
+                alwaysOnTop: true,
+                popUpWhenExpired: false)
         };
         var viewModel = CreateViewModel(new ManualMonotonicClock(), settingsStore: settingsStore);
 
@@ -890,6 +1055,7 @@ public sealed class MainWindowViewModelTests
         Assert.False(viewModel.NotificationsEnabled);
         Assert.False(viewModel.AudioAlertsEnabled);
         Assert.True(viewModel.AlwaysOnTop);
+        Assert.False(viewModel.PopUpWhenExpired);
     }
 
     [Fact]
@@ -932,6 +1098,23 @@ public sealed class MainWindowViewModelTests
         Assert.True(viewModel.AlwaysOnTop);
         Assert.NotNull(settingsStore.SavedSettings);
         Assert.True(settingsStore.SavedSettings.AlwaysOnTop);
+    }
+
+    [Fact]
+    public async Task TogglePopUpWhenExpiredRaisesPropertyChangedAndSavesSettings()
+    {
+        var settingsStore = new RecordingSettingsStore();
+        var viewModel = CreateViewModel(new ManualMonotonicClock(), settingsStore: settingsStore);
+        var changedProperties = new List<string?>();
+        viewModel.PropertyChanged += (_, args) => changedProperties.Add(args.PropertyName);
+
+        viewModel.TogglePopUpWhenExpiredCommand.Execute(null);
+        await viewModel.PendingSettingsSave;
+
+        Assert.False(viewModel.PopUpWhenExpired);
+        Assert.Contains(nameof(MainWindowViewModel.PopUpWhenExpired), changedProperties);
+        Assert.NotNull(settingsStore.SavedSettings);
+        Assert.False(settingsStore.SavedSettings.PopUpWhenExpired);
     }
 
     [Fact]
@@ -1134,6 +1317,21 @@ public sealed class MainWindowViewModelTests
         Assert.Equal(isPauseVisible, viewState.IsPauseVisible);
         Assert.Equal(isResumeVisible, viewState.IsResumeVisible);
         Assert.Equal(isStopVisible, viewState.IsStopVisible);
+        Assert.Equal(state == TimerState.Expired, viewState.HasCompletionEmphasis);
+        Assert.False(viewState.HasValidationError);
+    }
+
+    [Fact]
+    public void TimerViewStateKeepsValidationSeparateFromTimerState()
+    {
+        TimerViewState viewState = TimerViewState.FromTimerState(
+            "invalid",
+            CountdownState.Stopped,
+            explicitStatus: "Enter a valid current timer.",
+            hasValidationError: true);
+
+        Assert.True(viewState.HasValidationError);
+        Assert.False(viewState.HasCompletionEmphasis);
     }
 
     [Fact]

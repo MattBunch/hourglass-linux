@@ -11,7 +11,7 @@ public sealed record LinuxAppSettings
     private readonly string[] recentTimerInputs;
 
     public LinuxAppSettings()
-        : this(null, true, true, false)
+        : this(null, true, true, false, true)
     {
     }
 
@@ -20,12 +20,14 @@ public sealed record LinuxAppSettings
         string[]? recentTimerInputs = null,
         bool notificationsEnabled = true,
         bool audioAlertsEnabled = true,
-        bool alwaysOnTop = false)
+        bool alwaysOnTop = false,
+        bool popUpWhenExpired = true)
     {
         this.recentTimerInputs = NormalizeRecentTimerInputs(recentTimerInputs, DefaultMaxRecentTimerInputs);
         this.NotificationsEnabled = notificationsEnabled;
         this.AudioAlertsEnabled = audioAlertsEnabled;
         this.AlwaysOnTop = alwaysOnTop;
+        this.PopUpWhenExpired = popUpWhenExpired;
     }
 
     public static LinuxAppSettings Default { get; } = new();
@@ -37,6 +39,8 @@ public sealed record LinuxAppSettings
     public bool AudioAlertsEnabled { get; init; }
 
     public bool AlwaysOnTop { get; init; }
+
+    public bool PopUpWhenExpired { get; init; }
 
     public LinuxAppSettings AddRecentTimerInput(string timerInput, int maxRecentTimerInputs = DefaultMaxRecentTimerInputs)
     {
@@ -60,7 +64,8 @@ public sealed record LinuxAppSettings
             updatedRecentTimerInputs,
             this.NotificationsEnabled,
             this.AudioAlertsEnabled,
-            this.AlwaysOnTop);
+            this.AlwaysOnTop,
+            this.PopUpWhenExpired);
     }
 
     public string GetInitialTimerInput(string defaultTimerInput)
