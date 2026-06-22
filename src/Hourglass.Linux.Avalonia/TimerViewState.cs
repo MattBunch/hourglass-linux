@@ -27,7 +27,8 @@ public sealed record TimerViewState(
     bool IsStopVisible,
     bool IsCancelVisible,
     TimerPresentationMode PresentationMode,
-    string? InputBeforeEdit)
+    string? InputBeforeEdit,
+    bool HasValidationError)
 {
     internal const string DefaultTimerInput = "5 minutes";
     internal const string ReadyStatusText = "Ready";
@@ -39,13 +40,17 @@ public sealed record TimerViewState(
 
     public static TimerViewState Initial { get; } = FromTimerState(DefaultTimerInput, CountdownState.Stopped);
 
+    public bool HasCompletionEmphasis =>
+        this.State == TimerState.Expired && this.PresentationMode == TimerPresentationMode.Status;
+
     public static TimerViewState FromTimerState(
         string timerInput,
         CountdownState timerState,
         string timerTitle = "",
         string? explicitStatus = null,
         TimerPresentationMode? presentationMode = null,
-        string? inputBeforeEdit = null)
+        string? inputBeforeEdit = null,
+        bool hasValidationError = false)
     {
         ArgumentNullException.ThrowIfNull(timerInput);
         ArgumentNullException.ThrowIfNull(timerState);
@@ -74,7 +79,8 @@ public sealed record TimerViewState(
             !isInputMode && timerState.State is TimerState.Running or TimerState.Paused or TimerState.Expired,
             isInputMode && timerState.State is TimerState.Running or TimerState.Paused,
             resolvedPresentationMode,
-            inputBeforeEdit);
+            inputBeforeEdit,
+            hasValidationError);
     }
 
     public static string FormatRemainingTime(TimeSpan remaining)

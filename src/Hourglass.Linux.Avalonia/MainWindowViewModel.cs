@@ -116,11 +116,18 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         this.ToggleNotificationsCommand = new RelayCommand(this.ToggleNotifications);
         this.ToggleAudioAlertsCommand = new RelayCommand(this.ToggleAudioAlerts);
         this.ToggleAlwaysOnTopCommand = new RelayCommand(this.ToggleAlwaysOnTop);
+        this.TogglePopUpWhenExpiredCommand = new RelayCommand(this.TogglePopUpWhenExpired);
 
         this.RefreshDisplay();
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
+
+    public event EventHandler? WindowAttentionRequested;
+
+    public event EventHandler? ExpiryVisualFeedbackRequested;
+
+    public event EventHandler? ValidationFeedbackRequested;
 
     public RelayCommand StartCommand { get; }
 
@@ -136,6 +143,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     public RelayCommand ToggleAlwaysOnTopCommand { get; }
 
+    public RelayCommand TogglePopUpWhenExpiredCommand { get; }
+
     public string TimerInput
     {
         get => this.viewState.TimerInput;
@@ -145,7 +154,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
             if (value != this.viewState.TimerInput)
             {
-                this.ReplaceViewState(this.viewState with { TimerInput = value });
+                this.ReplaceViewState(this.viewState with { TimerInput = value, HasValidationError = false });
                 this.RefreshDisplay(this.engine.State == TimerState.Stopped ? TimerViewState.ReadyStatusText : this.StatusText);
             }
         }
@@ -211,6 +220,12 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     public bool AudioAlertsEnabled => this.settings.AudioAlertsEnabled;
 
     public bool AlwaysOnTop => this.settings.AlwaysOnTop;
+
+    public bool PopUpWhenExpired => this.settings.PopUpWhenExpired;
+
+    public bool HasValidationError => this.viewState.HasValidationError;
+
+    public bool HasCompletionEmphasis => this.viewState.HasCompletionEmphasis;
 
     internal Task PendingSettingsSave => this.pendingSettingsSave;
 
@@ -284,7 +299,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         this.ReplaceViewState(this.viewState with
         {
             PresentationMode = TimerPresentationMode.Input,
-            InputBeforeEdit = this.TimerInput
+            InputBeforeEdit = this.TimerInput,
+            HasValidationError = false
         });
         this.RefreshDisplay();
         return true;
@@ -297,13 +313,13 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
         if (timerStart == null || !timerStart.IsValid || !timerStart.TryGetEndTime(now, out DateTime endTime) || endTime < now)
         {
-            this.RefreshDisplay(InvalidTimerStatusText);
+            this.ShowValidationError();
             return;
         }
 
         if (!this.engine.Start(timerStart, now))
         {
-            this.RefreshDisplay(InvalidTimerStatusText);
+            this.ShowValidationError();
             return;
         }
 
@@ -312,7 +328,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             PresentationMode = TimerPresentationMode.Status,
             InputBeforeEdit = null
         });
-        this.RefreshDisplay(TimerViewState.RunningStatusText);
+        this.RefreshDisplay(TimerViewState.RunningStatusText, hasValidationError: false);
         _ = this.AcquireInhibitionAsync();
         this.ReplaceSettings(this.settings.AddRecentTimerInput(this.TimerInput), save: true);
     }
@@ -351,7 +367,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         {
             TimerInput = originalInput,
             PresentationMode = TimerPresentationMode.Status,
-            InputBeforeEdit = null
+            InputBeforeEdit = null,
+            HasValidationError = false
         });
         this.RefreshDisplay();
     }
@@ -363,7 +380,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         {
             TimerInput = timerInput,
             PresentationMode = TimerPresentationMode.Input,
-            InputBeforeEdit = null
+            InputBeforeEdit = null,
+            HasValidationError = false
         });
         this.RefreshDisplay(TimerViewState.ReadyStatusText);
         _ = this.ReleaseInhibitionAsync();
@@ -390,7 +408,14 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             save: true);
     }
 
-    private void RefreshDisplay(string? explicitStatus = null)
+    private void TogglePopUpWhenExpired()
+    {
+        this.ReplaceSettings(
+            this.settings with { PopUpWhenExpired = !this.settings.PopUpWhenExpired },
+            save: true);
+    }
+
+    private void RefreshDisplay(string? explicitStatus = null, bool? hasValidationError = null)
     {
         this.ReplaceViewState(TimerViewState.FromTimerState(
             this.TimerInput,
@@ -398,7 +423,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             this.TimerTitle ?? string.Empty,
             explicitStatus,
             this.viewState.PresentationMode,
-            this.viewState.InputBeforeEdit));
+            this.viewState.InputBeforeEdit,
+            hasValidationError ?? this.viewState.HasValidationError));
         this.OnPropertyChanged(nameof(this.TimerInput));
         this.OnPropertyChanged(nameof(this.RemainingTime));
         this.OnPropertyChanged(nameof(this.StatusText));
@@ -415,6 +441,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         this.OnPropertyChanged(nameof(this.IsResumeVisible));
         this.OnPropertyChanged(nameof(this.IsStopVisible));
         this.OnPropertyChanged(nameof(this.IsCancelVisible));
+        this.OnPropertyChanged(nameof(this.HasValidationError));
+        this.OnPropertyChanged(nameof(this.HasCompletionEmphasis));
         this.StartCommand.RaiseCanExecuteChanged();
         this.PauseResumeCommand.RaiseCanExecuteChanged();
         this.ResetCommand.RaiseCanExecuteChanged();
@@ -459,6 +487,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             this.OnPropertyChanged(nameof(this.AlwaysOnTop));
         }
 
+        if (previous.PopUpWhenExpired != next.PopUpWhenExpired)
+        {
+            this.OnPropertyChanged(nameof(this.PopUpWhenExpired));
+        }
+
         if (save)
         {
             this.QueueSettingsSave(next);
@@ -472,10 +505,48 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     private async Task HandleEngineExpiredAsync()
     {
-        this.RefreshDisplay(TimerViewState.TimerCompleteStatusText);
+        this.ReplaceViewState(this.viewState with
+        {
+            PresentationMode = TimerPresentationMode.Status,
+            InputBeforeEdit = null,
+            HasValidationError = false
+        });
+        this.RefreshDisplay(TimerViewState.TimerCompleteStatusText, hasValidationError: false);
+        PublishSafely(this.ExpiryVisualFeedbackRequested);
+
+        if (this.settings.PopUpWhenExpired)
+        {
+            PublishSafely(this.WindowAttentionRequested);
+        }
+
         await this.ReleaseInhibitionAsync().ConfigureAwait(false);
         await this.NotifyTimerExpiredAsync().ConfigureAwait(false);
         await this.PlayTimerExpiredAudioAsync().ConfigureAwait(false);
+    }
+
+    private void ShowValidationError()
+    {
+        this.RefreshDisplay(InvalidTimerStatusText, hasValidationError: true);
+        PublishSafely(this.ValidationFeedbackRequested);
+    }
+
+    private void PublishSafely(EventHandler? handlers)
+    {
+        if (handlers == null)
+        {
+            return;
+        }
+
+        foreach (EventHandler handler in handlers.GetInvocationList().Cast<EventHandler>())
+        {
+            try
+            {
+                handler.Invoke(this, EventArgs.Empty);
+            }
+            catch (Exception)
+            {
+            }
+        }
     }
 
     private async Task NotifyTimerExpiredAsync()

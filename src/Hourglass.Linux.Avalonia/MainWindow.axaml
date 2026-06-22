@@ -14,6 +14,9 @@
     <SolidColorBrush x:Key="TimerProgressFillBrush"
                      Color="#3665B3"
                      Opacity="0.45" />
+    <SolidColorBrush x:Key="ValidationFlashBrush"
+                     Color="#D13438"
+                     Opacity="0.16" />
   </Window.Resources>
 
   <Window.Styles>
@@ -56,6 +59,42 @@
     <Style Selector="TextBox.timerInput:focus">
       <Setter Property="BorderBrush" Value="{DynamicResource AccentFillColorDefaultBrush}" />
       <Setter Property="BorderThickness" Value="0 0 0 1" />
+    </Style>
+
+    <Style Selector="TextBox.timerInput.validation-error">
+      <Setter Property="BorderBrush" Value="{DynamicResource SystemControlErrorTextForegroundBrush}" />
+      <Setter Property="BorderThickness" Value="0 0 0 2" />
+    </Style>
+
+    <Style Selector="TextBox.timerInput.validation-feedback">
+      <Setter Property="Background" Value="{StaticResource ValidationFlashBrush}" />
+    </Style>
+
+    <Style Selector="Border#CompletionEmphasisBorder">
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="CornerRadius" Value="3" />
+    </Style>
+
+    <Style Selector="Grid.timer-expired Border#CompletionEmphasisBorder">
+      <Setter Property="BorderBrush" Value="{DynamicResource AccentFillColorDefaultBrush}" />
+      <Setter Property="BorderThickness" Value="2" />
+    </Style>
+
+    <Style Selector="Border#ExpiryFlashLayer">
+      <Setter Property="Background" Value="{DynamicResource AccentFillColorDefaultBrush}" />
+      <Setter Property="Opacity" Value="0" />
+      <Setter Property="Transitions">
+        <Transitions>
+          <DoubleTransition Property="Opacity"
+                            Duration="0:0:0.18"
+                            Easing="QuadraticEaseOut" />
+        </Transitions>
+      </Setter>
+    </Style>
+
+    <Style Selector="Grid.timer-expiry-flash Border#ExpiryFlashLayer">
+      <Setter Property="Opacity" Value="0.22" />
     </Style>
 
     <Style Selector="Button.textCommand">
@@ -116,6 +155,10 @@
                   ToggleType="CheckBox"
                   IsChecked="{Binding AudioAlertsEnabled, Mode=OneWay}"
                   Command="{Binding ToggleAudioAlertsCommand}" />
+        <MenuItem Header="Pop up when expired"
+                  ToggleType="CheckBox"
+                  IsChecked="{Binding PopUpWhenExpired, Mode=OneWay}"
+                  Command="{Binding TogglePopUpWhenExpiredCommand}" />
         <MenuItem Header="Always on top"
                   ToggleType="CheckBox"
                   IsChecked="{Binding AlwaysOnTop, Mode=OneWay}"
@@ -126,7 +169,16 @@
       </ContextMenu>
     </Grid.ContextMenu>
 
+    <Border x:Name="ExpiryFlashLayer"
+            ZIndex="3"
+            IsHitTestVisible="False" />
+
+    <Border x:Name="CompletionEmphasisBorder"
+            ZIndex="2"
+            IsHitTestVisible="False" />
+
     <Grid x:Name="ProgressLayer"
+          ZIndex="0"
           Classes="progressTrack"
           ClipToBounds="True"
           IsHitTestVisible="False">
@@ -144,6 +196,7 @@
     </Grid>
 
     <Grid x:Name="InnerGrid"
+          ZIndex="1"
           Margin="10"
           PointerEntered="InnerGridPointerEntered"
           PointerExited="InnerGridPointerExited"
