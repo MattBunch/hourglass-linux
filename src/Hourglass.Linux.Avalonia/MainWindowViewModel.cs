@@ -505,6 +505,12 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     private async Task HandleEngineExpiredAsync()
     {
+        this.ReplaceViewState(this.viewState with
+        {
+            PresentationMode = TimerPresentationMode.Status,
+            InputBeforeEdit = null,
+            HasValidationError = false
+        });
         this.RefreshDisplay(TimerViewState.TimerCompleteStatusText, hasValidationError: false);
         PublishSafely(this.ExpiryVisualFeedbackRequested);
 

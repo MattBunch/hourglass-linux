@@ -20,6 +20,7 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget
     private const double ExpiryFlashDurationMilliseconds = 420;
     private const double ValidationFeedbackDurationMilliseconds = 650;
 
+    private readonly WindowCloseCoordinator closeCoordinator;
     private readonly DispatcherTimer expiryFlashTimer;
     private readonly DispatcherTimer refreshTimer;
     private readonly DispatcherTimer validationFeedbackTimer;
@@ -27,6 +28,7 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget
     private readonly WindowAttentionController? windowAttentionController;
     private int expiryFlashGeneration;
     private bool focusWithinContent;
+    private bool isClosed;
     private bool pointerWithinContent = true;
     private int validationFeedbackGeneration;
 
@@ -48,12 +50,16 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget
         this.viewModel = viewModel ?? throw new ArgumentNullException(nameof(viewModel));
         this.DataContext = this.viewModel;
         this.windowAttentionController = new WindowAttentionController(this);
+        this.closeCoordinator = new WindowCloseCoordinator(
+            () => this.viewModel.PendingSettingsSave,
+            () => Dispatcher.UIThread.Post(this.RequestFinalClose),
+            this.CleanupAfterClose);
 
         this.refreshTimer = new DispatcherTimer
         {
             Interval = TimeSpan.FromMilliseconds(RefreshIntervalMilliseconds)
         };
-        this.refreshTimer.Tick += (_, _) => this.viewModel.Tick();
+        this.refreshTimer.Tick += this.RefreshTimerTick;
         this.refreshTimer.Start();
 
         this.expiryFlashTimer = new DispatcherTimer
@@ -68,9 +74,10 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget
         };
         this.validationFeedbackTimer.Tick += this.ValidationFeedbackTimerTick;
 
+        this.Closing += this.WindowClosing;
         this.Closed += this.WindowClosed;
         this.Opened += this.WindowOpened;
-        this.SizeChanged += (_, _) => this.UpdateResponsiveLayout();
+        this.SizeChanged += this.WindowSizeChanged;
         this.viewModel.PropertyChanged += this.ViewModelPropertyChanged;
         this.viewModel.WindowAttentionRequested += this.WindowAttentionRequested;
         this.viewModel.ExpiryVisualFeedbackRequested += this.ExpiryVisualFeedbackRequested;
@@ -167,6 +174,11 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget
 
         Dispatcher.UIThread.Post(() =>
         {
+            if (this.isClosed)
+            {
+                return;
+            }
+
             this.TimerInputTextBox.Focus();
             this.TimerInputTextBox.SelectAll();
         });
@@ -190,15 +202,19 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget
 
         Dispatcher.UIThread.Post(() =>
         {
+            if (this.isClosed)
+            {
+                return;
+            }
+
             textBoxToFocus.Focus();
             textBoxToFocus.SelectAll();
         });
         return true;
     }
 
-    private async void ExitMenuItemClick(object? sender, RoutedEventArgs e)
+    private void ExitMenuItemClick(object? sender, RoutedEventArgs e)
     {
-        await this.viewModel.PendingSettingsSave;
         this.Close();
     }
 
@@ -230,8 +246,21 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget
         await this.viewModel.LoadSettingsAsync();
     }
 
+    private void WindowClosing(object? sender, WindowClosingEventArgs e)
+    {
+        e.Cancel = this.closeCoordinator.RequestClose();
+    }
+
     private void WindowClosed(object? sender, EventArgs e)
     {
+        this.closeCoordinator.CompleteClose();
+    }
+
+    private void CleanupAfterClose()
+    {
+        this.isClosed = true;
+        this.expiryFlashGeneration++;
+        this.validationFeedbackGeneration++;
         this.refreshTimer.Stop();
         this.expiryFlashTimer.Stop();
         this.validationFeedbackTimer.Stop();
@@ -241,7 +270,32 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget
         this.viewModel.WindowAttentionRequested -= this.WindowAttentionRequested;
         this.viewModel.ExpiryVisualFeedbackRequested -= this.ExpiryVisualFeedbackRequested;
         this.viewModel.ValidationFeedbackRequested -= this.ValidationFeedbackRequested;
+        this.refreshTimer.Tick -= this.RefreshTimerTick;
+        this.expiryFlashTimer.Tick -= this.ExpiryFlashTimerTick;
+        this.validationFeedbackTimer.Tick -= this.ValidationFeedbackTimerTick;
+        this.Closing -= this.WindowClosing;
+        this.Closed -= this.WindowClosed;
+        this.Opened -= this.WindowOpened;
+        this.SizeChanged -= this.WindowSizeChanged;
         this.viewModel.Dispose();
+    }
+
+    private void RequestFinalClose()
+    {
+        if (!this.isClosed)
+        {
+            this.Close();
+        }
+    }
+
+    private void RefreshTimerTick(object? sender, EventArgs e)
+    {
+        this.viewModel.Tick();
+    }
+
+    private void WindowSizeChanged(object? sender, SizeChangedEventArgs e)
+    {
+        this.UpdateResponsiveLayout();
     }
 
     private void ViewModelPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
@@ -256,18 +310,35 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget
 
     private void WindowAttentionRequested(object? sender, EventArgs e)
     {
-        Dispatcher.UIThread.Post(() => this.windowAttentionController?.RequestAttention());
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (!this.isClosed)
+            {
+                this.windowAttentionController?.RequestAttention();
+            }
+        });
     }
 
     private void ExpiryVisualFeedbackRequested(object? sender, EventArgs e)
     {
-        Dispatcher.UIThread.Post(this.RestartExpiryFlash);
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (!this.isClosed)
+            {
+                this.RestartExpiryFlash();
+            }
+        });
     }
 
     private void ValidationFeedbackRequested(object? sender, EventArgs e)
     {
         Dispatcher.UIThread.Post(() =>
         {
+            if (this.isClosed)
+            {
+                return;
+            }
+
             this.TimerInputTextBox.Focus();
             this.TimerInputTextBox.SelectAll();
             this.RestartValidationFeedback();
@@ -288,7 +359,7 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget
 
         Dispatcher.UIThread.Post(() =>
         {
-            if (generation != this.expiryFlashGeneration)
+            if (this.isClosed || generation != this.expiryFlashGeneration)
             {
                 return;
             }
@@ -312,7 +383,7 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget
 
         Dispatcher.UIThread.Post(() =>
         {
-            if (generation != this.validationFeedbackGeneration)
+            if (this.isClosed || generation != this.validationFeedbackGeneration)
             {
                 return;
             }

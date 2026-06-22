@@ -226,6 +226,95 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
+    public void ExpiryWhileEditingForcesCompletedStatusAndPublishesOneShotFeedback()
+    {
+        var clock = new ManualMonotonicClock();
+        var viewModel = CreateViewModel(clock);
+        int attentionCount = 0;
+        int flashCount = 0;
+        viewModel.WindowAttentionRequested += (_, _) => attentionCount++;
+        viewModel.ExpiryVisualFeedbackRequested += (_, _) => flashCount++;
+        viewModel.TimerInput = "1 second";
+        viewModel.TimerTitle = "Tea";
+        viewModel.StartCommand.Execute(null);
+
+        Assert.True(viewModel.TryEnterTimerInputMode());
+        Assert.Equal(TimerState.Running, viewModel.State);
+        Assert.True(viewModel.IsTimerInputVisible);
+        Assert.False(viewModel.IsRemainingTimeVisible);
+
+        clock.Advance(TimeSpan.FromSeconds(2));
+        viewModel.Tick();
+
+        Assert.Equal(TimerState.Expired, viewModel.State);
+        Assert.True(viewModel.IsCompletionTextVisible);
+        Assert.False(viewModel.IsTimerInputVisible);
+        Assert.True(viewModel.HasCompletionEmphasis);
+        Assert.Equal("Timer complete", viewModel.StatusText);
+        Assert.Equal("1 second", viewModel.TimerInput);
+        Assert.Equal("Tea", viewModel.TimerTitle);
+        Assert.Equal(1, flashCount);
+        Assert.Equal(1, attentionCount);
+
+        viewModel.Tick();
+
+        Assert.Equal(1, flashCount);
+        Assert.Equal(1, attentionCount);
+    }
+
+    [Fact]
+    public async Task ExpiryWhileEditingCompletesWithoutAttentionWhenPopupIsDisabled()
+    {
+        var clock = new ManualMonotonicClock();
+        var notificationService = new RecordingNotificationService();
+        var audioAlertService = new RecordingAudioAlertService();
+        var sessionInhibitor = new RecordingSessionInhibitor();
+        var settingsStore = new RecordingSettingsStore
+        {
+            LoadedSettings = new LinuxAppSettings(popUpWhenExpired: false)
+        };
+        var viewModel = CreateViewModel(
+            clock,
+            notificationService: notificationService,
+            sessionInhibitor: sessionInhibitor,
+            settingsStore: settingsStore,
+            audioAlertService: audioAlertService);
+        int attentionCount = 0;
+        int flashCount = 0;
+        viewModel.WindowAttentionRequested += (_, _) => attentionCount++;
+        viewModel.ExpiryVisualFeedbackRequested += (_, _) => flashCount++;
+        await viewModel.LoadSettingsAsync();
+        viewModel.TimerInput = "1 second";
+        viewModel.TimerTitle = "Tea";
+        viewModel.StartCommand.Execute(null);
+        Assert.True(viewModel.TryEnterTimerInputMode());
+
+        clock.Advance(TimeSpan.FromSeconds(2));
+        viewModel.Tick();
+
+        Assert.Equal(TimerState.Expired, viewModel.State);
+        Assert.True(viewModel.IsCompletionTextVisible);
+        Assert.False(viewModel.IsTimerInputVisible);
+        Assert.True(viewModel.HasCompletionEmphasis);
+        Assert.Equal("Timer complete", viewModel.StatusText);
+        Assert.Equal("1 second", viewModel.TimerInput);
+        Assert.Equal("Tea", viewModel.TimerTitle);
+        Assert.Equal(1, flashCount);
+        Assert.Equal(0, attentionCount);
+        Assert.Equal(1, notificationService.CallCount);
+        Assert.Equal(1, audioAlertService.CallCount);
+        Assert.Equal(1, sessionInhibitor.ReleaseCount);
+
+        viewModel.Tick();
+
+        Assert.Equal(1, flashCount);
+        Assert.Equal(0, attentionCount);
+        Assert.Equal(1, notificationService.CallCount);
+        Assert.Equal(1, audioAlertService.CallCount);
+        Assert.Equal(1, sessionInhibitor.ReleaseCount);
+    }
+
+    [Fact]
     public void EnteringInputModeWhilePausedKeepsCountdownPaused()
     {
         var clock = new ManualMonotonicClock();
@@ -676,6 +765,7 @@ public sealed class MainWindowViewModelTests
     public void CompletionAndValidationStylesUseExplicitReplayableClasses()
     {
         XNamespace avalonia = "https://github.com/avaloniaui";
+        XNamespace xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
         XDocument document = XDocument.Load(FindRepositoryFile("src/Hourglass.Linux.Avalonia/MainWindow.axaml"));
         string[] selectors = document
             .Descendants(avalonia + "Style")
@@ -688,9 +778,49 @@ public sealed class MainWindowViewModelTests
         Assert.Contains("TextBox.timerInput.validation-error", selectors);
         Assert.Contains("TextBox.timerInput.validation-feedback", selectors);
 
+        XElement progressLayer = FindNamedElement(document, avalonia + "Grid", xaml, "ProgressLayer");
+        XElement innerGrid = FindNamedElement(document, avalonia + "Grid", xaml, "InnerGrid");
+        XElement completionBorder = FindNamedElement(document, avalonia + "Border", xaml, "CompletionEmphasisBorder");
+        XElement expiryFlash = FindNamedElement(document, avalonia + "Border", xaml, "ExpiryFlashLayer");
+        int progressZIndex = int.Parse(progressLayer.Attribute("ZIndex")?.Value ?? string.Empty, CultureInfo.InvariantCulture);
+        int innerGridZIndex = int.Parse(innerGrid.Attribute("ZIndex")?.Value ?? string.Empty, CultureInfo.InvariantCulture);
+        int completionZIndex = int.Parse(completionBorder.Attribute("ZIndex")?.Value ?? string.Empty, CultureInfo.InvariantCulture);
+        int expiryFlashZIndex = int.Parse(expiryFlash.Attribute("ZIndex")?.Value ?? string.Empty, CultureInfo.InvariantCulture);
+
+        Assert.Equal("False", completionBorder.Attribute("IsHitTestVisible")?.Value);
+        Assert.Equal("False", expiryFlash.Attribute("IsHitTestVisible")?.Value);
+        Assert.True(progressZIndex < innerGridZIndex);
+        Assert.True(innerGridZIndex < completionZIndex);
+        Assert.True(completionZIndex < expiryFlashZIndex);
+
         string codeBehind = File.ReadAllText(FindRepositoryFile("src/Hourglass.Linux.Avalonia/MainWindow.axaml.cs"));
         Assert.Contains("Classes.Set(\"timer-expired\", this.viewModel.HasCompletionEmphasis)", codeBehind);
         Assert.Contains("Classes.Set(\"validation-error\", this.viewModel.HasValidationError)", codeBehind);
+    }
+
+    [Fact]
+    public void WindowClosePathsUseSharedCoordinatorAndIdempotentCleanup()
+    {
+        string codeBehind = File.ReadAllText(FindRepositoryFile("src/Hourglass.Linux.Avalonia/MainWindow.axaml.cs"));
+        int exitHandlerStart = codeBehind.IndexOf("private void ExitMenuItemClick", StringComparison.Ordinal);
+        int nextMethodStart = codeBehind.IndexOf("private void UpdatePresentationClasses", exitHandlerStart, StringComparison.Ordinal);
+        string exitHandler = codeBehind[exitHandlerStart..nextMethodStart];
+        int cleanupStart = codeBehind.IndexOf("private void CleanupAfterClose", StringComparison.Ordinal);
+        int cleanupEnd = codeBehind.IndexOf("private void RequestFinalClose", cleanupStart, StringComparison.Ordinal);
+        string cleanup = codeBehind[cleanupStart..cleanupEnd];
+
+        Assert.Contains("this.Close();", exitHandler, StringComparison.Ordinal);
+        Assert.DoesNotContain("PendingSettingsSave", exitHandler, StringComparison.Ordinal);
+        Assert.Contains("this.Closing += this.WindowClosing;", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("e.Cancel = this.closeCoordinator.RequestClose();", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("this.closeCoordinator.CompleteClose();", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("this.refreshTimer.Stop();", cleanup, StringComparison.Ordinal);
+        Assert.Contains("this.expiryFlashTimer.Stop();", cleanup, StringComparison.Ordinal);
+        Assert.Contains("this.validationFeedbackTimer.Stop();", cleanup, StringComparison.Ordinal);
+        Assert.Contains("this.viewModel.WindowAttentionRequested -= this.WindowAttentionRequested;", cleanup, StringComparison.Ordinal);
+        Assert.Contains("this.viewModel.ExpiryVisualFeedbackRequested -= this.ExpiryVisualFeedbackRequested;", cleanup, StringComparison.Ordinal);
+        Assert.Contains("this.viewModel.ValidationFeedbackRequested -= this.ValidationFeedbackRequested;", cleanup, StringComparison.Ordinal);
+        Assert.Contains("this.viewModel.Dispose();", cleanup, StringComparison.Ordinal);
     }
 
     [Fact]

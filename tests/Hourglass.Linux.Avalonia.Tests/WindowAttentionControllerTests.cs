@@ -58,7 +58,6 @@ public sealed class WindowAttentionControllerTests
 
         Assert.Equal(1, target.HideCount);
         Assert.Equal(1, target.ShowCount);
-        Assert.Equal(3, target.RestoreCount);
         Assert.Equal(WindowState.Maximized, target.WindowState);
         Assert.Equal(1, target.ActivateCount);
     }
@@ -100,7 +99,25 @@ public sealed class WindowAttentionControllerTests
         Assert.Null(exception);
         Assert.Equal(2, target.ShowCount);
         Assert.Equal(1, target.HideCount);
-        Assert.Equal(3, target.RestoreCount);
+        Assert.Equal(1, target.ActivateCount);
+    }
+
+    [Fact]
+    public void RequestAttentionIsBestEffortWhenWindowStateReadFails()
+    {
+        var target = new RecordingWindowTarget
+        {
+            IsVisible = false,
+            ThrowOnStateRead = true
+        };
+        var controller = new WindowAttentionController(target);
+
+        Exception? exception = Record.Exception(controller.RequestAttention);
+
+        Assert.Null(exception);
+        Assert.Equal(1, target.ShowCount);
+        Assert.Equal(0, target.HideCount);
+        Assert.Equal(0, target.RestoreCount);
         Assert.Equal(1, target.ActivateCount);
     }
 
@@ -112,7 +129,15 @@ public sealed class WindowAttentionControllerTests
 
         public WindowState WindowState
         {
-            get => this.windowState;
+            get
+            {
+                if (this.ThrowOnStateRead)
+                {
+                    throw new InvalidOperationException("State read failed.");
+                }
+
+                return this.windowState;
+            }
             set
             {
                 this.RestoreCount++;
@@ -135,6 +160,8 @@ public sealed class WindowAttentionControllerTests
         public int IgnoredRestoreAttempts { get; set; }
 
         public bool ThrowOnShow { get; init; }
+
+        public bool ThrowOnStateRead { get; init; }
 
         public bool ThrowOnHide { get; init; }
 

@@ -170,12 +170,15 @@
     </Grid.ContextMenu>
 
     <Border x:Name="ExpiryFlashLayer"
+            ZIndex="3"
             IsHitTestVisible="False" />
 
     <Border x:Name="CompletionEmphasisBorder"
+            ZIndex="2"
             IsHitTestVisible="False" />
 
     <Grid x:Name="ProgressLayer"
+          ZIndex="0"
           Classes="progressTrack"
           ClipToBounds="True"
           IsHitTestVisible="False">
@@ -193,6 +196,7 @@
     </Grid>
 
     <Grid x:Name="InnerGrid"
+          ZIndex="1"
           Margin="10"
           PointerEntered="InnerGridPointerEntered"
           PointerExited="InnerGridPointerExited"
