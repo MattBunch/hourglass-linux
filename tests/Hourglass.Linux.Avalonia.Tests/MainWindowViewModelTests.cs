@@ -574,6 +574,8 @@ public sealed class MainWindowViewModelTests
         Assert.Equal(TimerState.Running, viewModel.State);
         Assert.Equal("Running", viewModel.StatusText);
         Assert.Equal("00:30:00", viewModel.RemainingTime);
+        Assert.False(viewModel.RestartCommand.CanExecute(null));
+        Assert.False(viewModel.IsRestartVisible);
     }
 
     [Fact]
@@ -662,6 +664,96 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
+    public void RestartCommandRestartsDurationAndReacquiresSessionInhibition()
+    {
+        var clock = new ManualMonotonicClock();
+        var sessionInhibitor = new RecordingSessionInhibitor();
+        var viewModel = CreateViewModel(clock, sessionInhibitor: sessionInhibitor);
+        viewModel.TimerInput = "2 minutes";
+        viewModel.TimerTitle = "Tea";
+        viewModel.StartCommand.Execute(null);
+        clock.Advance(TimeSpan.FromSeconds(30));
+        viewModel.Tick();
+
+        viewModel.RestartCommand.Execute(null);
+
+        Assert.Equal(TimerState.Running, viewModel.State);
+        Assert.Equal("00:02:00", viewModel.RemainingTime);
+        Assert.Equal("2 minutes", viewModel.TimerInput);
+        Assert.Equal("Tea", viewModel.TimerTitle);
+        Assert.True(viewModel.IsRemainingTimeVisible);
+        Assert.False(viewModel.HasCompletionEmphasis);
+        Assert.Equal(2, sessionInhibitor.AcquireCount);
+        Assert.Equal(1, sessionInhibitor.ReleaseCount);
+    }
+
+    [Fact]
+    public void RestartAfterExpiryCreatesOneNewExpiryCycle()
+    {
+        var clock = new ManualMonotonicClock();
+        var notificationService = new RecordingNotificationService();
+        var audioAlertService = new RecordingAudioAlertService();
+        var viewModel = CreateViewModel(
+            clock,
+            notificationService: notificationService,
+            audioAlertService: audioAlertService);
+        int attentionCount = 0;
+        int flashCount = 0;
+        viewModel.WindowAttentionRequested += (_, _) => attentionCount++;
+        viewModel.ExpiryVisualFeedbackRequested += (_, _) => flashCount++;
+        viewModel.TimerInput = "1 second";
+        viewModel.StartCommand.Execute(null);
+        clock.Advance(TimeSpan.FromSeconds(1));
+        viewModel.Tick();
+
+        viewModel.RestartCommand.Execute(null);
+        Assert.Equal(TimerState.Running, viewModel.State);
+        Assert.False(viewModel.HasCompletionEmphasis);
+        clock.Advance(TimeSpan.FromSeconds(1));
+        viewModel.Tick();
+        viewModel.Tick();
+
+        Assert.Equal(2, attentionCount);
+        Assert.Equal(2, flashCount);
+        Assert.Equal(2, notificationService.CallCount);
+        Assert.Equal(2, audioAlertService.CallCount);
+    }
+
+    [Fact]
+    public void TimerExpressionEditingTemporarilyDisablesRestartAndEscapeRestoresIt()
+    {
+        var viewModel = CreateViewModel(new ManualMonotonicClock());
+        viewModel.TimerInput = "2 minutes";
+        viewModel.StartCommand.Execute(null);
+        Assert.True(viewModel.RestartCommand.CanExecute(null));
+        Assert.True(viewModel.TryEnterTimerInputMode());
+
+        Assert.False(viewModel.RestartCommand.CanExecute(null));
+        Assert.True(viewModel.TryHandleEscape());
+
+        Assert.False(viewModel.IsTimerInputVisible);
+        Assert.True(viewModel.RestartCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public void EscapeDismissesExpiredPresentationAfterEditCancellationPriority()
+    {
+        var clock = new ManualMonotonicClock();
+        var viewModel = CreateViewModel(clock);
+        viewModel.TimerInput = "1 second";
+        viewModel.StartCommand.Execute(null);
+        clock.Advance(TimeSpan.FromSeconds(1));
+        viewModel.Tick();
+
+        Assert.True(viewModel.TryHandleEscape());
+
+        Assert.Equal(TimerState.Stopped, viewModel.State);
+        Assert.True(viewModel.IsTimerInputVisible);
+        Assert.False(viewModel.HasCompletionEmphasis);
+        Assert.False(viewModel.TryHandleEscape());
+    }
+
+    [Fact]
     public void RelayCommandDoesNotExecuteWhenCanExecuteIsFalse()
     {
         int callCount = 0;
@@ -693,12 +785,9 @@ public sealed class MainWindowViewModelTests
 
         Assert.Equal(["Enter", "Return"], gestures);
 
-        XElement escapeBinding = Assert.Single(
-            timerInput
-                .Element(controls + "ResponsiveTextBox.KeyBindings")?
-                .Elements(avalonia + "KeyBinding") ?? [],
+        Assert.DoesNotContain(
+            timerInput.Element(controls + "ResponsiveTextBox.KeyBindings")?.Elements(avalonia + "KeyBinding") ?? [],
             element => element.Attribute("Gesture")?.Value == "Escape");
-        Assert.Equal("{Binding CancelEditCommand}", escapeBinding.Attribute("Command")?.Value);
     }
 
     [Fact]
@@ -723,6 +812,7 @@ public sealed class MainWindowViewModelTests
         Assert.Equal("{Binding StartCommand}", menuItems["Start"].Attribute("Command")?.Value);
         Assert.Equal("{Binding PauseResumeCommand}", menuItems["{Binding PauseResumeText}"].Attribute("Command")?.Value);
         Assert.Equal("{Binding ResetCommand}", menuItems["Stop"].Attribute("Command")?.Value);
+        Assert.Equal("{Binding RestartCommand}", menuItems["Restart"].Attribute("Command")?.Value);
         Assert.Equal("CheckBox", menuItems["Notifications"].Attribute("ToggleType")?.Value);
         Assert.Equal("{Binding NotificationsEnabled, Mode=OneWay}", menuItems["Notifications"].Attribute("IsChecked")?.Value);
         Assert.Equal("{Binding ToggleNotificationsCommand}", menuItems["Notifications"].Attribute("Command")?.Value);
@@ -735,7 +825,31 @@ public sealed class MainWindowViewModelTests
         Assert.Equal("CheckBox", menuItems["Always on top"].Attribute("ToggleType")?.Value);
         Assert.Equal("{Binding AlwaysOnTop, Mode=OneWay}", menuItems["Always on top"].Attribute("IsChecked")?.Value);
         Assert.Equal("{Binding ToggleAlwaysOnTopCommand}", menuItems["Always on top"].Attribute("Command")?.Value);
+        Assert.Equal("CheckBox", menuItems["Prompt on exit"].Attribute("ToggleType")?.Value);
+        Assert.Equal("{Binding PromptOnExit, Mode=OneWay}", menuItems["Prompt on exit"].Attribute("IsChecked")?.Value);
+        Assert.Equal("{Binding TogglePromptOnExitCommand}", menuItems["Prompt on exit"].Attribute("Command")?.Value);
+        Assert.Equal("CheckBox", menuItems["Full screen"].Attribute("ToggleType")?.Value);
+        Assert.Equal("FullScreenMenuItemClick", menuItems["Full screen"].Attribute("Click")?.Value);
         Assert.Equal("ExitMenuItemClick", menuItems["Exit"].Attribute("Click")?.Value);
+    }
+
+    [Fact]
+    public void ExitConfirmationDialogIsNativeAndKeyboardAccessible()
+    {
+        XNamespace avalonia = "https://github.com/avaloniaui";
+        XDocument document = XDocument.Load(
+            FindRepositoryFile("src/Hourglass.Linux.Avalonia/ExitConfirmationWindow.axaml"));
+        XElement window = Assert.IsType<XElement>(document.Root);
+        Dictionary<string, XElement> buttons = document
+            .Descendants(avalonia + "Button")
+            .ToDictionary(element => element.Attribute("Content")?.Value ?? string.Empty, StringComparer.Ordinal);
+
+        Assert.Equal("CenterOwner", window.Attribute("WindowStartupLocation")?.Value);
+        Assert.Equal("True", buttons["Cancel"].Attribute("IsCancel")?.Value);
+        Assert.Equal("True", buttons["Exit"].Attribute("IsDefault")?.Value);
+        Assert.Contains(
+            document.Descendants(avalonia + "TextBlock"),
+            element => element.Attribute("Text")?.Value == "A timer is still running. Exit Hourglass?");
     }
 
     [Fact]
@@ -744,21 +858,21 @@ public sealed class MainWindowViewModelTests
         var clock = new ManualMonotonicClock();
         var viewModel = CreateViewModel(clock);
 
-        AssertCommandAvailability(viewModel, canStart: true, canPauseResume: false, canStop: false);
+        AssertCommandAvailability(viewModel, canStart: true, canPauseResume: false, canStop: false, canRestart: false);
 
         viewModel.TimerInput = "1 second";
         viewModel.StartCommand.Execute(null);
-        AssertCommandAvailability(viewModel, canStart: false, canPauseResume: true, canStop: true);
+        AssertCommandAvailability(viewModel, canStart: false, canPauseResume: true, canStop: true, canRestart: true);
 
         viewModel.PauseResumeCommand.Execute(null);
         Assert.Equal("Resume", viewModel.PauseResumeText);
-        AssertCommandAvailability(viewModel, canStart: false, canPauseResume: true, canStop: true);
+        AssertCommandAvailability(viewModel, canStart: false, canPauseResume: true, canStop: true, canRestart: true);
 
         viewModel.PauseResumeCommand.Execute(null);
         clock.Advance(TimeSpan.FromSeconds(1));
         viewModel.Tick();
         Assert.Equal(TimerState.Expired, viewModel.State);
-        AssertCommandAvailability(viewModel, canStart: false, canPauseResume: false, canStop: true);
+        AssertCommandAvailability(viewModel, canStart: false, canPauseResume: false, canStop: true, canRestart: true);
     }
 
     [Fact]
@@ -1176,7 +1290,8 @@ public sealed class MainWindowViewModelTests
                 notificationsEnabled: false,
                 audioAlertsEnabled: false,
                 alwaysOnTop: true,
-                popUpWhenExpired: false)
+                popUpWhenExpired: false,
+                promptOnExit: false)
         };
         var viewModel = CreateViewModel(new ManualMonotonicClock(), settingsStore: settingsStore);
 
@@ -1186,6 +1301,7 @@ public sealed class MainWindowViewModelTests
         Assert.False(viewModel.AudioAlertsEnabled);
         Assert.True(viewModel.AlwaysOnTop);
         Assert.False(viewModel.PopUpWhenExpired);
+        Assert.False(viewModel.PromptOnExit);
     }
 
     [Fact]
@@ -1245,6 +1361,41 @@ public sealed class MainWindowViewModelTests
         Assert.Contains(nameof(MainWindowViewModel.PopUpWhenExpired), changedProperties);
         Assert.NotNull(settingsStore.SavedSettings);
         Assert.False(settingsStore.SavedSettings.PopUpWhenExpired);
+    }
+
+    [Fact]
+    public async Task TogglePromptOnExitRaisesPropertyChangedAndSavesSettings()
+    {
+        var settingsStore = new RecordingSettingsStore();
+        var viewModel = CreateViewModel(new ManualMonotonicClock(), settingsStore: settingsStore);
+        var changedProperties = new List<string?>();
+        viewModel.PropertyChanged += (_, args) => changedProperties.Add(args.PropertyName);
+
+        viewModel.TogglePromptOnExitCommand.Execute(null);
+        await viewModel.PendingSettingsSave;
+
+        Assert.False(viewModel.PromptOnExit);
+        Assert.Contains(nameof(MainWindowViewModel.PromptOnExit), changedProperties);
+        Assert.NotNull(settingsStore.SavedSettings);
+        Assert.False(settingsStore.SavedSettings.PromptOnExit);
+    }
+
+    [Fact]
+    public async Task ExitPromptAppliesOnlyToActiveTimersWhenEnabled()
+    {
+        var settingsStore = new RecordingSettingsStore();
+        var viewModel = CreateViewModel(new ManualMonotonicClock(), settingsStore: settingsStore);
+        Assert.False(viewModel.ShouldPromptOnExit);
+
+        viewModel.TimerInput = "1 minute";
+        viewModel.StartCommand.Execute(null);
+        Assert.True(viewModel.ShouldPromptOnExit);
+        viewModel.PauseResumeCommand.Execute(null);
+        Assert.True(viewModel.ShouldPromptOnExit);
+
+        viewModel.TogglePromptOnExitCommand.Execute(null);
+        await viewModel.PendingSettingsSave;
+        Assert.False(viewModel.ShouldPromptOnExit);
     }
 
     [Fact]
@@ -1447,6 +1598,7 @@ public sealed class MainWindowViewModelTests
         Assert.Equal(isPauseVisible, viewState.IsPauseVisible);
         Assert.Equal(isResumeVisible, viewState.IsResumeVisible);
         Assert.Equal(isStopVisible, viewState.IsStopVisible);
+        Assert.Equal(state != TimerState.Stopped, viewState.IsRestartVisible);
         Assert.Equal(state == TimerState.Expired, viewState.HasCompletionEmphasis);
         Assert.False(viewState.HasValidationError);
     }
@@ -1678,11 +1830,13 @@ public sealed class MainWindowViewModelTests
         MainWindowViewModel viewModel,
         bool canStart,
         bool canPauseResume,
-        bool canStop)
+        bool canStop,
+        bool canRestart)
     {
         Assert.Equal(canStart, viewModel.StartCommand.CanExecute(null));
         Assert.Equal(canPauseResume, viewModel.PauseResumeCommand.CanExecute(null));
         Assert.Equal(canStop, viewModel.ResetCommand.CanExecute(null));
+        Assert.Equal(canRestart, viewModel.RestartCommand.CanExecute(null));
     }
 
     private static MainWindowViewModel CreateViewModel(

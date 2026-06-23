@@ -148,6 +148,10 @@ The Windows app provides a visual validation flash. Linux currently only replace
 
 ## Milestone 2: Core Command and Keyboard Parity
 
+**Status:** Implemented on Linux.
+
+The Linux implementation uses the existing immutable countdown restart transition for duration timers. Absolute-time timers intentionally do not expose Restart because replaying an absolute target after it has passed is ambiguous. Window shortcuts are routed through the same commands as buttons and menu items, while full-screen state and close confirmation remain Avalonia-shell concerns.
+
 ### 2.1 Restart Timer
 
 **Priority:** P0  
@@ -249,6 +253,8 @@ Add Windows-compatible shortcuts where they do not conflict with normal text edi
 - Cancel leaves the timer running unchanged.
 - Confirm closes only the intended window.
 - Application shutdown handles multiple active timers with one clear decision flow rather than repeated confusing prompts.
+
+The current single-window application prompts once for a running or paused timer. Multi-window shutdown coordination remains part of the later multi-window milestone rather than this implementation.
 
 ---
 

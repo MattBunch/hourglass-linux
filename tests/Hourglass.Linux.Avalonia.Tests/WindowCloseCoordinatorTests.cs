@@ -10,6 +10,7 @@ public sealed class WindowCloseCoordinatorTests
         int finalCloseCount = 0;
         int cleanupCount = 0;
         var coordinator = new WindowCloseCoordinator(
+            () => Task.FromResult(true),
             () => Task.CompletedTask,
             () => finalCloseCount++,
             () => cleanupCount++);
@@ -32,6 +33,7 @@ public sealed class WindowCloseCoordinatorTests
         var saveCompletion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         int finalCloseCount = 0;
         var coordinator = new WindowCloseCoordinator(
+            () => Task.FromResult(true),
             () => saveCompletion.Task,
             () => finalCloseCount++,
             () => { });
@@ -53,6 +55,7 @@ public sealed class WindowCloseCoordinatorTests
         int pendingSaveRequestCount = 0;
         int finalCloseCount = 0;
         var coordinator = new WindowCloseCoordinator(
+            () => Task.FromResult(true),
             () =>
             {
                 pendingSaveRequestCount++;
@@ -79,6 +82,7 @@ public sealed class WindowCloseCoordinatorTests
     {
         int finalCloseCount = 0;
         var coordinator = new WindowCloseCoordinator(
+            () => Task.FromResult(true),
             () => Task.FromException(new InvalidOperationException("Settings save failed.")),
             () => finalCloseCount++,
             () => { });
@@ -98,6 +102,7 @@ public sealed class WindowCloseCoordinatorTests
     public async Task FinalCloseCallbackFailureDoesNotEscapePreparation()
     {
         var coordinator = new WindowCloseCoordinator(
+            () => Task.FromResult(true),
             () => Task.CompletedTask,
             () => throw new InvalidOperationException("Close failed."),
             () => { });
@@ -110,5 +115,76 @@ public sealed class WindowCloseCoordinatorTests
 
         Assert.Null(exception);
         Assert.False(coordinator.RequestClose());
+    }
+
+    [Fact]
+    public async Task RejectedApprovalCancelsCloseAndAllowsLaterRetry()
+    {
+        int approvalCount = 0;
+        int finalCloseCount = 0;
+        var coordinator = new WindowCloseCoordinator(
+            () => Task.FromResult(++approvalCount > 1),
+            () => Task.CompletedTask,
+            () => finalCloseCount++,
+            () => { });
+
+        Assert.True(coordinator.RequestClose());
+        await coordinator.PendingPreparation;
+        Assert.Equal(0, finalCloseCount);
+
+        Assert.True(coordinator.RequestClose());
+        await coordinator.PendingPreparation;
+
+        Assert.Equal(2, approvalCount);
+        Assert.Equal(1, finalCloseCount);
+        Assert.False(coordinator.RequestClose());
+    }
+
+    [Fact]
+    public async Task RepeatedRequestsShareOnePendingApproval()
+    {
+        var approvalCompletion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        int approvalCount = 0;
+        int finalCloseCount = 0;
+        var coordinator = new WindowCloseCoordinator(
+            () =>
+            {
+                approvalCount++;
+                return approvalCompletion.Task;
+            },
+            () => Task.CompletedTask,
+            () => finalCloseCount++,
+            () => { });
+
+        Assert.True(coordinator.RequestClose());
+        Assert.True(coordinator.RequestClose());
+        Assert.Equal(1, approvalCount);
+
+        approvalCompletion.SetResult(true);
+        await coordinator.PendingPreparation;
+
+        Assert.Equal(1, approvalCount);
+        Assert.Equal(1, finalCloseCount);
+    }
+
+    [Fact]
+    public async Task ApprovalFailureCancelsCloseWithoutEscaping()
+    {
+        int finalCloseCount = 0;
+        var coordinator = new WindowCloseCoordinator(
+            () => Task.FromException<bool>(new InvalidOperationException("Dialog failed.")),
+            () => Task.CompletedTask,
+            () => finalCloseCount++,
+            () => { });
+
+        Exception? exception = await Record.ExceptionAsync(async () =>
+        {
+            Assert.True(coordinator.RequestClose());
+            await coordinator.PendingPreparation;
+        });
+
+        Assert.Null(exception);
+        Assert.Equal(0, finalCloseCount);
+        Assert.True(coordinator.RequestClose());
     }
 }

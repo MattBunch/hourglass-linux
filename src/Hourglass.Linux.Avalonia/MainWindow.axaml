@@ -146,6 +146,8 @@
                   Command="{Binding PauseResumeCommand}" />
         <MenuItem Header="Stop"
                   Command="{Binding ResetCommand}" />
+        <MenuItem Header="Restart"
+                  Command="{Binding RestartCommand}" />
         <Separator />
         <MenuItem Header="Notifications"
                   ToggleType="CheckBox"
@@ -163,6 +165,14 @@
                   ToggleType="CheckBox"
                   IsChecked="{Binding AlwaysOnTop, Mode=OneWay}"
                   Command="{Binding ToggleAlwaysOnTopCommand}" />
+        <MenuItem Header="Prompt on exit"
+                  ToggleType="CheckBox"
+                  IsChecked="{Binding PromptOnExit, Mode=OneWay}"
+                  Command="{Binding TogglePromptOnExitCommand}" />
+        <MenuItem x:Name="FullScreenMenuItem"
+                  Header="Full screen"
+                  ToggleType="CheckBox"
+                  Click="FullScreenMenuItemClick" />
         <Separator />
         <MenuItem Header="Exit"
                   Click="ExitMenuItemClick" />
@@ -228,8 +238,6 @@
                           Command="{Binding StartCommand}" />
               <KeyBinding Gesture="Enter"
                           Command="{Binding StartCommand}" />
-              <KeyBinding Gesture="Escape"
-                          Command="{Binding CancelEditCommand}" />
             </local:ResponsiveTextBox.KeyBindings>
           </local:ResponsiveTextBox>
 
@@ -278,6 +286,11 @@
                   Content="Stop"
                   Command="{Binding ResetCommand}"
                   IsVisible="{Binding IsStopVisible}" />
+          <Button x:Name="RestartButton"
+                  Classes="textCommand"
+                  Content="Restart"
+                  Command="{Binding RestartCommand}"
+                  IsVisible="{Binding IsRestartVisible}" />
           <Button x:Name="CancelButton"
                   Classes="textCommand"
                   Content="Cancel"

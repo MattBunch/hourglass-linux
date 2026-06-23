@@ -110,6 +110,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             this.PauseOrResume,
             () => this.engine.State is TimerState.Running or TimerState.Paused);
         this.ResetCommand = new RelayCommand(this.Reset, () => this.engine.State != TimerState.Stopped);
+        this.RestartCommand = new RelayCommand(this.Restart, () => this.viewState.IsRestartVisible);
         this.CancelEditCommand = new RelayCommand(
             this.CancelActiveTimerEdit,
             () => this.viewState.IsCancelVisible);
@@ -117,6 +118,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         this.ToggleAudioAlertsCommand = new RelayCommand(this.ToggleAudioAlerts);
         this.ToggleAlwaysOnTopCommand = new RelayCommand(this.ToggleAlwaysOnTop);
         this.TogglePopUpWhenExpiredCommand = new RelayCommand(this.TogglePopUpWhenExpired);
+        this.TogglePromptOnExitCommand = new RelayCommand(this.TogglePromptOnExit);
 
         this.RefreshDisplay();
     }
@@ -135,6 +137,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     public RelayCommand ResetCommand { get; }
 
+    public RelayCommand RestartCommand { get; }
+
     public RelayCommand CancelEditCommand { get; }
 
     public RelayCommand ToggleNotificationsCommand { get; }
@@ -144,6 +148,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     public RelayCommand ToggleAlwaysOnTopCommand { get; }
 
     public RelayCommand TogglePopUpWhenExpiredCommand { get; }
+
+    public RelayCommand TogglePromptOnExitCommand { get; }
 
     public string TimerInput
     {
@@ -213,6 +219,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     public bool IsStopVisible => this.viewState.IsStopVisible;
 
+    public bool IsRestartVisible => this.viewState.IsRestartVisible;
+
     public bool IsCancelVisible => this.viewState.IsCancelVisible;
 
     public bool NotificationsEnabled => this.settings.NotificationsEnabled;
@@ -222,6 +230,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     public bool AlwaysOnTop => this.settings.AlwaysOnTop;
 
     public bool PopUpWhenExpired => this.settings.PopUpWhenExpired;
+
+    public bool PromptOnExit => this.settings.PromptOnExit;
+
+    public bool ShouldPromptOnExit =>
+        this.settings.PromptOnExit && this.engine.State is TimerState.Running or TimerState.Paused;
 
     public bool HasValidationError => this.viewState.HasValidationError;
 
@@ -306,6 +319,17 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         return true;
     }
 
+    internal bool TryHandleEscape()
+    {
+        if (this.CancelEditCommand.CanExecute(null))
+        {
+            this.CancelEditCommand.Execute(null);
+            return true;
+        }
+
+        return this.TryEnterInputModeFromExpired();
+    }
+
     private void Start()
     {
         DateTime now = this.wallClockNow();
@@ -354,6 +378,23 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private void Reset()
     {
         this.StopAndShowInput(this.TimerInput);
+    }
+
+    private void Restart()
+    {
+        if (!this.engine.Restart(this.wallClockNow()))
+        {
+            return;
+        }
+
+        this.ReplaceViewState(this.viewState with
+        {
+            PresentationMode = TimerPresentationMode.Status,
+            InputBeforeEdit = null,
+            HasValidationError = false
+        });
+        this.RefreshDisplay(TimerViewState.RunningStatusText, hasValidationError: false);
+        _ = this.AcquireInhibitionAsync();
     }
 
     private void CancelActiveTimerEdit()
@@ -415,6 +456,13 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             save: true);
     }
 
+    private void TogglePromptOnExit()
+    {
+        this.ReplaceSettings(
+            this.settings with { PromptOnExit = !this.settings.PromptOnExit },
+            save: true);
+    }
+
     private void RefreshDisplay(string? explicitStatus = null, bool? hasValidationError = null)
     {
         this.ReplaceViewState(TimerViewState.FromTimerState(
@@ -432,6 +480,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         this.OnPropertyChanged(nameof(this.IsInputEnabled));
         this.OnPropertyChanged(nameof(this.IsRunning));
         this.OnPropertyChanged(nameof(this.State));
+        this.OnPropertyChanged(nameof(this.ShouldPromptOnExit));
         this.OnPropertyChanged(nameof(this.ProgressPercent));
         this.OnPropertyChanged(nameof(this.IsTimerInputVisible));
         this.OnPropertyChanged(nameof(this.IsRemainingTimeVisible));
@@ -440,12 +489,14 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         this.OnPropertyChanged(nameof(this.IsPauseVisible));
         this.OnPropertyChanged(nameof(this.IsResumeVisible));
         this.OnPropertyChanged(nameof(this.IsStopVisible));
+        this.OnPropertyChanged(nameof(this.IsRestartVisible));
         this.OnPropertyChanged(nameof(this.IsCancelVisible));
         this.OnPropertyChanged(nameof(this.HasValidationError));
         this.OnPropertyChanged(nameof(this.HasCompletionEmphasis));
         this.StartCommand.RaiseCanExecuteChanged();
         this.PauseResumeCommand.RaiseCanExecuteChanged();
         this.ResetCommand.RaiseCanExecuteChanged();
+        this.RestartCommand.RaiseCanExecuteChanged();
         this.CancelEditCommand.RaiseCanExecuteChanged();
     }
 
@@ -490,6 +541,12 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         if (previous.PopUpWhenExpired != next.PopUpWhenExpired)
         {
             this.OnPropertyChanged(nameof(this.PopUpWhenExpired));
+        }
+
+        if (previous.PromptOnExit != next.PromptOnExit)
+        {
+            this.OnPropertyChanged(nameof(this.PromptOnExit));
+            this.OnPropertyChanged(nameof(this.ShouldPromptOnExit));
         }
 
         if (save)
