@@ -8,7 +8,7 @@ using Hourglass.Timing;
 
 namespace Hourglass.Linux.Avalonia;
 
-public sealed partial class MainWindow : Window, IWindowAttentionTarget
+public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullScreenWindowTarget
 {
     private static readonly string NormalBeepPath = Path.Combine(
         AppContext.BaseDirectory,
@@ -24,6 +24,7 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget
     private readonly DispatcherTimer expiryFlashTimer;
     private readonly DispatcherTimer refreshTimer;
     private readonly DispatcherTimer validationFeedbackTimer;
+    private readonly WindowFullScreenController fullScreenController;
     private readonly MainWindowViewModel viewModel;
     private readonly WindowAttentionController? windowAttentionController;
     private int expiryFlashGeneration;
@@ -50,7 +51,9 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget
         this.viewModel = viewModel ?? throw new ArgumentNullException(nameof(viewModel));
         this.DataContext = this.viewModel;
         this.windowAttentionController = new WindowAttentionController(this);
+        this.fullScreenController = new WindowFullScreenController(this);
         this.closeCoordinator = new WindowCloseCoordinator(
+            this.RequestCloseApprovalAsync,
             () => this.viewModel.PendingSettingsSave,
             () => Dispatcher.UIThread.Post(this.RequestFinalClose),
             this.CleanupAfterClose);
@@ -78,6 +81,7 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget
         this.Closed += this.WindowClosed;
         this.Opened += this.WindowOpened;
         this.SizeChanged += this.WindowSizeChanged;
+        this.AddHandler(KeyDownEvent, this.WindowKeyDown, RoutingStrategies.Tunnel);
         this.viewModel.PropertyChanged += this.ViewModelPropertyChanged;
         this.viewModel.WindowAttentionRequested += this.WindowAttentionRequested;
         this.viewModel.ExpiryVisualFeedbackRequested += this.ExpiryVisualFeedbackRequested;
@@ -92,6 +96,12 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget
         if (change.Property == WindowStateProperty)
         {
             this.windowAttentionController?.RecordWindowState(this.WindowState);
+            this.fullScreenController?.RecordWindowState(this.WindowState);
+
+            if (this.FullScreenMenuItem != null)
+            {
+                this.FullScreenMenuItem.IsChecked = this.fullScreenController?.IsFullScreen == true;
+            }
         }
     }
 
@@ -115,6 +125,7 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget
         ApplyCommandScale(this.PauseButton, scale);
         ApplyCommandScale(this.ResumeButton, scale);
         ApplyCommandScale(this.StopButton, scale);
+        ApplyCommandScale(this.RestartButton, scale);
         ApplyCommandScale(this.CancelButton, scale);
     }
 
@@ -218,6 +229,28 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget
         this.Close();
     }
 
+    private void FullScreenMenuItemClick(object? sender, RoutedEventArgs e)
+    {
+        this.ToggleFullScreen();
+    }
+
+    private void ToggleFullScreen()
+    {
+        this.fullScreenController.Toggle();
+        this.FullScreenMenuItem.IsChecked = this.fullScreenController.IsFullScreen;
+    }
+
+    private async Task<bool> RequestCloseApprovalAsync()
+    {
+        if (!this.viewModel.ShouldPromptOnExit)
+        {
+            return true;
+        }
+
+        var dialog = new ExitConfirmationWindow();
+        return await dialog.ShowDialog<bool>(this);
+    }
+
     private void UpdatePresentationClasses()
     {
         this.RootGrid.Classes.Set("timer-active", this.viewModel.State == TimerState.Running);
@@ -277,6 +310,7 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget
         this.Closed -= this.WindowClosed;
         this.Opened -= this.WindowOpened;
         this.SizeChanged -= this.WindowSizeChanged;
+        this.RemoveHandler(KeyDownEvent, this.WindowKeyDown);
         this.viewModel.Dispose();
     }
 
@@ -296,6 +330,39 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget
     private void WindowSizeChanged(object? sender, SizeChangedEventArgs e)
     {
         this.UpdateResponsiveLayout();
+    }
+
+    private void WindowKeyDown(object? sender, KeyEventArgs e)
+    {
+        bool editableTextFocused = this.FocusManager?.GetFocusedElement() is TextBox { IsReadOnly: false };
+        WindowShortcutAction action = WindowShortcutRouter.Resolve(e.Key, e.KeyModifiers, editableTextFocused);
+
+        e.Handled = action switch
+        {
+            WindowShortcutAction.PauseResume => ExecuteCommand(this.viewModel.PauseResumeCommand),
+            WindowShortcutAction.Stop => ExecuteCommand(this.viewModel.ResetCommand),
+            WindowShortcutAction.Restart => ExecuteCommand(this.viewModel.RestartCommand),
+            WindowShortcutAction.Escape => this.viewModel.TryHandleEscape() || this.fullScreenController.TryExit(),
+            WindowShortcutAction.ToggleFullScreen => this.ToggleFullScreenAndReportHandled(),
+            _ => false
+        };
+    }
+
+    private static bool ExecuteCommand(RelayCommand command)
+    {
+        if (!command.CanExecute(null))
+        {
+            return false;
+        }
+
+        command.Execute(null);
+        return true;
+    }
+
+    private bool ToggleFullScreenAndReportHandled()
+    {
+        this.ToggleFullScreen();
+        return true;
     }
 
     private void ViewModelPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)

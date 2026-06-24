@@ -17,7 +17,8 @@ public sealed class JsonFileSettingsStoreTests : IDisposable
             notificationsEnabled: false,
             audioAlertsEnabled: false,
             alwaysOnTop: true,
-            popUpWhenExpired: false);
+            popUpWhenExpired: false,
+            promptOnExit: false);
 
         await store.SaveAsync("app", settings);
         LinuxAppSettings? loaded = await store.LoadAsync<LinuxAppSettings>("app");
@@ -28,6 +29,7 @@ public sealed class JsonFileSettingsStoreTests : IDisposable
         Assert.False(loaded.AudioAlertsEnabled);
         Assert.True(loaded.AlwaysOnTop);
         Assert.False(loaded.PopUpWhenExpired);
+        Assert.False(loaded.PromptOnExit);
     }
 
     [Fact]

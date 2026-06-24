@@ -3,6 +3,7 @@ namespace Hourglass.Linux.Avalonia;
 internal sealed class WindowCloseCoordinator
 {
     private readonly Action cleanup;
+    private readonly Func<Task<bool>> getCloseApproval;
     private readonly Func<Task> getPendingSave;
     private readonly Action requestFinalClose;
     private bool cleanupCompleted;
@@ -11,10 +12,12 @@ internal sealed class WindowCloseCoordinator
     private Task pendingPreparation = Task.CompletedTask;
 
     public WindowCloseCoordinator(
+        Func<Task<bool>> getCloseApproval,
         Func<Task> getPendingSave,
         Action requestFinalClose,
         Action cleanup)
     {
+        this.getCloseApproval = getCloseApproval ?? throw new ArgumentNullException(nameof(getCloseApproval));
         this.getPendingSave = getPendingSave ?? throw new ArgumentNullException(nameof(getPendingSave));
         this.requestFinalClose = requestFinalClose ?? throw new ArgumentNullException(nameof(requestFinalClose));
         this.cleanup = cleanup ?? throw new ArgumentNullException(nameof(cleanup));
@@ -51,6 +54,23 @@ internal sealed class WindowCloseCoordinator
 
     private async Task PrepareCloseAsync()
     {
+        bool approved;
+
+        try
+        {
+            approved = await this.getCloseApproval();
+        }
+        catch (Exception)
+        {
+            approved = false;
+        }
+
+        if (!approved)
+        {
+            this.closePreparationInProgress = false;
+            return;
+        }
+
         try
         {
             await this.getPendingSave();
