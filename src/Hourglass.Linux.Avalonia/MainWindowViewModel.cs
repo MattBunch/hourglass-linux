@@ -12,7 +12,6 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private const string InvalidTimerStatusText = "Enter a valid current timer.";
     private const string SessionInhibitionReason = "Hourglass timer is running";
     private const string NotificationBody = "Timer complete";
-    private const string NotificationTitle = "Hourglass";
     private const string SettingsKey = "app";
 
     private readonly IAudioAlertService audioAlertService;
@@ -615,7 +614,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
         try
         {
-            await this.notificationService.ShowTimerExpiredAsync(NotificationTitle, NotificationBody).ConfigureAwait(false);
+            string notificationTitle = FormatWindowTitle(this.TimerTitle);
+            await this.notificationService.ShowTimerExpiredAsync(notificationTitle, NotificationBody).ConfigureAwait(false);
         }
         catch (Exception)
         {

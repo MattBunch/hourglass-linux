@@ -1085,13 +1085,20 @@ public sealed class MainWindowViewModelTests
         Assert.Equal(1, sessionInhibitor.ReleaseCount);
     }
 
-    [Fact]
-    public void TickTransitionsExpiredTimerShowsNotificationOnce()
+    [Theory]
+    [InlineData(null, "Hourglass")]
+    [InlineData("", "Hourglass")]
+    [InlineData("   ", "Hourglass")]
+    [InlineData("Tea", "Tea")]
+    public void TickTransitionsExpiredTimerShowsNotificationOnceWithExpectedTitle(
+        string? timerTitle,
+        string expectedNotificationTitle)
     {
         var clock = new ManualMonotonicClock();
         var notificationService = new RecordingNotificationService();
         var viewModel = CreateViewModel(clock, notificationService: notificationService);
 
+        viewModel.TimerTitle = timerTitle;
         viewModel.TimerInput = "1 second";
         viewModel.StartCommand.Execute(null);
         clock.Advance(TimeSpan.FromSeconds(2));
@@ -1099,7 +1106,7 @@ public sealed class MainWindowViewModelTests
         viewModel.Tick();
 
         Assert.Equal(1, notificationService.CallCount);
-        Assert.Equal("Hourglass", notificationService.Title);
+        Assert.Equal(expectedNotificationTitle, notificationService.Title);
         Assert.Equal("Timer complete", notificationService.Body);
     }
 
