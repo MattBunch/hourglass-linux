@@ -62,6 +62,10 @@ internal static class Program
     {
         return AppBuilder.Configure<App>()
             .UsePlatformDetect()
+            .With(new X11PlatformOptions
+            {
+                WmClass = "hourglass"
+            })
             .LogToTrace();
     }
 }

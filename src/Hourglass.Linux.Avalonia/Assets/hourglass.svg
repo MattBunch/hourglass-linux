@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <title>Hourglass Linux application icon</title>
+  <desc>Flat grayscale hourglass inside a circular outline, inspired by the upstream Hourglass application's visual language.</desc>
+  <g fill="none" stroke-linejoin="round">
+    <circle cx="128" cy="128" r="104" stroke="#B8B8B8" stroke-width="9"/>
+  </g>
+
+  <rect x="78" y="55" width="100" height="21" rx="5" fill="#55585C"/>
+  <rect x="78" y="180" width="100" height="21" rx="5" fill="#55585C"/>
+
+  <path fill="#777B80" d="M91 72h74l-14 23c-7 11-12 18-15 28v10c3 10 8 17 15 28l14 23H91l14-23c7-11 12-18 15-28v-10c-3-10-8-17-15-28L91 72z"/>
+
+  <path fill="#F5F5F5" d="M104 79h48l-11 18-10 15-3 8-3-8-10-15-11-18z"/>
+  <path fill="#F5F5F5" d="M128 136l3 8 10 15 11 18h-48l11-18 10-15 3-8z"/>
+
+  <path fill="#55585C" d="M106 82h44l-9 15-9 13h-8l-9-13-9-15z"/>
+  <rect x="124" y="108" width="8" height="37" rx="3" fill="#55585C"/>
+  <path fill="#55585C" d="M106 176h44l-22-31-22 31z"/>
+</svg>
