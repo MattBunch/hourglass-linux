@@ -125,6 +125,28 @@ public sealed class LinuxAudioAlertServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task LoopingPlaybackReturnsDisposableHandleThatCancelsPlayback()
+    {
+        string soundPath = this.CreateSoundFile();
+        var playbackStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        int callCount = 0;
+        var service = new LinuxAudioAlertService(soundPath, async (_, cancellationToken) =>
+        {
+            callCount++;
+            playbackStarted.TrySetResult();
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            return 0;
+        });
+
+        IAsyncDisposable? playback = await service.PlayAlertLoopingAsync(AudioAlertSoundIds.NormalBeep);
+
+        Assert.NotNull(playback);
+        await playbackStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await playback.DisposeAsync();
+        Assert.Equal(1, callCount);
+    }
+
+    [Fact]
     public async Task MissingSoundFileLaunchesNoProcess()
     {
         int callCount = 0;

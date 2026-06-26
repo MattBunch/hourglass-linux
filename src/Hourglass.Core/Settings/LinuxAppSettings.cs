@@ -11,7 +11,7 @@ public sealed record LinuxAppSettings
     private readonly string[] recentTimerInputs;
 
     public LinuxAppSettings()
-        : this(null, true, true, false, true, true)
+        : this(null, true, true, false, true, true, false, false, false, false, false, false, false, false)
     {
     }
 
@@ -22,7 +22,15 @@ public sealed record LinuxAppSettings
         bool audioAlertsEnabled = true,
         bool alwaysOnTop = false,
         bool popUpWhenExpired = true,
-        bool promptOnExit = true)
+        bool promptOnExit = true,
+        bool reverseProgressBar = false,
+        bool showTimeElapsed = false,
+        bool loopTimer = false,
+        bool loopSound = false,
+        bool closeWhenExpired = false,
+        bool lockInterface = false,
+        bool doNotKeepComputerAwake = false,
+        bool shutDownWhenExpired = false)
     {
         this.recentTimerInputs = NormalizeRecentTimerInputs(recentTimerInputs, DefaultMaxRecentTimerInputs);
         this.NotificationsEnabled = notificationsEnabled;
@@ -30,6 +38,14 @@ public sealed record LinuxAppSettings
         this.AlwaysOnTop = alwaysOnTop;
         this.PopUpWhenExpired = popUpWhenExpired;
         this.PromptOnExit = promptOnExit;
+        this.ReverseProgressBar = reverseProgressBar;
+        this.ShowTimeElapsed = showTimeElapsed;
+        this.LoopTimer = loopTimer;
+        this.LoopSound = loopSound;
+        this.CloseWhenExpired = closeWhenExpired;
+        this.LockInterface = lockInterface;
+        this.DoNotKeepComputerAwake = doNotKeepComputerAwake;
+        this.ShutDownWhenExpired = shutDownWhenExpired;
     }
 
     public static LinuxAppSettings Default { get; } = new();
@@ -45,6 +61,22 @@ public sealed record LinuxAppSettings
     public bool PopUpWhenExpired { get; init; }
 
     public bool PromptOnExit { get; init; }
+
+    public bool ReverseProgressBar { get; init; }
+
+    public bool ShowTimeElapsed { get; init; }
+
+    public bool LoopTimer { get; init; }
+
+    public bool LoopSound { get; init; }
+
+    public bool CloseWhenExpired { get; init; }
+
+    public bool LockInterface { get; init; }
+
+    public bool DoNotKeepComputerAwake { get; init; }
+
+    public bool ShutDownWhenExpired { get; init; }
 
     public LinuxAppSettings AddRecentTimerInput(string timerInput, int maxRecentTimerInputs = DefaultMaxRecentTimerInputs)
     {
@@ -70,7 +102,15 @@ public sealed record LinuxAppSettings
             this.AudioAlertsEnabled,
             this.AlwaysOnTop,
             this.PopUpWhenExpired,
-            this.PromptOnExit);
+            this.PromptOnExit,
+            this.ReverseProgressBar,
+            this.ShowTimeElapsed,
+            this.LoopTimer,
+            this.LoopSound,
+            this.CloseWhenExpired,
+            this.LockInterface,
+            this.DoNotKeepComputerAwake,
+            this.ShutDownWhenExpired);
     }
 
     public string GetInitialTimerInput(string defaultTimerInput)

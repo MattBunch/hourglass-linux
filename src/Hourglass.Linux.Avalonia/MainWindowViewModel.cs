@@ -19,7 +19,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private readonly INotificationService notificationService;
     private readonly ISessionInhibitor sessionInhibitor;
     private readonly ISettingsStore settingsStore;
+    private readonly ISystemPowerService systemPowerService;
     private readonly Func<DateTime> wallClockNow;
+    private IAsyncDisposable? activeAudioPlayback;
     private IAsyncDisposable? inhibitionLease;
     private Task pendingSettingsSave = Task.CompletedTask;
     private LinuxAppSettings settings = LinuxAppSettings.Default;
@@ -32,7 +34,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             NoOpNotificationService.Instance,
             NoOpSessionInhibitor.Instance,
             NoOpSettingsStore.Instance,
-            NoOpAudioAlertService.Instance)
+            NoOpAudioAlertService.Instance,
+            NoOpSystemPowerService.Instance)
     {
     }
 
@@ -43,7 +46,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             NoOpNotificationService.Instance,
             NoOpSessionInhibitor.Instance,
             NoOpSettingsStore.Instance,
-            NoOpAudioAlertService.Instance)
+            NoOpAudioAlertService.Instance,
+            NoOpSystemPowerService.Instance)
     {
     }
 
@@ -57,7 +61,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             notificationService,
             NoOpSessionInhibitor.Instance,
             NoOpSettingsStore.Instance,
-            NoOpAudioAlertService.Instance)
+            NoOpAudioAlertService.Instance,
+            NoOpSystemPowerService.Instance)
     {
     }
 
@@ -72,7 +77,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             notificationService,
             NoOpSessionInhibitor.Instance,
             settingsStore,
-            NoOpAudioAlertService.Instance)
+            NoOpAudioAlertService.Instance,
+            NoOpSystemPowerService.Instance)
     {
     }
 
@@ -82,7 +88,14 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         INotificationService notificationService,
         ISessionInhibitor sessionInhibitor,
         ISettingsStore settingsStore)
-        : this(engine, wallClockNow, notificationService, sessionInhibitor, settingsStore, NoOpAudioAlertService.Instance)
+        : this(
+            engine,
+            wallClockNow,
+            notificationService,
+            sessionInhibitor,
+            settingsStore,
+            NoOpAudioAlertService.Instance,
+            NoOpSystemPowerService.Instance)
     {
     }
 
@@ -92,7 +105,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         INotificationService notificationService,
         ISessionInhibitor sessionInhibitor,
         ISettingsStore settingsStore,
-        IAudioAlertService audioAlertService)
+        IAudioAlertService audioAlertService,
+        ISystemPowerService systemPowerService)
     {
         this.engine = engine ?? throw new ArgumentNullException(nameof(engine));
         this.wallClockNow = wallClockNow ?? throw new ArgumentNullException(nameof(wallClockNow));
@@ -100,6 +114,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         this.sessionInhibitor = sessionInhibitor ?? throw new ArgumentNullException(nameof(sessionInhibitor));
         this.settingsStore = settingsStore ?? throw new ArgumentNullException(nameof(settingsStore));
         this.audioAlertService = audioAlertService ?? throw new ArgumentNullException(nameof(audioAlertService));
+        this.systemPowerService = systemPowerService ?? throw new ArgumentNullException(nameof(systemPowerService));
         this.engine.Expired += this.OnEngineExpired;
 
         this.StartCommand = new RelayCommand(
@@ -107,19 +122,47 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             () => this.viewState.PresentationMode == TimerPresentationMode.Input);
         this.PauseResumeCommand = new RelayCommand(
             this.PauseOrResume,
-            () => this.engine.State is TimerState.Running or TimerState.Paused);
-        this.ResetCommand = new RelayCommand(this.Reset, () => this.engine.State != TimerState.Stopped);
-        this.RestartCommand = new RelayCommand(this.Restart, () => this.viewState.IsRestartVisible);
+            () => !this.IsTimerModificationLocked && (this.engine.State is TimerState.Running or TimerState.Paused));
+        this.ResetCommand = new RelayCommand(this.Reset, () => !this.IsTimerModificationLocked && this.engine.State != TimerState.Stopped);
+        this.RestartCommand = new RelayCommand(this.Restart, () => !this.IsTimerModificationLocked && this.viewState.IsRestartVisible);
         this.CancelEditCommand = new RelayCommand(
             this.CancelActiveTimerEdit,
-            () => this.viewState.IsCancelVisible);
-        this.ToggleNotificationsCommand = new RelayCommand(this.ToggleNotifications);
-        this.ToggleAudioAlertsCommand = new RelayCommand(this.ToggleAudioAlerts);
-        this.ToggleAlwaysOnTopCommand = new RelayCommand(this.ToggleAlwaysOnTop);
-        this.TogglePopUpWhenExpiredCommand = new RelayCommand(this.TogglePopUpWhenExpired);
-        this.TogglePromptOnExitCommand = new RelayCommand(this.TogglePromptOnExit);
+            () => !this.IsTimerModificationLocked && this.viewState.IsCancelVisible);
+        this.ToggleNotificationsCommand = new RelayCommand(this.ToggleNotifications, () => !this.IsTimerModificationLocked);
+        this.ToggleAudioAlertsCommand = new RelayCommand(this.ToggleAudioAlerts, () => !this.IsTimerModificationLocked);
+        this.ToggleAlwaysOnTopCommand = new RelayCommand(this.ToggleAlwaysOnTop, () => !this.IsTimerModificationLocked);
+        this.TogglePopUpWhenExpiredCommand = new RelayCommand(this.TogglePopUpWhenExpired, () => !this.IsTimerModificationLocked);
+        this.TogglePromptOnExitCommand = new RelayCommand(this.TogglePromptOnExit, () => !this.IsTimerModificationLocked);
+        this.ToggleReverseProgressBarCommand = new RelayCommand(this.ToggleReverseProgressBar, () => !this.IsTimerModificationLocked);
+        this.ToggleShowTimeElapsedCommand = new RelayCommand(this.ToggleShowTimeElapsed, () => !this.IsTimerModificationLocked);
+        this.ToggleLoopTimerCommand = new RelayCommand(this.ToggleLoopTimer, () => !this.IsTimerModificationLocked);
+        this.ToggleLoopSoundCommand = new RelayCommand(this.ToggleLoopSound, () => !this.IsTimerModificationLocked);
+        this.ToggleCloseWhenExpiredCommand = new RelayCommand(this.ToggleCloseWhenExpired, () => !this.IsTimerModificationLocked);
+        this.ToggleLockInterfaceCommand = new RelayCommand(this.ToggleLockInterface, () => !this.IsTimerModificationLocked);
+        this.ToggleDoNotKeepComputerAwakeCommand = new RelayCommand(this.ToggleDoNotKeepComputerAwake, () => !this.IsTimerModificationLocked);
+        this.ToggleShutDownWhenExpiredCommand = new RelayCommand(
+            this.ToggleShutDownWhenExpired,
+            () => !this.IsTimerModificationLocked && this.systemPowerService.IsShutdownSupported);
 
         this.RefreshDisplay();
+    }
+
+    public MainWindowViewModel(
+        CountdownEngine engine,
+        Func<DateTime> wallClockNow,
+        INotificationService notificationService,
+        ISessionInhibitor sessionInhibitor,
+        ISettingsStore settingsStore,
+        IAudioAlertService audioAlertService)
+        : this(
+            engine,
+            wallClockNow,
+            notificationService,
+            sessionInhibitor,
+            settingsStore,
+            audioAlertService,
+            NoOpSystemPowerService.Instance)
+    {
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -129,6 +172,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     public event EventHandler? ExpiryVisualFeedbackRequested;
 
     public event EventHandler? ValidationFeedbackRequested;
+
+    public event EventHandler? CloseRequested;
 
     public RelayCommand StartCommand { get; }
 
@@ -149,6 +194,22 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     public RelayCommand TogglePopUpWhenExpiredCommand { get; }
 
     public RelayCommand TogglePromptOnExitCommand { get; }
+
+    public RelayCommand ToggleReverseProgressBarCommand { get; }
+
+    public RelayCommand ToggleShowTimeElapsedCommand { get; }
+
+    public RelayCommand ToggleLoopTimerCommand { get; }
+
+    public RelayCommand ToggleLoopSoundCommand { get; }
+
+    public RelayCommand ToggleCloseWhenExpiredCommand { get; }
+
+    public RelayCommand ToggleLockInterfaceCommand { get; }
+
+    public RelayCommand ToggleDoNotKeepComputerAwakeCommand { get; }
+
+    public RelayCommand ToggleShutDownWhenExpiredCommand { get; }
 
     public string TimerInput
     {
@@ -232,8 +293,29 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     public bool PromptOnExit => this.settings.PromptOnExit;
 
+    public bool ReverseProgressBar => this.settings.ReverseProgressBar;
+
+    public bool ShowTimeElapsed => this.settings.ShowTimeElapsed;
+
+    public bool LoopTimer => this.settings.LoopTimer;
+
+    public bool LoopSound => this.settings.LoopSound;
+
+    public bool CloseWhenExpired => this.settings.CloseWhenExpired;
+
+    public bool LockInterface => this.settings.LockInterface;
+
+    public bool DoNotKeepComputerAwake => this.settings.DoNotKeepComputerAwake;
+
+    public bool ShutDownWhenExpired => this.settings.ShutDownWhenExpired;
+
+    public bool IsShutdownSupported => this.systemPowerService.IsShutdownSupported;
+
+    public bool IsTimerModificationLocked =>
+        this.settings.LockInterface && (this.engine.State is TimerState.Running or TimerState.Paused);
+
     public bool ShouldPromptOnExit =>
-        this.settings.PromptOnExit && this.engine.State is TimerState.Running or TimerState.Paused;
+        this.settings.PromptOnExit && (this.engine.State is TimerState.Running or TimerState.Paused);
 
     public bool HasValidationError => this.viewState.HasValidationError;
 
@@ -271,6 +353,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     public void Dispose()
     {
         this.engine.Expired -= this.OnEngineExpired;
+        _ = this.StopActiveAudioAsync();
         _ = this.ReleaseInhibitionAsync();
     }
 
@@ -293,6 +376,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     internal bool TryEnterTimerInputMode()
     {
+        if (this.IsTimerModificationLocked)
+        {
+            return false;
+        }
+
         if (this.viewState.PresentationMode == TimerPresentationMode.Input)
         {
             return false;
@@ -346,6 +434,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             return;
         }
 
+        _ = this.StopActiveAudioAsync();
+
         this.ReplaceViewState(this.viewState with
         {
             PresentationMode = TimerPresentationMode.Status,
@@ -376,11 +466,14 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     private void Reset()
     {
+        _ = this.StopActiveAudioAsync();
         this.StopAndShowInput(this.TimerInput);
     }
 
     private void Restart()
     {
+        _ = this.StopActiveAudioAsync();
+
         if (!this.engine.Restart(this.wallClockNow()))
         {
             return;
@@ -415,6 +508,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     private void StopAndShowInput(string timerInput)
     {
+        bool wasLocked = this.settings.LockInterface;
+        _ = this.StopActiveAudioAsync();
         this.engine.Stop();
         this.ReplaceViewState(this.viewState with
         {
@@ -425,6 +520,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         });
         this.RefreshDisplay(TimerViewState.ReadyStatusText);
         _ = this.ReleaseInhibitionAsync();
+
+        if (wasLocked)
+        {
+            this.ReplaceSettings(this.settings with { LockInterface = false }, save: true);
+        }
     }
 
     private void ToggleNotifications()
@@ -436,6 +536,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     private void ToggleAudioAlerts()
     {
+        if (this.settings.AudioAlertsEnabled)
+        {
+            _ = this.StopActiveAudioAsync();
+        }
+
         this.ReplaceSettings(
             this.settings with { AudioAlertsEnabled = !this.settings.AudioAlertsEnabled },
             save: true);
@@ -462,6 +567,103 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             save: true);
     }
 
+    private void ToggleReverseProgressBar()
+    {
+        this.ReplaceSettings(
+            this.settings with { ReverseProgressBar = !this.settings.ReverseProgressBar },
+            save: true);
+        this.RefreshDisplay();
+    }
+
+    private void ToggleShowTimeElapsed()
+    {
+        this.ReplaceSettings(
+            this.settings with { ShowTimeElapsed = !this.settings.ShowTimeElapsed },
+            save: true);
+        this.RefreshDisplay();
+    }
+
+    private void ToggleLoopTimer()
+    {
+        this.ReplaceSettings(
+            this.settings with
+            {
+                LoopTimer = !this.settings.LoopTimer,
+                CloseWhenExpired = this.settings.LoopTimer ? this.settings.CloseWhenExpired : false
+            },
+            save: true);
+    }
+
+    private void ToggleLoopSound()
+    {
+        bool nextLoopSound = !this.settings.LoopSound;
+        if (!nextLoopSound)
+        {
+            _ = this.StopActiveAudioAsync();
+        }
+
+        this.ReplaceSettings(
+            this.settings with
+            {
+                LoopSound = nextLoopSound,
+                CloseWhenExpired = nextLoopSound ? false : this.settings.CloseWhenExpired
+            },
+            save: true);
+    }
+
+    private void ToggleCloseWhenExpired()
+    {
+        bool nextCloseWhenExpired = !this.settings.CloseWhenExpired;
+        this.ReplaceSettings(
+            this.settings with
+            {
+                CloseWhenExpired = nextCloseWhenExpired,
+                LoopTimer = nextCloseWhenExpired ? false : this.settings.LoopTimer,
+                LoopSound = nextCloseWhenExpired ? false : this.settings.LoopSound
+            },
+            save: true);
+    }
+
+    private void ToggleLockInterface()
+    {
+        this.ReplaceSettings(
+            this.settings with { LockInterface = !this.settings.LockInterface },
+            save: true);
+        this.RefreshDisplay();
+    }
+
+    private void ToggleDoNotKeepComputerAwake()
+    {
+        bool nextDoNotKeepComputerAwake = !this.settings.DoNotKeepComputerAwake;
+        this.ReplaceSettings(
+            this.settings with { DoNotKeepComputerAwake = nextDoNotKeepComputerAwake },
+            save: true);
+
+        if (this.engine.State == TimerState.Running)
+        {
+            if (nextDoNotKeepComputerAwake)
+            {
+                _ = this.ReleaseInhibitionAsync();
+            }
+            else
+            {
+                _ = this.AcquireInhibitionAsync();
+            }
+        }
+    }
+
+    private void ToggleShutDownWhenExpired()
+    {
+        if (!this.systemPowerService.IsShutdownSupported)
+        {
+            return;
+        }
+
+        this.ReplaceSettings(
+            this.settings with { ShutDownWhenExpired = !this.settings.ShutDownWhenExpired },
+            save: true);
+    }
+
     private void RefreshDisplay(string? explicitStatus = null, bool? hasValidationError = null)
     {
         this.ReplaceViewState(TimerViewState.FromTimerState(
@@ -471,7 +673,10 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             explicitStatus,
             this.viewState.PresentationMode,
             this.viewState.InputBeforeEdit,
-            hasValidationError ?? this.viewState.HasValidationError));
+            hasValidationError ?? this.viewState.HasValidationError,
+            this.settings.ShowTimeElapsed,
+            this.settings.ReverseProgressBar,
+            this.IsTimerModificationLocked));
         this.OnPropertyChanged(nameof(this.TimerInput));
         this.OnPropertyChanged(nameof(this.RemainingTime));
         this.OnPropertyChanged(nameof(this.StatusText));
@@ -480,6 +685,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         this.OnPropertyChanged(nameof(this.IsRunning));
         this.OnPropertyChanged(nameof(this.State));
         this.OnPropertyChanged(nameof(this.ShouldPromptOnExit));
+        this.OnPropertyChanged(nameof(this.IsTimerModificationLocked));
         this.OnPropertyChanged(nameof(this.ProgressPercent));
         this.OnPropertyChanged(nameof(this.IsTimerInputVisible));
         this.OnPropertyChanged(nameof(this.IsRemainingTimeVisible));
@@ -497,6 +703,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         this.ResetCommand.RaiseCanExecuteChanged();
         this.RestartCommand.RaiseCanExecuteChanged();
         this.CancelEditCommand.RaiseCanExecuteChanged();
+        this.RaiseSettingsCommandCanExecuteChanged();
     }
 
     private static string FormatWindowTitle(string? timerTitle)
@@ -548,10 +755,26 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             this.OnPropertyChanged(nameof(this.ShouldPromptOnExit));
         }
 
+        PublishSettingsChange(previous.ReverseProgressBar, next.ReverseProgressBar, nameof(this.ReverseProgressBar));
+        PublishSettingsChange(previous.ShowTimeElapsed, next.ShowTimeElapsed, nameof(this.ShowTimeElapsed));
+        PublishSettingsChange(previous.LoopTimer, next.LoopTimer, nameof(this.LoopTimer));
+        PublishSettingsChange(previous.LoopSound, next.LoopSound, nameof(this.LoopSound));
+        PublishSettingsChange(previous.CloseWhenExpired, next.CloseWhenExpired, nameof(this.CloseWhenExpired));
+        PublishSettingsChange(previous.DoNotKeepComputerAwake, next.DoNotKeepComputerAwake, nameof(this.DoNotKeepComputerAwake));
+        PublishSettingsChange(previous.ShutDownWhenExpired, next.ShutDownWhenExpired, nameof(this.ShutDownWhenExpired));
+
+        if (previous.LockInterface != next.LockInterface)
+        {
+            this.OnPropertyChanged(nameof(this.LockInterface));
+            this.OnPropertyChanged(nameof(this.IsTimerModificationLocked));
+        }
+
         if (save)
         {
             this.QueueSettingsSave(next);
         }
+
+        this.RaiseSettingsCommandCanExecuteChanged();
     }
 
     private async void OnEngineExpired(object? sender, EventArgs e)
@@ -561,6 +784,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     private async Task HandleEngineExpiredAsync()
     {
+        bool loopTimer = this.settings.LoopTimer && this.engine.SupportsRestart;
+        bool closeWhenExpired = this.settings.CloseWhenExpired && !loopTimer && !this.settings.LoopSound;
         this.ReplaceViewState(this.viewState with
         {
             PresentationMode = TimerPresentationMode.Status,
@@ -568,9 +793,15 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             HasValidationError = false
         });
         this.RefreshDisplay(TimerViewState.TimerCompleteStatusText, hasValidationError: false);
+
+        if (this.settings.LockInterface)
+        {
+            this.ReplaceSettings(this.settings with { LockInterface = false }, save: true);
+        }
+
         PublishSafely(this.ExpiryVisualFeedbackRequested);
 
-        if (this.settings.PopUpWhenExpired)
+        if (this.settings.PopUpWhenExpired && !closeWhenExpired)
         {
             PublishSafely(this.WindowAttentionRequested);
         }
@@ -578,6 +809,22 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         await this.ReleaseInhibitionAsync().ConfigureAwait(false);
         await this.NotifyTimerExpiredAsync().ConfigureAwait(false);
         await this.PlayTimerExpiredAudioAsync().ConfigureAwait(false);
+
+        if (this.settings.ShutDownWhenExpired && this.systemPowerService.IsShutdownSupported)
+        {
+            await this.RequestShutdownAsync().ConfigureAwait(false);
+        }
+
+        if (loopTimer)
+        {
+            this.RestartLoopingTimer();
+            return;
+        }
+
+        if (closeWhenExpired)
+        {
+            PublishSafely(this.CloseRequested);
+        }
     }
 
     private void ShowValidationError()
@@ -626,21 +873,77 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     {
         if (!this.settings.AudioAlertsEnabled)
         {
+            await this.StopActiveAudioAsync().ConfigureAwait(false);
             return;
         }
 
         try
         {
-            await this.audioAlertService.PlayAlertAsync(AudioAlertSoundIds.NormalBeep).ConfigureAwait(false);
+            await this.StopActiveAudioAsync().ConfigureAwait(false);
+            this.activeAudioPlayback = this.settings.LoopSound
+                ? await this.audioAlertService.PlayAlertLoopingAsync(AudioAlertSoundIds.NormalBeep).ConfigureAwait(false)
+                : await this.audioAlertService.PlayAlertAsync(AudioAlertSoundIds.NormalBeep).ConfigureAwait(false);
         }
         catch (Exception)
         {
         }
     }
 
+    private async Task StopActiveAudioAsync()
+    {
+        IAsyncDisposable? playback = this.activeAudioPlayback;
+        this.activeAudioPlayback = null;
+
+        if (playback == null)
+        {
+            return;
+        }
+
+        try
+        {
+            await playback.DisposeAsync().ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+        }
+    }
+
+    private async Task RequestShutdownAsync()
+    {
+        try
+        {
+            await this.systemPowerService.RequestShutdownAsync().ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+        }
+    }
+
+    private void RestartLoopingTimer()
+    {
+        if (!this.engine.Restart(this.wallClockNow()))
+        {
+            return;
+        }
+
+        this.ReplaceViewState(this.viewState with
+        {
+            PresentationMode = TimerPresentationMode.Status,
+            InputBeforeEdit = null,
+            HasValidationError = false
+        });
+        this.RefreshDisplay(TimerViewState.RunningStatusText, hasValidationError: false);
+        _ = this.AcquireInhibitionAsync();
+    }
+
     private async Task AcquireInhibitionAsync()
     {
         await this.ReleaseInhibitionAsync().ConfigureAwait(false);
+
+        if (this.settings.DoNotKeepComputerAwake)
+        {
+            return;
+        }
 
         try
         {
@@ -697,6 +1000,31 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
     }
 
+    private void RaiseSettingsCommandCanExecuteChanged()
+    {
+        this.ToggleNotificationsCommand.RaiseCanExecuteChanged();
+        this.ToggleAudioAlertsCommand.RaiseCanExecuteChanged();
+        this.ToggleAlwaysOnTopCommand.RaiseCanExecuteChanged();
+        this.TogglePopUpWhenExpiredCommand.RaiseCanExecuteChanged();
+        this.TogglePromptOnExitCommand.RaiseCanExecuteChanged();
+        this.ToggleReverseProgressBarCommand.RaiseCanExecuteChanged();
+        this.ToggleShowTimeElapsedCommand.RaiseCanExecuteChanged();
+        this.ToggleLoopTimerCommand.RaiseCanExecuteChanged();
+        this.ToggleLoopSoundCommand.RaiseCanExecuteChanged();
+        this.ToggleCloseWhenExpiredCommand.RaiseCanExecuteChanged();
+        this.ToggleLockInterfaceCommand.RaiseCanExecuteChanged();
+        this.ToggleDoNotKeepComputerAwakeCommand.RaiseCanExecuteChanged();
+        this.ToggleShutDownWhenExpiredCommand.RaiseCanExecuteChanged();
+    }
+
+    private void PublishSettingsChange(bool previous, bool next, string propertyName)
+    {
+        if (previous != next)
+        {
+            this.OnPropertyChanged(propertyName);
+        }
+    }
+
     private sealed class NoOpNotificationService : INotificationService
     {
         public static NoOpNotificationService Instance { get; } = new();
@@ -711,7 +1039,24 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     {
         public static NoOpAudioAlertService Instance { get; } = new();
 
-        public Task PlayAlertAsync(string soundId, CancellationToken cancellationToken = default)
+        public Task<IAsyncDisposable?> PlayAlertAsync(string soundId, CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult<IAsyncDisposable?>(null);
+        }
+
+        public Task<IAsyncDisposable?> PlayAlertLoopingAsync(string soundId, CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult<IAsyncDisposable?>(null);
+        }
+    }
+
+    private sealed class NoOpSystemPowerService : ISystemPowerService
+    {
+        public static NoOpSystemPowerService Instance { get; } = new();
+
+        public bool IsShutdownSupported => false;
+
+        public Task RequestShutdownAsync(CancellationToken cancellationToken = default)
         {
             return Task.CompletedTask;
         }

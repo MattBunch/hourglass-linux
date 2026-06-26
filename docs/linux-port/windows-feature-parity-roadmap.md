@@ -262,6 +262,8 @@ The current single-window application prompts once for a running or paused timer
 
 ## Milestone 3: Expanded Timer Options
 
+**Status:** Implemented on Linux.
+
 The existing Linux settings record should evolve carefully. Avoid turning `LinuxAppSettings` into a mutable collection of UI concerns. Prefer immutable records with explicit defaults and backward-compatible JSON deserialization.
 
 ### 3.1 Reverse Progress Bar
@@ -340,6 +342,8 @@ The current audio abstraction is fire-and-forget. Looping requires controllable 
 - Preserve the current best-effort systemd-inhibit backend and future portal backend compatibility.
 
 ### 3.8 Automatic Shutdown on Expiry
+
+**Linux status:** Wired through an unsupported no-op `ISystemPowerService`; the context-menu option remains disabled until a safe Linux backend with capability detection, confirmation, and cancellation is implemented.
 
 **Priority:** P3  
 **Complexity:** Extra large

@@ -21,6 +21,7 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
     private const double ValidationFeedbackDurationMilliseconds = 650;
 
     private readonly WindowCloseCoordinator closeCoordinator;
+    private readonly DispatcherTimer completionCloseTimer;
     private readonly DispatcherTimer expiryFlashTimer;
     private readonly DispatcherTimer refreshTimer;
     private readonly DispatcherTimer validationFeedbackTimer;
@@ -40,7 +41,8 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
             new NotifySendNotificationService(),
             new SystemdSessionInhibitor(),
             new JsonFileSettingsStore(new XdgSettingsPathService()),
-            new LinuxAudioAlertService(NormalBeepPath)))
+            new LinuxAudioAlertService(NormalBeepPath),
+            new UnsupportedSystemPowerService()))
     {
     }
 
@@ -71,6 +73,12 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
         };
         this.expiryFlashTimer.Tick += this.ExpiryFlashTimerTick;
 
+        this.completionCloseTimer = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(ExpiryFlashDurationMilliseconds)
+        };
+        this.completionCloseTimer.Tick += this.CompletionCloseTimerTick;
+
         this.validationFeedbackTimer = new DispatcherTimer
         {
             Interval = TimeSpan.FromMilliseconds(ValidationFeedbackDurationMilliseconds)
@@ -86,6 +94,7 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
         this.viewModel.WindowAttentionRequested += this.WindowAttentionRequested;
         this.viewModel.ExpiryVisualFeedbackRequested += this.ExpiryVisualFeedbackRequested;
         this.viewModel.ValidationFeedbackRequested += this.ValidationFeedbackRequested;
+        this.viewModel.CloseRequested += this.CloseRequested;
         this.UpdatePresentationClasses();
     }
 
@@ -255,6 +264,7 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
     {
         this.RootGrid.Classes.Set("timer-active", this.viewModel.State == TimerState.Running);
         this.RootGrid.Classes.Set("timer-expired", this.viewModel.HasCompletionEmphasis);
+        this.RootGrid.Classes.Set("timer-locked", this.viewModel.IsTimerModificationLocked);
         this.RootGrid.Classes.Set("content-active", this.pointerWithinContent || this.focusWithinContent);
         this.TimerInputTextBox.Classes.Set("validation-error", this.viewModel.HasValidationError);
 
@@ -296,6 +306,7 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
         this.validationFeedbackGeneration++;
         this.refreshTimer.Stop();
         this.expiryFlashTimer.Stop();
+        this.completionCloseTimer.Stop();
         this.validationFeedbackTimer.Stop();
         this.RootGrid.Classes.Set("timer-expiry-flash", false);
         this.TimerInputTextBox.Classes.Set("validation-feedback", false);
@@ -303,8 +314,10 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
         this.viewModel.WindowAttentionRequested -= this.WindowAttentionRequested;
         this.viewModel.ExpiryVisualFeedbackRequested -= this.ExpiryVisualFeedbackRequested;
         this.viewModel.ValidationFeedbackRequested -= this.ValidationFeedbackRequested;
+        this.viewModel.CloseRequested -= this.CloseRequested;
         this.refreshTimer.Tick -= this.RefreshTimerTick;
         this.expiryFlashTimer.Tick -= this.ExpiryFlashTimerTick;
+        this.completionCloseTimer.Tick -= this.CompletionCloseTimerTick;
         this.validationFeedbackTimer.Tick -= this.ValidationFeedbackTimerTick;
         this.Closing -= this.WindowClosing;
         this.Closed -= this.WindowClosed;
@@ -369,7 +382,8 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
     {
         if (e.PropertyName is nameof(MainWindowViewModel.State)
             or nameof(MainWindowViewModel.HasCompletionEmphasis)
-            or nameof(MainWindowViewModel.HasValidationError))
+            or nameof(MainWindowViewModel.HasValidationError)
+            or nameof(MainWindowViewModel.IsTimerModificationLocked))
         {
             this.UpdatePresentationClasses();
         }
@@ -409,6 +423,20 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
             this.TimerInputTextBox.Focus();
             this.TimerInputTextBox.SelectAll();
             this.RestartValidationFeedback();
+        });
+    }
+
+    private void CloseRequested(object? sender, EventArgs e)
+    {
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (this.isClosed)
+            {
+                return;
+            }
+
+            this.completionCloseTimer.Stop();
+            this.completionCloseTimer.Start();
         });
     }
 
@@ -470,6 +498,12 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
     {
         this.validationFeedbackTimer.Stop();
         this.TimerInputTextBox.Classes.Set("validation-feedback", false);
+    }
+
+    private void CompletionCloseTimerTick(object? sender, EventArgs e)
+    {
+        this.completionCloseTimer.Stop();
+        this.Close();
     }
 
     private static bool ShouldAnimateVisualFeedback()
