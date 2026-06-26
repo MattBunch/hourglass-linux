@@ -477,6 +477,7 @@ public sealed class MainWindowViewModelTests
         Assert.Equal("{Binding StatusText, Mode=OneWay}", completionInput.Attribute("Text")?.Value);
         Assert.Equal("True", completionInput.Attribute("IsReadOnly")?.Value);
         Assert.Equal("{Binding IsCompletionTextVisible}", completionInput.Attribute("IsVisible")?.Value);
+        Assert.Equal("Arrow", completionInput.Attribute("Cursor")?.Value);
         Assert.Equal("CompletionTextBoxGotFocus", completionInput.Attribute("GotFocus")?.Value);
         Assert.Equal("CompletionTextBoxPointerPressed", completionInput.Attribute("PointerPressed")?.Value);
     }
@@ -492,6 +493,7 @@ public sealed class MainWindowViewModelTests
         Assert.Equal("timerInput", remainingTime.Attribute("Classes")?.Value);
         Assert.Equal("{Binding RemainingTime, Mode=OneWay}", remainingTime.Attribute("Text")?.Value);
         Assert.Equal("True", remainingTime.Attribute("IsReadOnly")?.Value);
+        Assert.Equal("Arrow", remainingTime.Attribute("Cursor")?.Value);
         Assert.Equal("RemainingTimeTextBoxGotFocus", remainingTime.Attribute("GotFocus")?.Value);
         Assert.Equal("RemainingTimeTextBoxPointerPressed", remainingTime.Attribute("PointerPressed")?.Value);
     }
