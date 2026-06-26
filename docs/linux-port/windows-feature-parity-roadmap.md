@@ -51,6 +51,8 @@ The order deliberately delivers visible single-window improvements before introd
 
 ## Milestone 1: Completion Attention and Window Recovery
 
+**Status:** Implemented on Linux.
+
 ### 1.1 Pop Up When Expired
 
 **Priority:** P0  
