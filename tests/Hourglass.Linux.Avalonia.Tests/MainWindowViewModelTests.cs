@@ -477,6 +477,7 @@ public sealed class MainWindowViewModelTests
         Assert.Equal("{Binding StatusText, Mode=OneWay}", completionInput.Attribute("Text")?.Value);
         Assert.Equal("True", completionInput.Attribute("IsReadOnly")?.Value);
         Assert.Equal("{Binding IsCompletionTextVisible}", completionInput.Attribute("IsVisible")?.Value);
+        Assert.Equal("Arrow", completionInput.Attribute("Cursor")?.Value);
         Assert.Equal("CompletionTextBoxGotFocus", completionInput.Attribute("GotFocus")?.Value);
         Assert.Equal("CompletionTextBoxPointerPressed", completionInput.Attribute("PointerPressed")?.Value);
     }
@@ -492,6 +493,7 @@ public sealed class MainWindowViewModelTests
         Assert.Equal("timerInput", remainingTime.Attribute("Classes")?.Value);
         Assert.Equal("{Binding RemainingTime, Mode=OneWay}", remainingTime.Attribute("Text")?.Value);
         Assert.Equal("True", remainingTime.Attribute("IsReadOnly")?.Value);
+        Assert.Equal("Arrow", remainingTime.Attribute("Cursor")?.Value);
         Assert.Equal("RemainingTimeTextBoxGotFocus", remainingTime.Attribute("GotFocus")?.Value);
         Assert.Equal("RemainingTimeTextBoxPointerPressed", remainingTime.Attribute("PointerPressed")?.Value);
     }
@@ -828,6 +830,35 @@ public sealed class MainWindowViewModelTests
         Assert.Equal("CheckBox", menuItems["Prompt on exit"].Attribute("ToggleType")?.Value);
         Assert.Equal("{Binding PromptOnExit, Mode=OneWay}", menuItems["Prompt on exit"].Attribute("IsChecked")?.Value);
         Assert.Equal("{Binding TogglePromptOnExitCommand}", menuItems["Prompt on exit"].Attribute("Command")?.Value);
+        Dictionary<string, XElement> advancedItems = menuItems["Advanced options"]
+            .Elements(avalonia + "MenuItem")
+            .Where(element => element.Attribute("Header") != null)
+            .ToDictionary(element => element.Attribute("Header")!.Value, StringComparer.Ordinal);
+        Assert.Equal("CheckBox", advancedItems["Reverse progress bar"].Attribute("ToggleType")?.Value);
+        Assert.Equal("{Binding ReverseProgressBar, Mode=OneWay}", advancedItems["Reverse progress bar"].Attribute("IsChecked")?.Value);
+        Assert.Equal("{Binding ToggleReverseProgressBarCommand}", advancedItems["Reverse progress bar"].Attribute("Command")?.Value);
+        Assert.Equal("CheckBox", advancedItems["Show time elapsed"].Attribute("ToggleType")?.Value);
+        Assert.Equal("{Binding ShowTimeElapsed, Mode=OneWay}", advancedItems["Show time elapsed"].Attribute("IsChecked")?.Value);
+        Assert.Equal("{Binding ToggleShowTimeElapsedCommand}", advancedItems["Show time elapsed"].Attribute("Command")?.Value);
+        Assert.Equal("CheckBox", advancedItems["Loop timer"].Attribute("ToggleType")?.Value);
+        Assert.Equal("{Binding LoopTimer, Mode=OneWay}", advancedItems["Loop timer"].Attribute("IsChecked")?.Value);
+        Assert.Equal("{Binding ToggleLoopTimerCommand}", advancedItems["Loop timer"].Attribute("Command")?.Value);
+        Assert.Equal("CheckBox", advancedItems["Loop sound"].Attribute("ToggleType")?.Value);
+        Assert.Equal("{Binding LoopSound, Mode=OneWay}", advancedItems["Loop sound"].Attribute("IsChecked")?.Value);
+        Assert.Equal("{Binding ToggleLoopSoundCommand}", advancedItems["Loop sound"].Attribute("Command")?.Value);
+        Assert.Equal("CheckBox", advancedItems["Close when expired"].Attribute("ToggleType")?.Value);
+        Assert.Equal("{Binding CloseWhenExpired, Mode=OneWay}", advancedItems["Close when expired"].Attribute("IsChecked")?.Value);
+        Assert.Equal("{Binding ToggleCloseWhenExpiredCommand}", advancedItems["Close when expired"].Attribute("Command")?.Value);
+        Assert.Equal("CheckBox", advancedItems["Lock interface"].Attribute("ToggleType")?.Value);
+        Assert.Equal("{Binding LockInterface, Mode=OneWay}", advancedItems["Lock interface"].Attribute("IsChecked")?.Value);
+        Assert.Equal("{Binding ToggleLockInterfaceCommand}", advancedItems["Lock interface"].Attribute("Command")?.Value);
+        Assert.Equal("CheckBox", advancedItems["Do not keep computer awake"].Attribute("ToggleType")?.Value);
+        Assert.Equal("{Binding DoNotKeepComputerAwake, Mode=OneWay}", advancedItems["Do not keep computer awake"].Attribute("IsChecked")?.Value);
+        Assert.Equal("{Binding ToggleDoNotKeepComputerAwakeCommand}", advancedItems["Do not keep computer awake"].Attribute("Command")?.Value);
+        Assert.Equal("CheckBox", advancedItems["Shut down when expired"].Attribute("ToggleType")?.Value);
+        Assert.Equal("{Binding ShutDownWhenExpired, Mode=OneWay}", advancedItems["Shut down when expired"].Attribute("IsChecked")?.Value);
+        Assert.Equal("{Binding IsShutdownSupported}", advancedItems["Shut down when expired"].Attribute("IsEnabled")?.Value);
+        Assert.Equal("{Binding ToggleShutDownWhenExpiredCommand}", advancedItems["Shut down when expired"].Attribute("Command")?.Value);
         Assert.Equal("CheckBox", menuItems["Full screen"].Attribute("ToggleType")?.Value);
         Assert.Equal("FullScreenMenuItemClick", menuItems["Full screen"].Attribute("Click")?.Value);
         Assert.Equal("ExitMenuItemClick", menuItems["Exit"].Attribute("Click")?.Value);
@@ -888,6 +919,7 @@ public sealed class MainWindowViewModelTests
             .ToArray();
 
         Assert.Contains("Grid.timer-expired Border#CompletionEmphasisBorder", selectors);
+        Assert.Contains("Grid.timer-locked Border#CompletionEmphasisBorder", selectors);
         Assert.Contains("Grid.timer-expiry-flash Border#ExpiryFlashLayer", selectors);
         Assert.Contains("TextBox.timerInput.validation-error", selectors);
         Assert.Contains("TextBox.timerInput.validation-feedback", selectors);
@@ -909,6 +941,7 @@ public sealed class MainWindowViewModelTests
 
         string codeBehind = File.ReadAllText(FindRepositoryFile("src/Hourglass.Linux.Avalonia/MainWindow.axaml.cs"));
         Assert.Contains("Classes.Set(\"timer-expired\", this.viewModel.HasCompletionEmphasis)", codeBehind);
+        Assert.Contains("Classes.Set(\"timer-locked\", this.viewModel.IsTimerModificationLocked)", codeBehind);
         Assert.Contains("Classes.Set(\"validation-error\", this.viewModel.HasValidationError)", codeBehind);
     }
 
@@ -1003,18 +1036,18 @@ public sealed class MainWindowViewModelTests
         viewModel.TimerInput = "10 seconds";
         viewModel.StartCommand.Execute(null);
 
-        Assert.Equal(0, viewModel.ProgressPercent);
+        Assert.Equal(100, viewModel.ProgressPercent);
 
         clock.Advance(TimeSpan.FromSeconds(2.5));
         viewModel.Tick();
 
-        Assert.Equal(25, viewModel.ProgressPercent);
+        Assert.Equal(75, viewModel.ProgressPercent);
 
         viewModel.PauseResumeCommand.Execute(null);
         clock.Advance(TimeSpan.FromSeconds(4));
         viewModel.Tick();
 
-        Assert.Equal(25, viewModel.ProgressPercent);
+        Assert.Equal(75, viewModel.ProgressPercent);
 
         viewModel.PauseResumeCommand.Execute(null);
         clock.Advance(TimeSpan.FromSeconds(2.5));
@@ -1026,12 +1059,12 @@ public sealed class MainWindowViewModelTests
         viewModel.Tick();
 
         Assert.Equal(TimerState.Expired, viewModel.State);
-        Assert.Equal(100, viewModel.ProgressPercent);
+        Assert.Equal(0, viewModel.ProgressPercent);
 
         clock.Advance(TimeSpan.FromSeconds(5));
         viewModel.Tick();
 
-        Assert.Equal(100, viewModel.ProgressPercent);
+        Assert.Equal(0, viewModel.ProgressPercent);
 
         viewModel.ResetCommand.Execute(null);
 
@@ -1298,7 +1331,15 @@ public sealed class MainWindowViewModelTests
                 audioAlertsEnabled: false,
                 alwaysOnTop: true,
                 popUpWhenExpired: false,
-                promptOnExit: false)
+                promptOnExit: false,
+                reverseProgressBar: true,
+                showTimeElapsed: true,
+                loopTimer: true,
+                loopSound: true,
+                closeWhenExpired: true,
+                lockInterface: true,
+                doNotKeepComputerAwake: true,
+                shutDownWhenExpired: false)
         };
         var viewModel = CreateViewModel(new ManualMonotonicClock(), settingsStore: settingsStore);
 
@@ -1309,6 +1350,14 @@ public sealed class MainWindowViewModelTests
         Assert.True(viewModel.AlwaysOnTop);
         Assert.False(viewModel.PopUpWhenExpired);
         Assert.False(viewModel.PromptOnExit);
+        Assert.True(viewModel.ReverseProgressBar);
+        Assert.True(viewModel.ShowTimeElapsed);
+        Assert.True(viewModel.LoopTimer);
+        Assert.True(viewModel.LoopSound);
+        Assert.True(viewModel.CloseWhenExpired);
+        Assert.True(viewModel.LockInterface);
+        Assert.True(viewModel.DoNotKeepComputerAwake);
+        Assert.False(viewModel.ShutDownWhenExpired);
     }
 
     [Fact]
@@ -1403,6 +1452,154 @@ public sealed class MainWindowViewModelTests
         viewModel.TogglePromptOnExitCommand.Execute(null);
         await viewModel.PendingSettingsSave;
         Assert.False(viewModel.ShouldPromptOnExit);
+    }
+
+    [Fact]
+    public async Task Milestone3OptionTogglesSaveSettingsAndEnforceMutualExclusion()
+    {
+        var settingsStore = new RecordingSettingsStore();
+        var viewModel = CreateViewModel(new ManualMonotonicClock(), settingsStore: settingsStore);
+
+        viewModel.ToggleReverseProgressBarCommand.Execute(null);
+        viewModel.ToggleShowTimeElapsedCommand.Execute(null);
+        viewModel.ToggleLoopTimerCommand.Execute(null);
+        viewModel.ToggleCloseWhenExpiredCommand.Execute(null);
+        viewModel.ToggleLoopSoundCommand.Execute(null);
+        viewModel.ToggleDoNotKeepComputerAwakeCommand.Execute(null);
+        await viewModel.PendingSettingsSave;
+
+        Assert.True(viewModel.ReverseProgressBar);
+        Assert.True(viewModel.ShowTimeElapsed);
+        Assert.False(viewModel.LoopTimer);
+        Assert.False(viewModel.CloseWhenExpired);
+        Assert.True(viewModel.LoopSound);
+        Assert.True(viewModel.DoNotKeepComputerAwake);
+        Assert.NotNull(settingsStore.SavedSettings);
+        Assert.True(settingsStore.SavedSettings.ReverseProgressBar);
+        Assert.True(settingsStore.SavedSettings.ShowTimeElapsed);
+        Assert.False(settingsStore.SavedSettings.LoopTimer);
+        Assert.False(settingsStore.SavedSettings.CloseWhenExpired);
+        Assert.True(settingsStore.SavedSettings.LoopSound);
+        Assert.True(settingsStore.SavedSettings.DoNotKeepComputerAwake);
+    }
+
+    [Fact]
+    public void LoopTimerRestartsDurationTimersAndEmitsOneExpiryCycle()
+    {
+        var clock = new ManualMonotonicClock();
+        var notificationService = new RecordingNotificationService();
+        var audioAlertService = new RecordingAudioAlertService();
+        var viewModel = CreateViewModel(clock, notificationService: notificationService, audioAlertService: audioAlertService);
+        int visualRequests = 0;
+        viewModel.ExpiryVisualFeedbackRequested += (_, _) => visualRequests++;
+        viewModel.ToggleLoopTimerCommand.Execute(null);
+        viewModel.TimerInput = "1 second";
+        viewModel.StartCommand.Execute(null);
+
+        clock.Advance(TimeSpan.FromSeconds(1));
+        viewModel.Tick();
+
+        Assert.Equal(TimerState.Running, viewModel.State);
+        Assert.Equal("Running", viewModel.StatusText);
+        Assert.Equal(1, visualRequests);
+        Assert.Equal(1, notificationService.CallCount);
+        Assert.Equal(1, audioAlertService.CallCount);
+        Assert.Equal("00:00:01", viewModel.RemainingTime);
+    }
+
+    [Fact]
+    public void LoopSoundUsesStoppablePlaybackAndStopsOnDismissal()
+    {
+        var clock = new ManualMonotonicClock();
+        var audioAlertService = new RecordingAudioAlertService();
+        var viewModel = CreateViewModel(clock, audioAlertService: audioAlertService);
+        viewModel.ToggleLoopSoundCommand.Execute(null);
+        viewModel.TimerInput = "1 second";
+        viewModel.StartCommand.Execute(null);
+
+        clock.Advance(TimeSpan.FromSeconds(1));
+        viewModel.Tick();
+        bool dismissed = viewModel.TryHandleEscape();
+
+        Assert.True(dismissed);
+        Assert.Equal(1, audioAlertService.LoopingCallCount);
+        Assert.Equal(1, audioAlertService.StopCount);
+        Assert.Equal(TimerState.Stopped, viewModel.State);
+    }
+
+    [Fact]
+    public void CloseWhenExpiredRequestsCloseAndSuppressesAttention()
+    {
+        var clock = new ManualMonotonicClock();
+        var viewModel = CreateViewModel(clock);
+        int closeRequests = 0;
+        int attentionRequests = 0;
+        viewModel.CloseRequested += (_, _) => closeRequests++;
+        viewModel.WindowAttentionRequested += (_, _) => attentionRequests++;
+        viewModel.ToggleCloseWhenExpiredCommand.Execute(null);
+        viewModel.TimerInput = "1 second";
+        viewModel.StartCommand.Execute(null);
+
+        clock.Advance(TimeSpan.FromSeconds(1));
+        viewModel.Tick();
+
+        Assert.Equal(1, closeRequests);
+        Assert.Equal(0, attentionRequests);
+    }
+
+    [Fact]
+    public void LockInterfaceBlocksTimerMutationUntilExpiry()
+    {
+        var clock = new ManualMonotonicClock();
+        var viewModel = CreateViewModel(clock);
+        viewModel.ToggleLockInterfaceCommand.Execute(null);
+        viewModel.TimerInput = "2 seconds";
+        viewModel.StartCommand.Execute(null);
+
+        Assert.True(viewModel.IsTimerModificationLocked);
+        Assert.False(viewModel.PauseResumeCommand.CanExecute(null));
+        Assert.False(viewModel.ResetCommand.CanExecute(null));
+        Assert.False(viewModel.RestartCommand.CanExecute(null));
+        Assert.False(viewModel.TryEnterTimerInputMode());
+
+        clock.Advance(TimeSpan.FromSeconds(2));
+        viewModel.Tick();
+
+        Assert.False(viewModel.IsTimerModificationLocked);
+        Assert.True(viewModel.ResetCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public void KeepAwakePreferenceAppliesImmediatelyToRunningTimer()
+    {
+        var clock = new ManualMonotonicClock();
+        var sessionInhibitor = new RecordingSessionInhibitor();
+        var viewModel = CreateViewModel(clock, sessionInhibitor: sessionInhibitor);
+        viewModel.TimerInput = "1 minute";
+        viewModel.StartCommand.Execute(null);
+
+        viewModel.ToggleDoNotKeepComputerAwakeCommand.Execute(null);
+        viewModel.ToggleDoNotKeepComputerAwakeCommand.Execute(null);
+
+        Assert.Equal(2, sessionInhibitor.AcquireCount);
+        Assert.Equal(1, sessionInhibitor.ReleaseCount);
+    }
+
+    [Fact]
+    public void UnsupportedShutdownCannotBeEnabledOrInvoked()
+    {
+        var clock = new ManualMonotonicClock();
+        var powerService = new RecordingSystemPowerService { IsShutdownSupported = false };
+        var viewModel = CreateViewModel(clock, systemPowerService: powerService);
+
+        viewModel.ToggleShutDownWhenExpiredCommand.Execute(null);
+        viewModel.TimerInput = "1 second";
+        viewModel.StartCommand.Execute(null);
+        clock.Advance(TimeSpan.FromSeconds(1));
+        viewModel.Tick();
+
+        Assert.False(viewModel.ShutDownWhenExpired);
+        Assert.Equal(0, powerService.ShutdownRequestCount);
     }
 
     [Fact]
@@ -1568,9 +1765,9 @@ public sealed class MainWindowViewModelTests
 
     [Theory]
     [InlineData(TimerState.Stopped, "Ready", "Pause", true, false, "00:00:00", 0, true, false, false, true, false, false, false)]
-    [InlineData(TimerState.Running, "Running", "Pause", false, true, "00:01:05", 0, false, true, false, false, true, false, true)]
-    [InlineData(TimerState.Paused, "Paused", "Resume", false, false, "00:01:05", 0, false, true, false, false, false, true, true)]
-    [InlineData(TimerState.Expired, "Timer complete", "Pause", false, false, "00:00:00", 100, false, false, true, false, false, false, true)]
+    [InlineData(TimerState.Running, "Running", "Pause", false, true, "00:01:05", 100, false, true, false, false, true, false, true)]
+    [InlineData(TimerState.Paused, "Paused", "Resume", false, false, "00:01:05", 100, false, true, false, false, false, true, true)]
+    [InlineData(TimerState.Expired, "Timer complete", "Pause", false, false, "00:00:00", 0, false, false, true, false, false, false, true)]
     public void TimerViewStateProjectsDomainState(
         TimerState state,
         string statusText,
@@ -1624,7 +1821,7 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
-    public void TimerViewStateCalculatesRunningProgress()
+    public void TimerViewStateCalculatesRemainingProgressByDefault()
     {
         CountdownState running = CountdownTransitions.StartDuration(
             CountdownState.Stopped,
@@ -1636,6 +1833,39 @@ public sealed class MainWindowViewModelTests
         TimerViewState viewState = TimerViewState.FromTimerState("10 seconds", halfway);
 
         Assert.Equal(50, viewState.ProgressPercent);
+    }
+
+    [Fact]
+    public void TimerViewStateCalculatesReverseProgressFromElapsedTime()
+    {
+        CountdownState running = CountdownTransitions.StartDuration(
+            CountdownState.Stopped,
+            TimeSpan.FromSeconds(10),
+            new DateTime(2026, 6, 8, 10, 0, 0),
+            TimeSpan.Zero).State;
+        CountdownState quarterElapsed = CountdownTransitions.Tick(running, TimeSpan.FromSeconds(2.5)).State;
+
+        TimerViewState viewState = TimerViewState.FromTimerState("10 seconds", quarterElapsed, reverseProgressBar: true);
+
+        Assert.Equal(25, viewState.ProgressPercent);
+    }
+
+    [Fact]
+    public void TimerViewStateDisplaysElapsedTimeWhenEnabledAndFreezesAtTotalDuration()
+    {
+        CountdownState running = CountdownTransitions.StartDuration(
+            CountdownState.Stopped,
+            TimeSpan.FromSeconds(10),
+            new DateTime(2026, 6, 8, 10, 0, 0),
+            TimeSpan.Zero).State;
+        CountdownState quarterElapsed = CountdownTransitions.Tick(running, TimeSpan.FromSeconds(2.5)).State;
+        CountdownState expired = CountdownTransitions.Tick(running, TimeSpan.FromSeconds(30)).State;
+
+        TimerViewState runningViewState = TimerViewState.FromTimerState("10 seconds", quarterElapsed, showTimeElapsed: true);
+        TimerViewState expiredViewState = TimerViewState.FromTimerState("10 seconds", expired, showTimeElapsed: true);
+
+        Assert.Equal("00:00:02", runningViewState.RemainingTime);
+        Assert.Equal("00:00:10", expiredViewState.RemainingTime);
     }
 
     [Fact]
@@ -1664,7 +1894,8 @@ public sealed class MainWindowViewModelTests
             TimeSpan.Zero).State;
         CountdownState expired = CountdownTransitions.Tick(running, TimeSpan.FromSeconds(60)).State;
 
-        Assert.Equal(100, TimerViewState.GetProgressPercent(expired));
+        Assert.Equal(0, TimerViewState.GetProgressPercent(expired));
+        Assert.Equal(100, TimerViewState.GetProgressPercent(expired, reverseProgressBar: true));
         Assert.Equal(0, TimerViewState.GetProgressPercent(CountdownState.Stopped));
         Assert.InRange(TimerViewState.GetProgressPercent(running), 0, 100);
     }
@@ -1682,7 +1913,7 @@ public sealed class MainWindowViewModelTests
 
         Assert.False(double.IsNaN(progress));
         Assert.False(double.IsInfinity(progress));
-        Assert.Equal(100, progress);
+        Assert.Equal(0, progress);
     }
 
     [Theory]
@@ -1852,7 +2083,8 @@ public sealed class MainWindowViewModelTests
         INotificationService? notificationService = null,
         ISessionInhibitor? sessionInhibitor = null,
         ISettingsStore? settingsStore = null,
-        IAudioAlertService? audioAlertService = null)
+        IAudioAlertService? audioAlertService = null,
+        ISystemPowerService? systemPowerService = null)
     {
         return new MainWindowViewModel(
             new CountdownEngine(clock),
@@ -1860,7 +2092,8 @@ public sealed class MainWindowViewModelTests
             notificationService ?? new RecordingNotificationService(),
             sessionInhibitor ?? new RecordingSessionInhibitor(),
             settingsStore ?? new RecordingSettingsStore(),
-            audioAlertService ?? new RecordingAudioAlertService());
+            audioAlertService ?? new RecordingAudioAlertService(),
+            systemPowerService ?? new RecordingSystemPowerService());
     }
 
     private sealed class ManualMonotonicClock : IMonotonicClock
@@ -1902,21 +2135,47 @@ public sealed class MainWindowViewModelTests
     {
         public int CallCount { get; private set; }
 
+        public int LoopingCallCount { get; private set; }
+
+        public int StopCount { get; private set; }
+
         public string? SoundId { get; private set; }
 
         public bool ThrowOnPlay { get; init; }
 
-        public Task PlayAlertAsync(string soundId, CancellationToken cancellationToken = default)
+        public Task<IAsyncDisposable?> PlayAlertAsync(string soundId, CancellationToken cancellationToken = default)
         {
             this.CallCount++;
             this.SoundId = soundId;
 
             if (this.ThrowOnPlay)
             {
-                return Task.FromException(new InvalidOperationException("Audio failed."));
+                return Task.FromException<IAsyncDisposable?>(new InvalidOperationException("Audio failed."));
             }
 
-            return Task.CompletedTask;
+            return Task.FromResult<IAsyncDisposable?>(null);
+        }
+
+        public Task<IAsyncDisposable?> PlayAlertLoopingAsync(string soundId, CancellationToken cancellationToken = default)
+        {
+            this.LoopingCallCount++;
+            this.SoundId = soundId;
+
+            if (this.ThrowOnPlay)
+            {
+                return Task.FromException<IAsyncDisposable?>(new InvalidOperationException("Audio failed."));
+            }
+
+            return Task.FromResult<IAsyncDisposable?>(new RecordingPlayback(this));
+        }
+
+        private sealed class RecordingPlayback(RecordingAudioAlertService owner) : IAsyncDisposable
+        {
+            public ValueTask DisposeAsync()
+            {
+                owner.StopCount++;
+                return ValueTask.CompletedTask;
+            }
         }
     }
 
@@ -2039,6 +2298,19 @@ public sealed class MainWindowViewModelTests
         public void RunNext()
         {
             this.TryExecuteTask(this.tasks.Dequeue());
+        }
+    }
+
+    private sealed class RecordingSystemPowerService : ISystemPowerService
+    {
+        public bool IsShutdownSupported { get; init; }
+
+        public int ShutdownRequestCount { get; private set; }
+
+        public Task RequestShutdownAsync(CancellationToken cancellationToken = default)
+        {
+            this.ShutdownRequestCount++;
+            return Task.CompletedTask;
         }
     }
 }

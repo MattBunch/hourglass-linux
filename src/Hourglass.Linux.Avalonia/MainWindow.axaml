@@ -81,6 +81,11 @@
       <Setter Property="BorderThickness" Value="2" />
     </Style>
 
+    <Style Selector="Grid.timer-locked Border#CompletionEmphasisBorder">
+      <Setter Property="BorderBrush" Value="{DynamicResource SystemControlForegroundBaseMediumLowBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+    </Style>
+
     <Style Selector="Border#ExpiryFlashLayer">
       <Setter Property="Background" Value="{DynamicResource AccentFillColorDefaultBrush}" />
       <Setter Property="Opacity" Value="0" />
@@ -169,6 +174,41 @@
                   ToggleType="CheckBox"
                   IsChecked="{Binding PromptOnExit, Mode=OneWay}"
                   Command="{Binding TogglePromptOnExitCommand}" />
+        <MenuItem Header="Advanced options">
+          <MenuItem Header="Reverse progress bar"
+                    ToggleType="CheckBox"
+                    IsChecked="{Binding ReverseProgressBar, Mode=OneWay}"
+                    Command="{Binding ToggleReverseProgressBarCommand}" />
+          <MenuItem Header="Show time elapsed"
+                    ToggleType="CheckBox"
+                    IsChecked="{Binding ShowTimeElapsed, Mode=OneWay}"
+                    Command="{Binding ToggleShowTimeElapsedCommand}" />
+          <MenuItem Header="Loop timer"
+                    ToggleType="CheckBox"
+                    IsChecked="{Binding LoopTimer, Mode=OneWay}"
+                    Command="{Binding ToggleLoopTimerCommand}" />
+          <MenuItem Header="Loop sound"
+                    ToggleType="CheckBox"
+                    IsChecked="{Binding LoopSound, Mode=OneWay}"
+                    Command="{Binding ToggleLoopSoundCommand}" />
+          <MenuItem Header="Close when expired"
+                    ToggleType="CheckBox"
+                    IsChecked="{Binding CloseWhenExpired, Mode=OneWay}"
+                    Command="{Binding ToggleCloseWhenExpiredCommand}" />
+          <MenuItem Header="Lock interface"
+                    ToggleType="CheckBox"
+                    IsChecked="{Binding LockInterface, Mode=OneWay}"
+                    Command="{Binding ToggleLockInterfaceCommand}" />
+          <MenuItem Header="Do not keep computer awake"
+                    ToggleType="CheckBox"
+                    IsChecked="{Binding DoNotKeepComputerAwake, Mode=OneWay}"
+                    Command="{Binding ToggleDoNotKeepComputerAwakeCommand}" />
+          <MenuItem Header="Shut down when expired"
+                    ToggleType="CheckBox"
+                    IsChecked="{Binding ShutDownWhenExpired, Mode=OneWay}"
+                    IsEnabled="{Binding IsShutdownSupported}"
+                    Command="{Binding ToggleShutDownWhenExpiredCommand}" />
+        </MenuItem>
         <MenuItem x:Name="FullScreenMenuItem"
                   Header="Full screen"
                   ToggleType="CheckBox"
@@ -246,6 +286,7 @@
                                    Text="{Binding RemainingTime, Mode=OneWay}"
                                    IsReadOnly="True"
                                    IsVisible="{Binding IsRemainingTimeVisible}"
+                                   Cursor="Arrow"
                                    MinFontSize="8"
                                    MaxFontSize="18"
                                    GotFocus="RemainingTimeTextBoxGotFocus"
@@ -256,6 +297,7 @@
                                    Text="{Binding StatusText, Mode=OneWay}"
                                    IsReadOnly="True"
                                    IsVisible="{Binding IsCompletionTextVisible}"
+                                   Cursor="Arrow"
                                    MinFontSize="8"
                                    MaxFontSize="18"
                                    GotFocus="CompletionTextBoxGotFocus"

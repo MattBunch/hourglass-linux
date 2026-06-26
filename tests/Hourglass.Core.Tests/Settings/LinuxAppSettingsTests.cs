@@ -17,6 +17,14 @@ public sealed class LinuxAppSettingsTests
         Assert.False(settings.AlwaysOnTop);
         Assert.True(settings.PopUpWhenExpired);
         Assert.True(settings.PromptOnExit);
+        Assert.False(settings.ReverseProgressBar);
+        Assert.False(settings.ShowTimeElapsed);
+        Assert.False(settings.LoopTimer);
+        Assert.False(settings.LoopSound);
+        Assert.False(settings.CloseWhenExpired);
+        Assert.False(settings.LockInterface);
+        Assert.False(settings.DoNotKeepComputerAwake);
+        Assert.False(settings.ShutDownWhenExpired);
         Assert.Empty(settings.RecentTimerInputs);
     }
 
@@ -38,6 +46,14 @@ public sealed class LinuxAppSettingsTests
         Assert.False(updated.AlwaysOnTop);
         Assert.True(updated.PopUpWhenExpired);
         Assert.True(updated.PromptOnExit);
+        Assert.False(updated.ReverseProgressBar);
+        Assert.False(updated.ShowTimeElapsed);
+        Assert.False(updated.LoopTimer);
+        Assert.False(updated.LoopSound);
+        Assert.False(updated.CloseWhenExpired);
+        Assert.False(updated.LockInterface);
+        Assert.False(updated.DoNotKeepComputerAwake);
+        Assert.False(updated.ShutDownWhenExpired);
     }
 
     [Fact]
@@ -49,7 +65,15 @@ public sealed class LinuxAppSettingsTests
             audioAlertsEnabled: false,
             alwaysOnTop: true,
             popUpWhenExpired: false,
-            promptOnExit: false);
+            promptOnExit: false,
+            reverseProgressBar: true,
+            showTimeElapsed: true,
+            loopTimer: true,
+            loopSound: true,
+            closeWhenExpired: true,
+            lockInterface: true,
+            doNotKeepComputerAwake: true,
+            shutDownWhenExpired: true);
 
         Assert.Equal(["15 minutes"], settings.RecentTimerInputs);
         Assert.False(settings.NotificationsEnabled);
@@ -57,6 +81,14 @@ public sealed class LinuxAppSettingsTests
         Assert.True(settings.AlwaysOnTop);
         Assert.False(settings.PopUpWhenExpired);
         Assert.False(settings.PromptOnExit);
+        Assert.True(settings.ReverseProgressBar);
+        Assert.True(settings.ShowTimeElapsed);
+        Assert.True(settings.LoopTimer);
+        Assert.True(settings.LoopSound);
+        Assert.True(settings.CloseWhenExpired);
+        Assert.True(settings.LockInterface);
+        Assert.True(settings.DoNotKeepComputerAwake);
+        Assert.True(settings.ShutDownWhenExpired);
     }
 
     [Fact]
@@ -68,7 +100,15 @@ public sealed class LinuxAppSettingsTests
             audioAlertsEnabled: false,
             alwaysOnTop: true,
             popUpWhenExpired: false,
-            promptOnExit: false);
+            promptOnExit: false,
+            reverseProgressBar: true,
+            showTimeElapsed: true,
+            loopTimer: true,
+            loopSound: true,
+            closeWhenExpired: true,
+            lockInterface: true,
+            doNotKeepComputerAwake: true,
+            shutDownWhenExpired: true);
 
         LinuxAppSettings updated = settings.AddRecentTimerInput("2 seconds");
 
@@ -78,6 +118,14 @@ public sealed class LinuxAppSettingsTests
         Assert.True(updated.AlwaysOnTop);
         Assert.False(updated.PopUpWhenExpired);
         Assert.False(updated.PromptOnExit);
+        Assert.True(updated.ReverseProgressBar);
+        Assert.True(updated.ShowTimeElapsed);
+        Assert.True(updated.LoopTimer);
+        Assert.True(updated.LoopSound);
+        Assert.True(updated.CloseWhenExpired);
+        Assert.True(updated.LockInterface);
+        Assert.True(updated.DoNotKeepComputerAwake);
+        Assert.True(updated.ShutDownWhenExpired);
     }
 
     [Fact]
@@ -94,6 +142,14 @@ public sealed class LinuxAppSettingsTests
         Assert.False(settings.AlwaysOnTop);
         Assert.True(settings.PopUpWhenExpired);
         Assert.True(settings.PromptOnExit);
+        Assert.False(settings.ReverseProgressBar);
+        Assert.False(settings.ShowTimeElapsed);
+        Assert.False(settings.LoopTimer);
+        Assert.False(settings.LoopSound);
+        Assert.False(settings.CloseWhenExpired);
+        Assert.False(settings.LockInterface);
+        Assert.False(settings.DoNotKeepComputerAwake);
+        Assert.False(settings.ShutDownWhenExpired);
     }
 
     [Fact]
@@ -105,7 +161,15 @@ public sealed class LinuxAppSettingsTests
             audioAlertsEnabled: false,
             alwaysOnTop: true,
             popUpWhenExpired: false,
-            promptOnExit: false);
+            promptOnExit: false,
+            reverseProgressBar: true,
+            showTimeElapsed: true,
+            loopTimer: true,
+            loopSound: true,
+            closeWhenExpired: true,
+            lockInterface: true,
+            doNotKeepComputerAwake: true,
+            shutDownWhenExpired: true);
 
         string json = JsonSerializer.Serialize(settings);
         LinuxAppSettings? roundTripped = JsonSerializer.Deserialize<LinuxAppSettings>(json);
@@ -117,5 +181,13 @@ public sealed class LinuxAppSettingsTests
         Assert.True(roundTripped.AlwaysOnTop);
         Assert.False(roundTripped.PopUpWhenExpired);
         Assert.False(roundTripped.PromptOnExit);
+        Assert.True(roundTripped.ReverseProgressBar);
+        Assert.True(roundTripped.ShowTimeElapsed);
+        Assert.True(roundTripped.LoopTimer);
+        Assert.True(roundTripped.LoopSound);
+        Assert.True(roundTripped.CloseWhenExpired);
+        Assert.True(roundTripped.LockInterface);
+        Assert.True(roundTripped.DoNotKeepComputerAwake);
+        Assert.True(roundTripped.ShutDownWhenExpired);
     }
 }

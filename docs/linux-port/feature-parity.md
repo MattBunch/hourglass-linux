@@ -5,13 +5,13 @@
 | Timer parsing | Implemented in legacy app | Extracted to `Hourglass.Core` with tests | Keep behavior stable while integrating the Linux UI. |
 | Timer state | Implemented in legacy app | Core serialization DTOs and timer-start model extracted | Continue extracting platform-neutral timer/session state before settings migration. |
 | Countdown timing | Uses WPF `DispatcherTimer` and `DateTime.Now` | Monotonic `CountdownEngine` implemented in `Hourglass.Core` | Use Avalonia timers only for UI refresh ticks. |
-| Timer UI | WPF | Avalonia timer UI backed by `Hourglass.Core`, including restart, full-screen mode, persistent completion emphasis, and replayable invalid-input feedback | Continue adding parity features without moving window or animation effects into Core. |
+| Timer UI | WPF | Avalonia timer UI backed by `Hourglass.Core`, including restart, full-screen mode, persistent completion emphasis, replayable invalid-input feedback, reverse progress, elapsed-time display, looping timers, close-on-expiry, and lock-interface behavior | Continue adding parity features without moving window or animation effects into Core. |
 | Notifications | Windows notification area balloon behavior | `INotificationService` with Linux `notify-send` backend | Keep notification delivery best-effort; app UI remains recoverable state. |
 | Tray/status icon | WinForms `NotifyIcon` | Not implemented | Optional; abstract behind platform interfaces. |
-| Keep awake | Windows execution state APIs | `ISessionInhibitor` with Linux `systemd-inhibit` backend | Add portal backend later if packaging requires it. |
+| Keep awake | Windows execution state APIs | `ISessionInhibitor` with Linux `systemd-inhibit` backend plus a persistent **Do not keep computer awake** preference | Add portal backend later if packaging requires it. |
 | Wake from suspend | Windows waitable timer resume behavior | Out of scope | Defer until after MVP. |
-| Audio alerts | Windows-focused implementation | `IAudioAlertService` with best-effort Linux process backend | Supports the built-in Normal beep. |
-| Settings | .NET Framework settings | Linux JSON settings store for recent inputs, notifications, sound, always-on-top, pop-up-on-expiry, and prompt-on-exit | Add broader preferences with backward-compatible defaults and explicit migration decisions. |
+| Audio alerts | Windows-focused implementation | `IAudioAlertService` with best-effort Linux process backend and stoppable looping playback handles | Supports the built-in Normal beep. |
+| Settings | .NET Framework settings | Linux JSON settings store for recent inputs, notifications, sound, always-on-top, pop-up-on-expiry, prompt-on-exit, and expanded timer options | Add broader preferences with backward-compatible defaults and explicit migration decisions. |
 | Single instance | Windows Forms application base with command-line handoff | `ISingleInstanceService` with Linux advisory file lock | Secondary launches exit cleanly; handoff and window activation are deferred. |
 | Updates | Windows in-app update check | Not implemented | Disable or replace for Linux packaging. |
 | Packaging | MSI, bundle, portable Windows build | Publish docs plus Flatpak and AppImage prototype files | Flatpak first, AppImage second. |
@@ -27,3 +27,15 @@ Duration timers can be restarted from their original full duration using the tim
 Keyboard command parity includes Space outside editable text and `Ctrl+P` for pause/resume, `Ctrl+S` for stop, `Ctrl+R` for restart, Escape for cancel-edit then completion dismissal then full-screen exit, and `Alt+Enter` for full-screen mode. Enter and Return continue to start a timer from the expression editor. Full-screen state is temporary and restores the prior normal or maximized state.
 
 The **Prompt on exit** context-menu option is enabled by default and persists across restarts. Closing through the title bar, context menu, or direct window close uses one coordinated path: a running or paused timer receives a native confirmation prompt, cancellation leaves it unchanged, and approval waits for queued settings writes before final cleanup. Stopped and expired timers close without a prompt.
+
+The **Advanced options** submenu now contains reverse progress, elapsed-time display, loop timer, loop sound, close when expired, lock interface, do not keep computer awake, and shut down when expired. These options are persisted through the Linux JSON settings store with backward-compatible defaults.
+
+Progress now defaults to remaining-time semantics: duration timers begin at 100% and count down to 0%. **Reverse progress bar** changes that to elapsed-time semantics, counting from 0% to 100%. **Show time elapsed** changes the displayed timer text to elapsed time and freezes at the completed duration after expiry rather than counting indefinitely.
+
+**Loop timer** restarts repeatable duration timers after each expiry cycle while keeping one notification, sound, and visual completion event per cycle. **Loop sound** uses a stoppable playback handle and stops when the expired timer is dismissed, another timer starts, the timer is stopped or restarted, sound is disabled, or the window is closed. **Close when expired** takes precedence over pop-up-on-expiry and requests a deterministic window close after the completion flash delay. It is mutually exclusive with loop timer and loop sound.
+
+**Lock interface** disables timer-modifying commands, context-menu option changes, and edit-mode entry while a running or paused timer is locked. The lock is visible through a restrained border treatment and is cleared when the timer completes or returns to input mode so a later fresh timer starts unlocked unless the option is explicitly selected again.
+
+**Do not keep computer awake** immediately releases an active session-inhibition lease and prevents new keep-awake inhibition while enabled. Turning it off during a running timer reacquires the existing best-effort `systemd-inhibit` lease.
+
+**Shut down when expired** is wired through a dedicated platform boundary, but the current Linux implementation intentionally exposes an unsupported no-op service and leaves the option disabled. No shell shutdown command is invoked. A real shutdown backend still needs capability detection, confirmation, cancellation, and desktop/session-specific safety work before it can be enabled.

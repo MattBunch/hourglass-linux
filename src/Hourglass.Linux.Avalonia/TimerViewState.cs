@@ -27,6 +27,7 @@ public sealed record TimerViewState(
     bool IsStopVisible,
     bool IsRestartVisible,
     bool IsCancelVisible,
+    bool IsLocked,
     TimerPresentationMode PresentationMode,
     string? InputBeforeEdit,
     bool HasValidationError)
@@ -51,7 +52,10 @@ public sealed record TimerViewState(
         string? explicitStatus = null,
         TimerPresentationMode? presentationMode = null,
         string? inputBeforeEdit = null,
-        bool hasValidationError = false)
+        bool hasValidationError = false,
+        bool showTimeElapsed = false,
+        bool reverseProgressBar = false,
+        bool isLocked = false)
     {
         ArgumentNullException.ThrowIfNull(timerInput);
         ArgumentNullException.ThrowIfNull(timerState);
@@ -64,22 +68,23 @@ public sealed record TimerViewState(
         return new TimerViewState(
             timerInput,
             timerTitle,
-            FormatRemainingTime(timerState.TimeLeft ?? TimeSpan.Zero),
+            FormatTimerTime(GetDisplayedTime(timerState, showTimeElapsed)),
             explicitStatus ?? GetStatusText(timerState.State),
             timerState.State == TimerState.Paused ? ResumeCommandText : PauseCommandText,
             isInputMode,
             timerState.State == TimerState.Running,
             timerState.State,
-            GetProgressPercent(timerState),
+            GetProgressPercent(timerState, reverseProgressBar),
             isInputMode,
             !isInputMode && timerState.State is TimerState.Running or TimerState.Paused,
             !isInputMode && timerState.State == TimerState.Expired,
             isInputMode,
-            !isInputMode && timerState.State == TimerState.Running,
-            !isInputMode && timerState.State == TimerState.Paused,
-            !isInputMode && timerState.State is TimerState.Running or TimerState.Paused or TimerState.Expired,
-            !isInputMode && timerState.SupportsRestart,
-            isInputMode && timerState.State is TimerState.Running or TimerState.Paused,
+            !isLocked && !isInputMode && timerState.State == TimerState.Running,
+            !isLocked && !isInputMode && timerState.State == TimerState.Paused,
+            !isLocked && !isInputMode && timerState.State is TimerState.Running or TimerState.Paused or TimerState.Expired,
+            !isLocked && !isInputMode && timerState.SupportsRestart,
+            !isLocked && isInputMode && timerState.State is TimerState.Running or TimerState.Paused,
+            isLocked,
             resolvedPresentationMode,
             inputBeforeEdit,
             hasValidationError);
@@ -87,13 +92,18 @@ public sealed record TimerViewState(
 
     public static string FormatRemainingTime(TimeSpan remaining)
     {
-        if (remaining < TimeSpan.Zero)
+        return FormatTimerTime(remaining);
+    }
+
+    public static string FormatTimerTime(TimeSpan time)
+    {
+        if (time < TimeSpan.Zero)
         {
-            remaining = TimeSpan.Zero;
+            time = TimeSpan.Zero;
         }
 
-        int hours = (int)Math.Floor(remaining.TotalHours);
-        return FormattableString.Invariant($"{hours:00}:{remaining.Minutes:00}:{remaining.Seconds:00}");
+        int hours = (int)Math.Floor(time.TotalHours);
+        return FormattableString.Invariant($"{hours:00}:{time.Minutes:00}:{time.Seconds:00}");
     }
 
     public static string GetStatusText(TimerState state)
@@ -107,13 +117,13 @@ public sealed record TimerViewState(
         };
     }
 
-    public static double GetProgressPercent(CountdownState timerState)
+    public static double GetProgressPercent(CountdownState timerState, bool reverseProgressBar = false)
     {
         ArgumentNullException.ThrowIfNull(timerState);
 
         if (timerState.State == TimerState.Expired)
         {
-            return 100;
+            return reverseProgressBar ? 100 : 0;
         }
 
         TimeSpan total = timerState.TotalTime ?? TimeSpan.Zero;
@@ -123,7 +133,8 @@ public sealed record TimerViewState(
         }
 
         TimeSpan elapsed = timerState.TimeElapsed ?? TimeSpan.Zero;
-        double progress = elapsed.TotalMilliseconds / total.TotalMilliseconds * 100;
+        TimeSpan progressTime = reverseProgressBar ? elapsed : total - elapsed;
+        double progress = progressTime.TotalMilliseconds / total.TotalMilliseconds * 100;
 
         if (double.IsNaN(progress) || double.IsInfinity(progress))
         {
@@ -131,5 +142,15 @@ public sealed record TimerViewState(
         }
 
         return Math.Clamp(progress, 0, 100);
+    }
+
+    private static TimeSpan GetDisplayedTime(CountdownState timerState, bool showTimeElapsed)
+    {
+        if (showTimeElapsed)
+        {
+            return timerState.TimeElapsed ?? TimeSpan.Zero;
+        }
+
+        return timerState.TimeLeft ?? TimeSpan.Zero;
     }
 }

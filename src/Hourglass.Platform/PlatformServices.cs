@@ -21,7 +21,9 @@ public interface ISessionInhibitor
 
 public interface IAudioAlertService
 {
-    Task PlayAlertAsync(string soundId, CancellationToken cancellationToken = default);
+    Task<IAsyncDisposable?> PlayAlertAsync(string soundId, CancellationToken cancellationToken = default);
+
+    Task<IAsyncDisposable?> PlayAlertLoopingAsync(string soundId, CancellationToken cancellationToken = default);
 }
 
 public static class AudioAlertSoundIds
@@ -57,3 +59,10 @@ public interface IWakeAlarmService
 }
 
 public readonly record struct WakeAlarmScheduleResult(bool Supported, string Message);
+
+public interface ISystemPowerService
+{
+    bool IsShutdownSupported { get; }
+
+    Task RequestShutdownAsync(CancellationToken cancellationToken = default);
+}
