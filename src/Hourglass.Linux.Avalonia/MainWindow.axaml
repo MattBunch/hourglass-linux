@@ -4,6 +4,7 @@
         x:Class="Hourglass.Linux.Avalonia.MainWindow"
         x:DataType="local:MainWindowViewModel"
         Title="{Binding WindowTitle}"
+        Icon="/Assets/hourglass.png"
         Topmost="{Binding AlwaysOnTop}"
         Width="350"
         Height="150"

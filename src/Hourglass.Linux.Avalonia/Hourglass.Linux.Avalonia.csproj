@@ -21,6 +21,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <AvaloniaResource Include="Assets\hourglass.png" />
+    <AvaloniaResource Include="Assets\hourglass.svg" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Content Include="Assets\Sounds\BeepNormal.wav">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>

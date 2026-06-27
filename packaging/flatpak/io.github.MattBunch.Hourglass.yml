@@ -16,6 +16,9 @@ modules:
       - install -Dm755 publish/hourglass-linux /app/bin/hourglass-linux
       - install -Dm644 publish/Assets/Sounds/BeepNormal.wav /app/bin/Assets/Sounds/BeepNormal.wav
       - install -Dm644 packaging/linux/io.github.MattBunch.Hourglass.desktop /app/share/applications/io.github.MattBunch.Hourglass.desktop
+      - sed -i 's/^Icon=hourglass$/Icon=io.github.MattBunch.Hourglass/' /app/share/applications/io.github.MattBunch.Hourglass.desktop
+      - install -Dm644 src/Hourglass.Linux.Avalonia/Assets/hourglass.png /app/share/icons/hicolor/256x256/apps/io.github.MattBunch.Hourglass.png
+      - install -Dm644 src/Hourglass.Linux.Avalonia/Assets/hourglass.svg /app/share/icons/hicolor/scalable/apps/io.github.MattBunch.Hourglass.svg
       - install -Dm644 packaging/linux/io.github.MattBunch.Hourglass.metainfo.xml /app/share/metainfo/io.github.MattBunch.Hourglass.metainfo.xml
     sources:
       - type: dir

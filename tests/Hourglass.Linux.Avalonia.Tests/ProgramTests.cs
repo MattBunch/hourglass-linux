@@ -1,10 +1,23 @@
 namespace Hourglass.Linux.Avalonia.Tests;
 
+using global::Avalonia.Platform;
 using Hourglass.Platform;
 using Xunit;
 
 public sealed class ProgramTests
 {
+    [Fact]
+    public void HourglassApplicationIconResourceIsAvailable()
+    {
+        var assetLoader = new StandardAssetLoader();
+        assetLoader.SetDefaultAssembly(typeof(App).Assembly);
+
+        using Stream stream = assetLoader.Open(
+            new Uri("avares://hourglass-linux/Assets/hourglass.png"));
+
+        Assert.True(stream.Length > 0);
+    }
+
     [Fact]
     public void RunStartsDesktopLifetimeWhenOwnershipIsAcquired()
     {
