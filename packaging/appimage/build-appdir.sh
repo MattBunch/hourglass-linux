@@ -29,6 +29,10 @@ install -Dm644 "src/Hourglass.Linux.Avalonia/Assets/hourglass.png" "$appdir/usr/
 install -Dm644 "src/Hourglass.Linux.Avalonia/Assets/hourglass.svg" "$appdir/usr/share/icons/hicolor/scalable/apps/hourglass.svg"
 install -Dm644 "packaging/linux/$app_id.metainfo.xml" "$appdir/usr/share/metainfo/$app_id.metainfo.xml"
 
+ln -s "usr/share/icons/hicolor/256x256/apps/hourglass.png" "$appdir/hourglass.png"
+ln -s "usr/share/icons/hicolor/scalable/apps/hourglass.svg" "$appdir/hourglass.svg"
+ln -s "hourglass.png" "$appdir/.DirIcon"
+
 cat > "$appdir/AppRun" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
