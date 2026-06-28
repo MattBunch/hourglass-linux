@@ -953,24 +953,30 @@ public sealed class MainWindowViewModelTests
     {
         string codeBehind = File.ReadAllText(FindRepositoryFile("src/Hourglass.Linux.Avalonia/MainWindow.axaml.cs"));
         int exitHandlerStart = codeBehind.IndexOf("private void ExitMenuItemClick", StringComparison.Ordinal);
-        int nextMethodStart = codeBehind.IndexOf("private void UpdatePresentationClasses", exitHandlerStart, StringComparison.Ordinal);
+        int nextMethodStart = codeBehind.IndexOf("private void FullScreenMenuItemClick", exitHandlerStart, StringComparison.Ordinal);
         string exitHandler = codeBehind[exitHandlerStart..nextMethodStart];
         int cleanupStart = codeBehind.IndexOf("private void CleanupAfterClose", StringComparison.Ordinal);
         int cleanupEnd = codeBehind.IndexOf("private void RequestFinalClose", cleanupStart, StringComparison.Ordinal);
         string cleanup = codeBehind[cleanupStart..cleanupEnd];
+        int prepareCloseStart = codeBehind.IndexOf("private async Task PrepareCloseAsync", StringComparison.Ordinal);
+        int prepareCloseEnd = codeBehind.IndexOf("private void UpdatePresentationClasses", prepareCloseStart, StringComparison.Ordinal);
+        string prepareClose = codeBehind[prepareCloseStart..prepareCloseEnd];
 
         Assert.Contains("this.Close();", exitHandler, StringComparison.Ordinal);
         Assert.DoesNotContain("PendingSettingsSave", exitHandler, StringComparison.Ordinal);
         Assert.Contains("this.Closing += this.WindowClosing;", codeBehind, StringComparison.Ordinal);
         Assert.Contains("e.Cancel = this.closeCoordinator.RequestClose();", codeBehind, StringComparison.Ordinal);
         Assert.Contains("this.closeCoordinator.CompleteClose();", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("this.PrepareCloseAsync", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("this.viewModel.PendingSettingsSave", prepareClose, StringComparison.Ordinal);
+        Assert.Contains("this.desktopProgressController.ClearAsync()", prepareClose, StringComparison.Ordinal);
         Assert.Contains("this.refreshTimer.Stop();", cleanup, StringComparison.Ordinal);
         Assert.Contains("this.expiryFlashTimer.Stop();", cleanup, StringComparison.Ordinal);
         Assert.Contains("this.validationFeedbackTimer.Stop();", cleanup, StringComparison.Ordinal);
         Assert.Contains("this.viewModel.WindowAttentionRequested -= this.WindowAttentionRequested;", cleanup, StringComparison.Ordinal);
         Assert.Contains("this.viewModel.ExpiryVisualFeedbackRequested -= this.ExpiryVisualFeedbackRequested;", cleanup, StringComparison.Ordinal);
         Assert.Contains("this.viewModel.ValidationFeedbackRequested -= this.ValidationFeedbackRequested;", cleanup, StringComparison.Ordinal);
-        Assert.Contains("this.desktopProgressController.ClearAsync();", cleanup, StringComparison.Ordinal);
+        Assert.DoesNotContain("this.desktopProgressController.ClearAsync();", cleanup, StringComparison.Ordinal);
         Assert.Contains("nameof(MainWindowViewModel.DesktopProgressRequest)", codeBehind, StringComparison.Ordinal);
         Assert.Contains("this.ApplyDesktopProgress();", codeBehind, StringComparison.Ordinal);
         Assert.Contains("this.viewModel.Dispose();", cleanup, StringComparison.Ordinal);
@@ -2022,6 +2028,77 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
+    public async Task DesktopProgressControllerSequencesClearAfterInFlightApply()
+    {
+        var setCompletion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var service = new RecordingDesktopProgressService
+        {
+            Supported = true,
+            SetCompletion = setCompletion
+        };
+        var controller = new DesktopProgressController(service);
+
+        Task applyTask = controller.ApplyAsync(new DesktopProgressRequest(DesktopProgressState.Normal, 0.5));
+        Task clearTask = controller.ClearAsync();
+
+        Assert.Equal(1, service.SetCount);
+        Assert.Equal(0, service.ClearCount);
+
+        setCompletion.SetResult();
+        await Task.WhenAll(applyTask, clearTask);
+
+        Assert.Equal(1, service.ClearCount);
+        Assert.Equal(["set:Normal:0.5", "clear"], service.Operations);
+    }
+
+    [Fact]
+    public async Task DesktopProgressControllerSequencesApplyRequestsInOrder()
+    {
+        var firstSetCompletion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var service = new RecordingDesktopProgressService
+        {
+            Supported = true,
+            SetCompletion = firstSetCompletion
+        };
+        var controller = new DesktopProgressController(service);
+
+        Task firstApply = controller.ApplyAsync(new DesktopProgressRequest(DesktopProgressState.Normal, 0.5));
+        Task secondApply = controller.ApplyAsync(new DesktopProgressRequest(DesktopProgressState.Paused, 0.25));
+
+        Assert.Equal(1, service.SetCount);
+
+        service.SetCompletion = null;
+        firstSetCompletion.SetResult();
+        await Task.WhenAll(firstApply, secondApply);
+
+        Assert.Equal(2, service.SetCount);
+        Assert.Equal(["set:Normal:0.5", "set:Paused:0.25"], service.Operations);
+    }
+
+    [Fact]
+    public async Task DesktopProgressControllerPropagatesCancellationWhileWaitingForOperationGate()
+    {
+        var setCompletion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var service = new RecordingDesktopProgressService
+        {
+            Supported = true,
+            SetCompletion = setCompletion
+        };
+        var controller = new DesktopProgressController(service);
+        using var cancellation = new CancellationTokenSource();
+
+        Task applyTask = controller.ApplyAsync(new DesktopProgressRequest(DesktopProgressState.Normal, 0.5));
+        cancellation.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => controller.ClearAsync(cancellation.Token));
+
+        setCompletion.SetResult();
+        await applyTask;
+        Assert.Equal(0, service.ClearCount);
+    }
+
+    [Fact]
     public void TimerViewStateDisplaysElapsedTimeWhenEnabledAndFreezesAtTotalDuration()
     {
         CountdownState running = CountdownTransitions.StartDuration(
@@ -2507,6 +2584,12 @@ public sealed class MainWindowViewModelTests
 
         public int ClearFailuresRemaining { get; set; }
 
+        public TaskCompletionSource? SetCompletion { get; set; }
+
+        private readonly List<string> operations = [];
+
+        public IReadOnlyList<string> Operations => this.operations;
+
         public Task SetProgressAsync(
             double fraction,
             DesktopProgressState state,
@@ -2515,6 +2598,7 @@ public sealed class MainWindowViewModelTests
             this.SetCount++;
             this.Fraction = fraction;
             this.State = state;
+            this.operations.Add(FormattableString.Invariant($"set:{state}:{fraction}"));
 
             if (this.ThrowOnSet || this.SetFailuresRemaining > 0)
             {
@@ -2522,12 +2606,13 @@ public sealed class MainWindowViewModelTests
                 return Task.FromException(new InvalidOperationException("Desktop progress failed."));
             }
 
-            return Task.CompletedTask;
+            return this.SetCompletion?.Task ?? Task.CompletedTask;
         }
 
         public Task ClearAsync(CancellationToken cancellationToken = default)
         {
             this.ClearCount++;
+            this.operations.Add("clear");
 
             if (this.ThrowOnClear || this.ClearFailuresRemaining > 0)
             {

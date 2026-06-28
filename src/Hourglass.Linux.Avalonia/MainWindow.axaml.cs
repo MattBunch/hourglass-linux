@@ -66,7 +66,7 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
         this.fullScreenController = new WindowFullScreenController(this);
         this.closeCoordinator = new WindowCloseCoordinator(
             this.RequestCloseApprovalAsync,
-            () => this.viewModel.PendingSettingsSave,
+            this.PrepareCloseAsync,
             () => Dispatcher.UIThread.Post(this.RequestFinalClose),
             this.CleanupAfterClose);
 
@@ -271,6 +271,12 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
         return await dialog.ShowDialog<bool>(this);
     }
 
+    private async Task PrepareCloseAsync()
+    {
+        await this.viewModel.PendingSettingsSave.ConfigureAwait(false);
+        await this.desktopProgressController.ClearAsync().ConfigureAwait(false);
+    }
+
     private void UpdatePresentationClasses()
     {
         this.RootGrid.Classes.Set("timer-active", this.viewModel.State == TimerState.Running);
@@ -335,7 +341,6 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
         this.Opened -= this.WindowOpened;
         this.SizeChanged -= this.WindowSizeChanged;
         this.RemoveHandler(KeyDownEvent, this.WindowKeyDown);
-        _ = this.desktopProgressController.ClearAsync();
         this.viewModel.Dispose();
     }
 
