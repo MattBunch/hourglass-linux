@@ -26,6 +26,11 @@ internal static class DesktopProgressProjection
             _ => DesktopProgressState.Hidden
         };
 
-        return new DesktopProgressRequest(state, state == DesktopProgressState.Hidden ? 0 : fraction);
+        return state switch
+        {
+            DesktopProgressState.Hidden => new DesktopProgressRequest(state, 0),
+            DesktopProgressState.Error => new DesktopProgressRequest(state, 1),
+            _ => new DesktopProgressRequest(state, fraction)
+        };
     }
 }

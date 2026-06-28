@@ -1911,7 +1911,7 @@ public sealed class MainWindowViewModelTests
         Assert.Equal(DesktopProgressState.Paused, pausedRequest.State);
         Assert.Equal(0.5, pausedRequest.Fraction);
         Assert.Equal(DesktopProgressState.Error, expiredRequest.State);
-        Assert.Equal(0, expiredRequest.Fraction);
+        Assert.Equal(1, expiredRequest.Fraction);
         Assert.Equal(DesktopProgressState.Hidden, disabledRequest.State);
     }
 
@@ -1980,6 +1980,45 @@ public sealed class MainWindowViewModelTests
 
         Assert.Equal(1, service.SetCount);
         Assert.Equal(1, service.ClearCount);
+    }
+
+    [Fact]
+    public async Task DesktopProgressControllerRetriesSupportedRequestAfterFailedApply()
+    {
+        var service = new RecordingDesktopProgressService
+        {
+            Supported = true,
+            SetFailuresRemaining = 1
+        };
+        var controller = new DesktopProgressController(service);
+        var request = new DesktopProgressRequest(DesktopProgressState.Normal, 0.5);
+
+        await controller.ApplyAsync(request);
+        await controller.ApplyAsync(request);
+        await controller.ApplyAsync(request);
+
+        Assert.Equal(2, service.SetCount);
+        Assert.Equal(DesktopProgressState.Normal, service.State);
+        Assert.Equal(0.5, service.Fraction);
+    }
+
+    [Fact]
+    public async Task DesktopProgressControllerRetriesHiddenRequestAfterFailedClear()
+    {
+        var service = new RecordingDesktopProgressService
+        {
+            Supported = true,
+            ClearFailuresRemaining = 1
+        };
+        var controller = new DesktopProgressController(service);
+        var request = new DesktopProgressRequest(DesktopProgressState.Hidden, 0);
+
+        await controller.ApplyAsync(request);
+        await controller.ApplyAsync(request);
+        await controller.ApplyAsync(request);
+
+        Assert.Equal(2, service.ClearCount);
+        Assert.Equal(0, service.SetCount);
     }
 
     [Fact]
@@ -2464,6 +2503,10 @@ public sealed class MainWindowViewModelTests
 
         public bool ThrowOnClear { get; init; }
 
+        public int SetFailuresRemaining { get; set; }
+
+        public int ClearFailuresRemaining { get; set; }
+
         public Task SetProgressAsync(
             double fraction,
             DesktopProgressState state,
@@ -2473,8 +2516,9 @@ public sealed class MainWindowViewModelTests
             this.Fraction = fraction;
             this.State = state;
 
-            if (this.ThrowOnSet)
+            if (this.ThrowOnSet || this.SetFailuresRemaining > 0)
             {
+                this.SetFailuresRemaining = Math.Max(0, this.SetFailuresRemaining - 1);
                 return Task.FromException(new InvalidOperationException("Desktop progress failed."));
             }
 
@@ -2485,8 +2529,9 @@ public sealed class MainWindowViewModelTests
         {
             this.ClearCount++;
 
-            if (this.ThrowOnClear)
+            if (this.ThrowOnClear || this.ClearFailuresRemaining > 0)
             {
+                this.ClearFailuresRemaining = Math.Max(0, this.ClearFailuresRemaining - 1);
                 return Task.FromException(new InvalidOperationException("Desktop progress clear failed."));
             }
 

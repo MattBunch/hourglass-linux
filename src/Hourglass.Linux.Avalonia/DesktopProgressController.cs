@@ -14,17 +14,17 @@ internal sealed class DesktopProgressController(IDesktopProgressService service)
             return;
         }
 
-        this.lastAppliedRequest = request;
-
         try
         {
             if (!this.service.IsSupported || request.IsHidden)
             {
                 await this.service.ClearAsync(cancellationToken).ConfigureAwait(false);
+                this.lastAppliedRequest = request;
                 return;
             }
 
             await this.service.SetProgressAsync(request.Fraction, request.State, cancellationToken).ConfigureAwait(false);
+            this.lastAppliedRequest = request;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -40,6 +40,7 @@ internal sealed class DesktopProgressController(IDesktopProgressService service)
         try
         {
             await this.service.ClearAsync(cancellationToken).ConfigureAwait(false);
+            this.lastAppliedRequest = new DesktopProgressRequest(DesktopProgressState.Hidden, 0);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -47,10 +48,6 @@ internal sealed class DesktopProgressController(IDesktopProgressService service)
         }
         catch (Exception)
         {
-        }
-        finally
-        {
-            this.lastAppliedRequest = new DesktopProgressRequest(DesktopProgressState.Hidden, 0);
         }
     }
 }
