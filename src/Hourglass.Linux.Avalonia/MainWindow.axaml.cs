@@ -4,6 +4,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
 using Hourglass.Linux.Services;
+using Hourglass.Platform;
 using Hourglass.Timing;
 
 namespace Hourglass.Linux.Avalonia;
@@ -22,6 +23,7 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
 
     private readonly WindowCloseCoordinator closeCoordinator;
     private readonly DispatcherTimer completionCloseTimer;
+    private readonly DesktopProgressController desktopProgressController;
     private readonly DispatcherTimer expiryFlashTimer;
     private readonly DispatcherTimer refreshTimer;
     private readonly DispatcherTimer validationFeedbackTimer;
@@ -42,15 +44,23 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
             new SystemdSessionInhibitor(),
             new JsonFileSettingsStore(new XdgSettingsPathService()),
             new LinuxAudioAlertService(NormalBeepPath),
-            new UnsupportedSystemPowerService()))
+            new UnsupportedSystemPowerService()),
+            new UnsupportedDesktopProgressService())
     {
     }
 
     internal MainWindow(MainWindowViewModel viewModel)
+        : this(viewModel, new UnsupportedDesktopProgressService())
+    {
+    }
+
+    internal MainWindow(MainWindowViewModel viewModel, IDesktopProgressService desktopProgressService)
     {
         InitializeComponent();
 
         this.viewModel = viewModel ?? throw new ArgumentNullException(nameof(viewModel));
+        this.desktopProgressController = new DesktopProgressController(
+            desktopProgressService ?? throw new ArgumentNullException(nameof(desktopProgressService)));
         this.DataContext = this.viewModel;
         this.windowAttentionController = new WindowAttentionController(this);
         this.fullScreenController = new WindowFullScreenController(this);
@@ -96,6 +106,7 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
         this.viewModel.ValidationFeedbackRequested += this.ValidationFeedbackRequested;
         this.viewModel.CloseRequested += this.CloseRequested;
         this.UpdatePresentationClasses();
+        this.ApplyDesktopProgress();
     }
 
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
@@ -324,6 +335,7 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
         this.Opened -= this.WindowOpened;
         this.SizeChanged -= this.WindowSizeChanged;
         this.RemoveHandler(KeyDownEvent, this.WindowKeyDown);
+        _ = this.desktopProgressController.ClearAsync();
         this.viewModel.Dispose();
     }
 
@@ -387,6 +399,16 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
         {
             this.UpdatePresentationClasses();
         }
+
+        if (e.PropertyName is nameof(MainWindowViewModel.DesktopProgressRequest))
+        {
+            this.ApplyDesktopProgress();
+        }
+    }
+
+    private void ApplyDesktopProgress()
+    {
+        _ = this.desktopProgressController.ApplyAsync(this.viewModel.DesktopProgressRequest);
     }
 
     private void WindowAttentionRequested(object? sender, EventArgs e)
