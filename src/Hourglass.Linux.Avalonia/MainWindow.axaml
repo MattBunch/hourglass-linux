@@ -171,6 +171,10 @@
                   ToggleType="CheckBox"
                   IsChecked="{Binding AlwaysOnTop, Mode=OneWay}"
                   Command="{Binding ToggleAlwaysOnTopCommand}" />
+        <MenuItem Header="Show progress in taskbar"
+                  ToggleType="CheckBox"
+                  IsChecked="{Binding ShowProgressInTaskbar, Mode=OneWay}"
+                  Command="{Binding ToggleShowProgressInTaskbarCommand}" />
         <MenuItem Header="Prompt on exit"
                   ToggleType="CheckBox"
                   IsChecked="{Binding PromptOnExit, Mode=OneWay}"

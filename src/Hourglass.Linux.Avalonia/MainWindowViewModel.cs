@@ -131,6 +131,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         this.ToggleNotificationsCommand = new RelayCommand(this.ToggleNotifications, () => !this.IsTimerModificationLocked);
         this.ToggleAudioAlertsCommand = new RelayCommand(this.ToggleAudioAlerts, () => !this.IsTimerModificationLocked);
         this.ToggleAlwaysOnTopCommand = new RelayCommand(this.ToggleAlwaysOnTop, () => !this.IsTimerModificationLocked);
+        this.ToggleShowProgressInTaskbarCommand = new RelayCommand(this.ToggleShowProgressInTaskbar, () => !this.IsTimerModificationLocked);
         this.TogglePopUpWhenExpiredCommand = new RelayCommand(this.TogglePopUpWhenExpired, () => !this.IsTimerModificationLocked);
         this.TogglePromptOnExitCommand = new RelayCommand(this.TogglePromptOnExit, () => !this.IsTimerModificationLocked);
         this.ToggleReverseProgressBarCommand = new RelayCommand(this.ToggleReverseProgressBar, () => !this.IsTimerModificationLocked);
@@ -190,6 +191,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     public RelayCommand ToggleAudioAlertsCommand { get; }
 
     public RelayCommand ToggleAlwaysOnTopCommand { get; }
+
+    public RelayCommand ToggleShowProgressInTaskbarCommand { get; }
 
     public RelayCommand TogglePopUpWhenExpiredCommand { get; }
 
@@ -289,6 +292,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     public bool AlwaysOnTop => this.settings.AlwaysOnTop;
 
+    public bool ShowProgressInTaskbar => this.settings.ShowProgressInTaskbar;
+
     public bool PopUpWhenExpired => this.settings.PopUpWhenExpired;
 
     public bool PromptOnExit => this.settings.PromptOnExit;
@@ -322,6 +327,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     public bool HasCompletionEmphasis => this.viewState.HasCompletionEmphasis;
 
     internal Task PendingSettingsSave => this.pendingSettingsSave;
+
+    internal DesktopProgressRequest DesktopProgressRequest =>
+        DesktopProgressProjection.FromViewState(this.viewState, this.settings.ShowProgressInTaskbar);
 
     public async Task LoadSettingsAsync(CancellationToken cancellationToken = default)
     {
@@ -553,6 +561,13 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             save: true);
     }
 
+    private void ToggleShowProgressInTaskbar()
+    {
+        this.ReplaceSettings(
+            this.settings with { ShowProgressInTaskbar = !this.settings.ShowProgressInTaskbar },
+            save: true);
+    }
+
     private void TogglePopUpWhenExpired()
     {
         this.ReplaceSettings(
@@ -687,6 +702,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         this.OnPropertyChanged(nameof(this.ShouldPromptOnExit));
         this.OnPropertyChanged(nameof(this.IsTimerModificationLocked));
         this.OnPropertyChanged(nameof(this.ProgressPercent));
+        this.OnPropertyChanged(nameof(this.DesktopProgressRequest));
         this.OnPropertyChanged(nameof(this.IsTimerInputVisible));
         this.OnPropertyChanged(nameof(this.IsRemainingTimeVisible));
         this.OnPropertyChanged(nameof(this.IsCompletionTextVisible));
@@ -742,6 +758,12 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         if (previous.AlwaysOnTop != next.AlwaysOnTop)
         {
             this.OnPropertyChanged(nameof(this.AlwaysOnTop));
+        }
+
+        if (previous.ShowProgressInTaskbar != next.ShowProgressInTaskbar)
+        {
+            this.OnPropertyChanged(nameof(this.ShowProgressInTaskbar));
+            this.OnPropertyChanged(nameof(this.DesktopProgressRequest));
         }
 
         if (previous.PopUpWhenExpired != next.PopUpWhenExpired)
@@ -1005,6 +1027,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         this.ToggleNotificationsCommand.RaiseCanExecuteChanged();
         this.ToggleAudioAlertsCommand.RaiseCanExecuteChanged();
         this.ToggleAlwaysOnTopCommand.RaiseCanExecuteChanged();
+        this.ToggleShowProgressInTaskbarCommand.RaiseCanExecuteChanged();
         this.TogglePopUpWhenExpiredCommand.RaiseCanExecuteChanged();
         this.TogglePromptOnExitCommand.RaiseCanExecuteChanged();
         this.ToggleReverseProgressBarCommand.RaiseCanExecuteChanged();

@@ -364,6 +364,8 @@ This is a privileged and potentially destructive feature. It should not block ge
 
 ### 4.1 Taskbar/Dock Progress
 
+**Status:** Partially implemented on Linux with a persisted option, application-layer progress mapping, and unsupported no-op backend. A visible desktop-specific backend remains future work.
+
 **Priority:** P0  
 **Complexity:** Large
 

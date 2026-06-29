@@ -26,6 +26,23 @@ public interface IAudioAlertService
     Task<IAsyncDisposable?> PlayAlertLoopingAsync(string soundId, CancellationToken cancellationToken = default);
 }
 
+public enum DesktopProgressState
+{
+    Hidden,
+    Normal,
+    Paused,
+    Error
+}
+
+public interface IDesktopProgressService
+{
+    bool IsSupported { get; }
+
+    Task SetProgressAsync(double fraction, DesktopProgressState state, CancellationToken cancellationToken = default);
+
+    Task ClearAsync(CancellationToken cancellationToken = default);
+}
+
 public static class AudioAlertSoundIds
 {
     public const string NormalBeep = "resource:Normal beep";

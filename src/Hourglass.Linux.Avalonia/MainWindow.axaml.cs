@@ -4,6 +4,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
 using Hourglass.Linux.Services;
+using Hourglass.Platform;
 using Hourglass.Timing;
 
 namespace Hourglass.Linux.Avalonia;
@@ -22,6 +23,7 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
 
     private readonly WindowCloseCoordinator closeCoordinator;
     private readonly DispatcherTimer completionCloseTimer;
+    private readonly DesktopProgressController desktopProgressController;
     private readonly DispatcherTimer expiryFlashTimer;
     private readonly DispatcherTimer refreshTimer;
     private readonly DispatcherTimer validationFeedbackTimer;
@@ -31,6 +33,7 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
     private int expiryFlashGeneration;
     private bool focusWithinContent;
     private bool isClosed;
+    private bool isClosePreparing;
     private bool pointerWithinContent = true;
     private int validationFeedbackGeneration;
 
@@ -42,21 +45,29 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
             new SystemdSessionInhibitor(),
             new JsonFileSettingsStore(new XdgSettingsPathService()),
             new LinuxAudioAlertService(NormalBeepPath),
-            new UnsupportedSystemPowerService()))
+            new UnsupportedSystemPowerService()),
+            new UnsupportedDesktopProgressService())
     {
     }
 
     internal MainWindow(MainWindowViewModel viewModel)
+        : this(viewModel, new UnsupportedDesktopProgressService())
+    {
+    }
+
+    internal MainWindow(MainWindowViewModel viewModel, IDesktopProgressService desktopProgressService)
     {
         InitializeComponent();
 
         this.viewModel = viewModel ?? throw new ArgumentNullException(nameof(viewModel));
+        this.desktopProgressController = new DesktopProgressController(
+            desktopProgressService ?? throw new ArgumentNullException(nameof(desktopProgressService)));
         this.DataContext = this.viewModel;
         this.windowAttentionController = new WindowAttentionController(this);
         this.fullScreenController = new WindowFullScreenController(this);
         this.closeCoordinator = new WindowCloseCoordinator(
             this.RequestCloseApprovalAsync,
-            () => this.viewModel.PendingSettingsSave,
+            this.PrepareCloseAsync,
             () => Dispatcher.UIThread.Post(this.RequestFinalClose),
             this.CleanupAfterClose);
 
@@ -96,6 +107,7 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
         this.viewModel.ValidationFeedbackRequested += this.ValidationFeedbackRequested;
         this.viewModel.CloseRequested += this.CloseRequested;
         this.UpdatePresentationClasses();
+        this.ApplyDesktopProgress();
     }
 
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
@@ -260,6 +272,14 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
         return await dialog.ShowDialog<bool>(this);
     }
 
+    private async Task PrepareCloseAsync()
+    {
+        this.isClosePreparing = true;
+        this.refreshTimer.Stop();
+        await this.viewModel.PendingSettingsSave.ConfigureAwait(false);
+        await this.desktopProgressController.ClearAsync().ConfigureAwait(false);
+    }
+
     private void UpdatePresentationClasses()
     {
         this.RootGrid.Classes.Set("timer-active", this.viewModel.State == TimerState.Running);
@@ -387,6 +407,21 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
         {
             this.UpdatePresentationClasses();
         }
+
+        if (e.PropertyName is nameof(MainWindowViewModel.DesktopProgressRequest))
+        {
+            this.ApplyDesktopProgress();
+        }
+    }
+
+    private void ApplyDesktopProgress()
+    {
+        if (this.isClosePreparing || this.isClosed)
+        {
+            return;
+        }
+
+        _ = this.desktopProgressController.ApplyAsync(this.viewModel.DesktopProgressRequest);
     }
 
     private void WindowAttentionRequested(object? sender, EventArgs e)

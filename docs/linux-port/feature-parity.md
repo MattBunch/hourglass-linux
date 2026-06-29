@@ -7,6 +7,7 @@
 | Countdown timing | Uses WPF `DispatcherTimer` and `DateTime.Now` | Monotonic `CountdownEngine` implemented in `Hourglass.Core` | Use Avalonia timers only for UI refresh ticks. |
 | Timer UI | WPF | Avalonia timer UI backed by `Hourglass.Core`, including restart, full-screen mode, persistent completion emphasis, replayable invalid-input feedback, reverse progress, elapsed-time display, looping timers, close-on-expiry, and lock-interface behavior | Continue adding parity features without moving window or animation effects into Core. |
 | Notifications | Windows notification area balloon behavior | `INotificationService` with Linux `notify-send` backend | Keep notification delivery best-effort; app UI remains recoverable state. |
+| Taskbar/dock progress | Windows taskbar progress states | `IDesktopProgressService` boundary with persisted **Show progress in taskbar** option and unsupported Linux no-op backend | Add a real backend for a tested desktop environment when a reliable API is selected. |
 | Tray/status icon | WinForms `NotifyIcon` | Not implemented | Optional; abstract behind platform interfaces. |
 | Keep awake | Windows execution state APIs | `ISessionInhibitor` with Linux `systemd-inhibit` backend plus a persistent **Do not keep computer awake** preference | Add portal backend later if packaging requires it. |
 | Wake from suspend | Windows waitable timer resume behavior | Out of scope | Defer until after MVP. |
@@ -39,3 +40,5 @@ Progress now defaults to remaining-time semantics: duration timers begin at 100%
 **Do not keep computer awake** immediately releases an active session-inhibition lease and prevents new keep-awake inhibition while enabled. Turning it off during a running timer reacquires the existing best-effort `systemd-inhibit` lease.
 
 **Shut down when expired** is wired through a dedicated platform boundary, but the current Linux implementation intentionally exposes an unsupported no-op service and leaves the option disabled. No shell shutdown command is invoked. A real shutdown backend still needs capability detection, confirmation, cancellation, and desktop/session-specific safety work before it can be enabled.
+
+The **Show progress in taskbar** option is enabled by default and persists across restarts. Timer state is mapped to a small desktop-progress request in the Avalonia layer: running uses normal progress, paused uses paused progress, expired uses error/attention progress, and stopped clears progress. The current Linux backend is an unsupported no-op so Fedora GNOME and other unsupported desktops remain error-free while future KDE, Ubuntu Dock, or other launcher-specific backends can be added behind the same interface.
