@@ -364,7 +364,7 @@ This is a privileged and potentially destructive feature. It should not block ge
 
 ### 4.1 Taskbar/Dock Progress
 
-**Status:** Partially implemented on Linux with a persisted option, application-layer progress mapping, and unsupported no-op backend. A visible desktop-specific backend remains future work.
+**Status:** Implemented for the first Unity LauncherEntry-compatible backend with conservative desktop detection. Unsupported or unverified desktops continue through the safe no-op backend until separately tested or given dedicated backends.
 
 **Priority:** P0  
 **Complexity:** Large
@@ -395,17 +395,33 @@ The Windows app displays normal, paused, and error progress states on its taskba
 
 #### Backend strategy
 
-1. Identify the most reliable integration for the project's primary tested desktop environments.
-2. Implement one backend at a time rather than a large unverified abstraction layer.
-3. Add runtime detection and structured logs for unsupported environments.
-4. Keep the no-op path fully functional so the timer never depends on launcher progress.
+1. The first visible backend targets Unity LauncherEntry-compatible docks.
+2. D-Bus session availability alone does not prove launcher progress support.
+3. Select the Unity LauncherEntry backend only for deliberately recognized compatible desktops/docks or an explicit `HOURGLASS_DESKTOP_PROGRESS_BACKEND=unity` override.
+4. Support `HOURGLASS_DESKTOP_PROGRESS_BACKEND=auto`, `unity`, and `none`.
+5. Parse desktop identifiers case-insensitively and handle colon-separated values such as `ubuntu:GNOME`.
+6. Default unknown desktops, missing desktop values, failed D-Bus sender initialization, and explicit disablement to the unsupported no-op backend.
+7. Keep the no-op path fully functional so the timer never depends on launcher progress.
+8. Keep all environment-variable and desktop-name handling inside `Hourglass.Linux.Services`.
+9. Keep Milestone 4.2 tray/status icon support and future desktop-specific backends out of this task.
 
 #### Acceptance criteria
 
-- At least one supported desktop environment shows running progress.
+- At least one confirmed desktop/dock combination visibly displays running progress.
+- Fedora GNOME validates the unsupported no-op path without errors.
+- At least one additional desktop environment is smoke-tested and documented.
 - Paused and expired states degrade sensibly where distinct launcher states are unavailable.
-- Unsupported desktops show no errors and retain normal in-window progress.
+- Unsupported desktops do not impair timer behavior.
+- Stopping, disabling progress, and application shutdown clear stale launcher state.
 - Multiple timers have a documented aggregation strategy before multi-window support ships. The recommended initial strategy is to show the active/focused timer, then revisit an aggregate policy.
+
+#### Cross-Desktop Manual Validation
+
+Exact tested combinations belong in `docs/linux-port/desktop-progress-compatibility.md`. Do not broadly mark Milestone 4.1 as supported across Linux desktops. The intended wording is:
+
+> Milestone 4.1 is implemented for the explicitly documented Unity LauncherEntry-compatible desktop and dock combinations. Unsupported or unverified desktops continue through the safe no-op backend until separately tested or given dedicated backends.
+
+Fedora GNOME stock is an intentional fallback validation environment. KDE Plasma is tested and documented as an exploratory compatibility check, but support is not claimed unless the backend visibly and repeatably works. Additional desktop-specific backends are follow-up work and do not block this milestone. Multi-window aggregation remains deferred until multi-window support exists.
 
 ### 4.2 Optional Tray/Status Icon
 
