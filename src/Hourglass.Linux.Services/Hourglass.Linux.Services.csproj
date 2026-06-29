@@ -4,6 +4,8 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Tmds.DBus.Protocol" Version="0.92.0" />
+
     <ProjectReference Include="..\Hourglass.Core\Hourglass.Core.csproj" />
     <ProjectReference Include="..\Hourglass.Platform\Hourglass.Platform.csproj" />
   </ItemGroup>

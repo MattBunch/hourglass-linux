@@ -971,6 +971,7 @@ public sealed class MainWindowViewModelTests
         Assert.Contains("e.Cancel = this.closeCoordinator.RequestClose();", codeBehind, StringComparison.Ordinal);
         Assert.Contains("this.closeCoordinator.CompleteClose();", codeBehind, StringComparison.Ordinal);
         Assert.Contains("this.PrepareCloseAsync", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("LinuxDesktopProgressServiceFactory.CreateDefault()", codeBehind, StringComparison.Ordinal);
         Assert.Contains("this.viewModel.PendingSettingsSave", prepareClose, StringComparison.Ordinal);
         Assert.Contains("this.desktopProgressController.ClearAsync()", prepareClose, StringComparison.Ordinal);
         Assert.Contains("this.isClosePreparing = true;", prepareClose, StringComparison.Ordinal);
