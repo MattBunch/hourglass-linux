@@ -961,6 +961,9 @@ public sealed class MainWindowViewModelTests
         int prepareCloseStart = codeBehind.IndexOf("private async Task PrepareCloseAsync", StringComparison.Ordinal);
         int prepareCloseEnd = codeBehind.IndexOf("private void UpdatePresentationClasses", prepareCloseStart, StringComparison.Ordinal);
         string prepareClose = codeBehind[prepareCloseStart..prepareCloseEnd];
+        int applyDesktopProgressStart = codeBehind.IndexOf("private void ApplyDesktopProgress", StringComparison.Ordinal);
+        int applyDesktopProgressEnd = codeBehind.IndexOf("private void WindowAttentionRequested", applyDesktopProgressStart, StringComparison.Ordinal);
+        string applyDesktopProgress = codeBehind[applyDesktopProgressStart..applyDesktopProgressEnd];
 
         Assert.Contains("this.Close();", exitHandler, StringComparison.Ordinal);
         Assert.DoesNotContain("PendingSettingsSave", exitHandler, StringComparison.Ordinal);
@@ -970,6 +973,11 @@ public sealed class MainWindowViewModelTests
         Assert.Contains("this.PrepareCloseAsync", codeBehind, StringComparison.Ordinal);
         Assert.Contains("this.viewModel.PendingSettingsSave", prepareClose, StringComparison.Ordinal);
         Assert.Contains("this.desktopProgressController.ClearAsync()", prepareClose, StringComparison.Ordinal);
+        Assert.Contains("this.isClosePreparing = true;", prepareClose, StringComparison.Ordinal);
+        Assert.Contains("this.refreshTimer.Stop();", prepareClose, StringComparison.Ordinal);
+        Assert.True(
+            prepareClose.IndexOf("this.refreshTimer.Stop();", StringComparison.Ordinal)
+            < prepareClose.IndexOf("this.desktopProgressController.ClearAsync()", StringComparison.Ordinal));
         Assert.Contains("this.refreshTimer.Stop();", cleanup, StringComparison.Ordinal);
         Assert.Contains("this.expiryFlashTimer.Stop();", cleanup, StringComparison.Ordinal);
         Assert.Contains("this.validationFeedbackTimer.Stop();", cleanup, StringComparison.Ordinal);
@@ -979,6 +987,7 @@ public sealed class MainWindowViewModelTests
         Assert.DoesNotContain("this.desktopProgressController.ClearAsync();", cleanup, StringComparison.Ordinal);
         Assert.Contains("nameof(MainWindowViewModel.DesktopProgressRequest)", codeBehind, StringComparison.Ordinal);
         Assert.Contains("this.ApplyDesktopProgress();", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("if (this.isClosePreparing || this.isClosed)", applyDesktopProgress, StringComparison.Ordinal);
         Assert.Contains("this.viewModel.Dispose();", cleanup, StringComparison.Ordinal);
     }
 

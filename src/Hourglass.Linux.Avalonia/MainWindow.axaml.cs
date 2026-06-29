@@ -33,6 +33,7 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
     private int expiryFlashGeneration;
     private bool focusWithinContent;
     private bool isClosed;
+    private bool isClosePreparing;
     private bool pointerWithinContent = true;
     private int validationFeedbackGeneration;
 
@@ -273,6 +274,8 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
 
     private async Task PrepareCloseAsync()
     {
+        this.isClosePreparing = true;
+        this.refreshTimer.Stop();
         await this.viewModel.PendingSettingsSave.ConfigureAwait(false);
         await this.desktopProgressController.ClearAsync().ConfigureAwait(false);
     }
@@ -413,6 +416,11 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
 
     private void ApplyDesktopProgress()
     {
+        if (this.isClosePreparing || this.isClosed)
+        {
+            return;
+        }
+
         _ = this.desktopProgressController.ApplyAsync(this.viewModel.DesktopProgressRequest);
     }
 
