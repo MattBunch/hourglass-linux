@@ -550,6 +550,7 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
                 ExecuteCommand(this.viewModel.RestartCommand);
                 break;
             case StatusIconAction.Exit:
+                this.windowAttentionController?.RequestAttention();
                 this.Close();
                 break;
         }

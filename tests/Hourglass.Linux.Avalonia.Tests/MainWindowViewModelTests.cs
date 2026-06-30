@@ -986,9 +986,17 @@ public sealed class MainWindowViewModelTests
         int applyDesktopProgressStart = codeBehind.IndexOf("private void ApplyDesktopProgress", StringComparison.Ordinal);
         int applyDesktopProgressEnd = codeBehind.IndexOf("private void WindowAttentionRequested", applyDesktopProgressStart, StringComparison.Ordinal);
         string applyDesktopProgress = codeBehind[applyDesktopProgressStart..applyDesktopProgressEnd];
+        int statusIconExitStart = codeBehind.IndexOf("case StatusIconAction.Exit:", StringComparison.Ordinal);
+        int statusIconExitEnd = codeBehind.IndexOf("break;", statusIconExitStart, StringComparison.Ordinal);
+        string statusIconExit = codeBehind[statusIconExitStart..statusIconExitEnd];
 
         Assert.Contains("this.Close();", exitHandler, StringComparison.Ordinal);
         Assert.DoesNotContain("PendingSettingsSave", exitHandler, StringComparison.Ordinal);
+        Assert.Contains("this.windowAttentionController?.RequestAttention();", statusIconExit, StringComparison.Ordinal);
+        Assert.Contains("this.Close();", statusIconExit, StringComparison.Ordinal);
+        Assert.True(
+            statusIconExit.IndexOf("this.windowAttentionController?.RequestAttention();", StringComparison.Ordinal)
+            < statusIconExit.IndexOf("this.Close();", StringComparison.Ordinal));
         Assert.Contains("this.Closing += this.WindowClosing;", codeBehind, StringComparison.Ordinal);
         Assert.Contains("e.Cancel = this.closeCoordinator.RequestClose();", codeBehind, StringComparison.Ordinal);
         Assert.Contains("this.closeCoordinator.CompleteClose();", codeBehind, StringComparison.Ordinal);
