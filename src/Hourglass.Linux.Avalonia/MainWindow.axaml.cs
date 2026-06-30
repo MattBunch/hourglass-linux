@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Platform;
 using Avalonia.Threading;
 using Hourglass.Linux.Services;
 using Hourglass.Platform;
@@ -16,6 +17,8 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
         "Assets",
         "Sounds",
         "BeepNormal.wav");
+
+    private static readonly Uri StatusIconResourceUri = new("avares://hourglass-linux/Assets/hourglass.png");
 
     private const double RefreshIntervalMilliseconds = 250;
     private const double ExpiryFlashDurationMilliseconds = 420;
@@ -150,10 +153,8 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
     {
         try
         {
-            return new AvaloniaStatusIconService(Path.Combine(
-                AppContext.BaseDirectory,
-                "Assets",
-                "hourglass.png"));
+            using Stream iconStream = AssetLoader.Open(StatusIconResourceUri);
+            return new AvaloniaStatusIconService(new WindowIcon(iconStream));
         }
         catch (Exception)
         {

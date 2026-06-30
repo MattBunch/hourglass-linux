@@ -1015,6 +1015,17 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
+    public void StatusIconFactoryLoadsEmbeddedAvaloniaResource()
+    {
+        string codeBehind = File.ReadAllText(FindRepositoryFile("src/Hourglass.Linux.Avalonia/MainWindow.axaml.cs"));
+
+        Assert.Contains("avares://hourglass-linux/Assets/hourglass.png", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("AssetLoader.Open(StatusIconResourceUri)", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("new AvaloniaStatusIconService(new WindowIcon(iconStream))", codeBehind, StringComparison.Ordinal);
+        Assert.DoesNotContain("new AvaloniaStatusIconService(Path.Combine", codeBehind, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void PauseAndResumePreserveRemainingTime()
     {
         var clock = new ManualMonotonicClock();

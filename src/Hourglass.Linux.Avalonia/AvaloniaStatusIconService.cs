@@ -13,9 +13,9 @@ internal sealed class AvaloniaStatusIconService : IStatusIconService
     private readonly NativeMenuItem stopItem;
     private readonly TrayIcon trayIcon;
 
-    public AvaloniaStatusIconService(string iconPath)
+    public AvaloniaStatusIconService(WindowIcon icon)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(iconPath);
+        ArgumentNullException.ThrowIfNull(icon);
 
         this.showItem = this.CreateMenuItem("Show", StatusIconAction.ShowWindow);
         this.hideItem = this.CreateMenuItem("Hide", StatusIconAction.HideWindow);
@@ -41,7 +41,7 @@ internal sealed class AvaloniaStatusIconService : IStatusIconService
 
         this.trayIcon = new TrayIcon
         {
-            Icon = new WindowIcon(iconPath),
+            Icon = icon,
             IsVisible = false,
             Menu = menu,
             ToolTipText = "Hourglass"
