@@ -5,9 +5,38 @@ public interface INotificationService
     Task ShowTimerExpiredAsync(string title, string body, CancellationToken cancellationToken = default);
 }
 
-public interface ITrayService
+public enum StatusIconAction
 {
-    bool IsAvailable { get; }
+    ShowWindow,
+    HideWindow,
+    PauseResume,
+    Stop,
+    Restart,
+    Exit
+}
+
+public sealed class StatusIconActionRequestedEventArgs(StatusIconAction action) : EventArgs
+{
+    public StatusIconAction Action { get; } = action;
+}
+
+public sealed record StatusIconMenuState(
+    string ToolTipText,
+    bool IsVisible,
+    string PauseResumeText,
+    bool CanPauseResume,
+    bool CanStop,
+    bool CanRestart,
+    bool CanHideWindow,
+    bool CanExit);
+
+public interface IStatusIconService : IAsyncDisposable
+{
+    bool IsSupported { get; }
+
+    event EventHandler<StatusIconActionRequestedEventArgs>? ActionRequested;
+
+    Task UpdateAsync(StatusIconMenuState state, CancellationToken cancellationToken = default);
 }
 
 public interface ISessionInhibitor

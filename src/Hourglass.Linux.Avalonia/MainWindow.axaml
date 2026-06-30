@@ -175,6 +175,11 @@
                   ToggleType="CheckBox"
                   IsChecked="{Binding ShowProgressInTaskbar, Mode=OneWay}"
                   Command="{Binding ToggleShowProgressInTaskbarCommand}" />
+        <MenuItem Header="Show in notification area"
+                  ToggleType="CheckBox"
+                  IsChecked="{Binding ShowInNotificationArea, Mode=OneWay}"
+                  IsEnabled="{Binding IsStatusIconSupported}"
+                  Command="{Binding ToggleShowInNotificationAreaCommand}" />
         <MenuItem Header="Prompt on exit"
                   ToggleType="CheckBox"
                   IsChecked="{Binding PromptOnExit, Mode=OneWay}"
@@ -219,6 +224,9 @@
                   ToggleType="CheckBox"
                   Click="FullScreenMenuItemClick" />
         <Separator />
+        <MenuItem Header="Hide to notification area"
+                  IsEnabled="{Binding CanHideToNotificationArea}"
+                  Command="{Binding HideToNotificationAreaCommand}" />
         <MenuItem Header="Exit"
                   Click="ExitMenuItemClick" />
       </ContextMenu>

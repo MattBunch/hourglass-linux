@@ -11,7 +11,7 @@ public sealed record LinuxAppSettings
     private readonly string[] recentTimerInputs;
 
     public LinuxAppSettings()
-        : this(null, true, true, false, true, true, false, false, false, false, false, false, false, false, true)
+        : this(null, true, true, false, true, true, false, false, false, false, false, false, false, false, true, false)
     {
     }
 
@@ -31,7 +31,8 @@ public sealed record LinuxAppSettings
         bool lockInterface = false,
         bool doNotKeepComputerAwake = false,
         bool shutDownWhenExpired = false,
-        bool showProgressInTaskbar = true)
+        bool showProgressInTaskbar = true,
+        bool showInNotificationArea = false)
     {
         this.recentTimerInputs = NormalizeRecentTimerInputs(recentTimerInputs, DefaultMaxRecentTimerInputs);
         this.NotificationsEnabled = notificationsEnabled;
@@ -48,6 +49,7 @@ public sealed record LinuxAppSettings
         this.DoNotKeepComputerAwake = doNotKeepComputerAwake;
         this.ShutDownWhenExpired = shutDownWhenExpired;
         this.ShowProgressInTaskbar = showProgressInTaskbar;
+        this.ShowInNotificationArea = showInNotificationArea;
     }
 
     public static LinuxAppSettings Default { get; } = new();
@@ -82,6 +84,8 @@ public sealed record LinuxAppSettings
 
     public bool ShowProgressInTaskbar { get; init; }
 
+    public bool ShowInNotificationArea { get; init; }
+
     public LinuxAppSettings AddRecentTimerInput(string timerInput, int maxRecentTimerInputs = DefaultMaxRecentTimerInputs)
     {
         if (maxRecentTimerInputs < 1)
@@ -115,7 +119,8 @@ public sealed record LinuxAppSettings
             this.LockInterface,
             this.DoNotKeepComputerAwake,
             this.ShutDownWhenExpired,
-            this.ShowProgressInTaskbar);
+            this.ShowProgressInTaskbar,
+            this.ShowInNotificationArea);
     }
 
     public string GetInitialTimerInput(string defaultTimerInput)

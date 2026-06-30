@@ -27,7 +27,8 @@ public sealed class JsonFileSettingsStoreTests : IDisposable
             lockInterface: true,
             doNotKeepComputerAwake: true,
             shutDownWhenExpired: true,
-            showProgressInTaskbar: false);
+            showProgressInTaskbar: false,
+            showInNotificationArea: true);
 
         await store.SaveAsync("app", settings);
         LinuxAppSettings? loaded = await store.LoadAsync<LinuxAppSettings>("app");
@@ -48,6 +49,7 @@ public sealed class JsonFileSettingsStoreTests : IDisposable
         Assert.True(loaded.DoNotKeepComputerAwake);
         Assert.True(loaded.ShutDownWhenExpired);
         Assert.False(loaded.ShowProgressInTaskbar);
+        Assert.True(loaded.ShowInNotificationArea);
     }
 
     [Fact]

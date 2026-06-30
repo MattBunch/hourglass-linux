@@ -19,6 +19,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private readonly INotificationService notificationService;
     private readonly ISessionInhibitor sessionInhibitor;
     private readonly ISettingsStore settingsStore;
+    private readonly bool statusIconSupported;
     private readonly ISystemPowerService systemPowerService;
     private readonly Func<DateTime> wallClockNow;
     private IAsyncDisposable? activeAudioPlayback;
@@ -106,7 +107,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         ISessionInhibitor sessionInhibitor,
         ISettingsStore settingsStore,
         IAudioAlertService audioAlertService,
-        ISystemPowerService systemPowerService)
+        ISystemPowerService systemPowerService,
+        bool statusIconSupported = false)
     {
         this.engine = engine ?? throw new ArgumentNullException(nameof(engine));
         this.wallClockNow = wallClockNow ?? throw new ArgumentNullException(nameof(wallClockNow));
@@ -115,6 +117,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         this.settingsStore = settingsStore ?? throw new ArgumentNullException(nameof(settingsStore));
         this.audioAlertService = audioAlertService ?? throw new ArgumentNullException(nameof(audioAlertService));
         this.systemPowerService = systemPowerService ?? throw new ArgumentNullException(nameof(systemPowerService));
+        this.statusIconSupported = statusIconSupported;
         this.engine.Expired += this.OnEngineExpired;
 
         this.StartCommand = new RelayCommand(
@@ -132,6 +135,12 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         this.ToggleAudioAlertsCommand = new RelayCommand(this.ToggleAudioAlerts, () => !this.IsTimerModificationLocked);
         this.ToggleAlwaysOnTopCommand = new RelayCommand(this.ToggleAlwaysOnTop, () => !this.IsTimerModificationLocked);
         this.ToggleShowProgressInTaskbarCommand = new RelayCommand(this.ToggleShowProgressInTaskbar, () => !this.IsTimerModificationLocked);
+        this.ToggleShowInNotificationAreaCommand = new RelayCommand(
+            this.ToggleShowInNotificationArea,
+            () => !this.IsTimerModificationLocked && this.IsStatusIconSupported);
+        this.HideToNotificationAreaCommand = new RelayCommand(
+            this.RequestHideToNotificationArea,
+            () => this.CanHideToNotificationArea);
         this.TogglePopUpWhenExpiredCommand = new RelayCommand(this.TogglePopUpWhenExpired, () => !this.IsTimerModificationLocked);
         this.TogglePromptOnExitCommand = new RelayCommand(this.TogglePromptOnExit, () => !this.IsTimerModificationLocked);
         this.ToggleReverseProgressBarCommand = new RelayCommand(this.ToggleReverseProgressBar, () => !this.IsTimerModificationLocked);
@@ -176,6 +185,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     public event EventHandler? CloseRequested;
 
+    public event EventHandler? HideToNotificationAreaRequested;
+
     public RelayCommand StartCommand { get; }
 
     public RelayCommand PauseResumeCommand { get; }
@@ -193,6 +204,10 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     public RelayCommand ToggleAlwaysOnTopCommand { get; }
 
     public RelayCommand ToggleShowProgressInTaskbarCommand { get; }
+
+    public RelayCommand ToggleShowInNotificationAreaCommand { get; }
+
+    public RelayCommand HideToNotificationAreaCommand { get; }
 
     public RelayCommand TogglePopUpWhenExpiredCommand { get; }
 
@@ -248,6 +263,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             if (previousWindowTitle != this.WindowTitle)
             {
                 this.OnPropertyChanged(nameof(this.WindowTitle));
+                this.OnPropertyChanged(nameof(this.StatusIconMenuState));
             }
         }
     }
@@ -294,6 +310,12 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     public bool ShowProgressInTaskbar => this.settings.ShowProgressInTaskbar;
 
+    public bool IsStatusIconSupported => this.statusIconSupported;
+
+    public bool ShowInNotificationArea => this.settings.ShowInNotificationArea && this.IsStatusIconSupported;
+
+    public bool CanHideToNotificationArea => this.ShowInNotificationArea;
+
     public bool PopUpWhenExpired => this.settings.PopUpWhenExpired;
 
     public bool PromptOnExit => this.settings.PromptOnExit;
@@ -321,6 +343,16 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     public bool ShouldPromptOnExit =>
         this.settings.PromptOnExit && (this.engine.State is TimerState.Running or TimerState.Paused);
+
+    public StatusIconMenuState StatusIconMenuState => new(
+        this.WindowTitle,
+        this.ShowInNotificationArea,
+        this.PauseResumeText,
+        this.PauseResumeCommand.CanExecute(null),
+        this.ResetCommand.CanExecute(null),
+        this.RestartCommand.CanExecute(null),
+        this.CanHideToNotificationArea,
+        true);
 
     public bool HasValidationError => this.viewState.HasValidationError;
 
@@ -568,6 +600,26 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             save: true);
     }
 
+    private void ToggleShowInNotificationArea()
+    {
+        if (!this.IsStatusIconSupported)
+        {
+            return;
+        }
+
+        this.ReplaceSettings(
+            this.settings with { ShowInNotificationArea = !this.settings.ShowInNotificationArea },
+            save: true);
+    }
+
+    private void RequestHideToNotificationArea()
+    {
+        if (this.CanHideToNotificationArea)
+        {
+            PublishSafely(this.HideToNotificationAreaRequested);
+        }
+    }
+
     private void TogglePopUpWhenExpired()
     {
         this.ReplaceSettings(
@@ -712,6 +764,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         this.OnPropertyChanged(nameof(this.IsStopVisible));
         this.OnPropertyChanged(nameof(this.IsRestartVisible));
         this.OnPropertyChanged(nameof(this.IsCancelVisible));
+        this.OnPropertyChanged(nameof(this.StatusIconMenuState));
         this.OnPropertyChanged(nameof(this.HasValidationError));
         this.OnPropertyChanged(nameof(this.HasCompletionEmphasis));
         this.StartCommand.RaiseCanExecuteChanged();
@@ -766,6 +819,13 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             this.OnPropertyChanged(nameof(this.DesktopProgressRequest));
         }
 
+        if (previous.ShowInNotificationArea != next.ShowInNotificationArea)
+        {
+            this.OnPropertyChanged(nameof(this.ShowInNotificationArea));
+            this.OnPropertyChanged(nameof(this.CanHideToNotificationArea));
+            this.OnPropertyChanged(nameof(this.StatusIconMenuState));
+        }
+
         if (previous.PopUpWhenExpired != next.PopUpWhenExpired)
         {
             this.OnPropertyChanged(nameof(this.PopUpWhenExpired));
@@ -789,6 +849,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         {
             this.OnPropertyChanged(nameof(this.LockInterface));
             this.OnPropertyChanged(nameof(this.IsTimerModificationLocked));
+            this.OnPropertyChanged(nameof(this.CanHideToNotificationArea));
+            this.OnPropertyChanged(nameof(this.StatusIconMenuState));
         }
 
         if (save)
@@ -1028,6 +1090,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         this.ToggleAudioAlertsCommand.RaiseCanExecuteChanged();
         this.ToggleAlwaysOnTopCommand.RaiseCanExecuteChanged();
         this.ToggleShowProgressInTaskbarCommand.RaiseCanExecuteChanged();
+        this.ToggleShowInNotificationAreaCommand.RaiseCanExecuteChanged();
+        this.HideToNotificationAreaCommand.RaiseCanExecuteChanged();
         this.TogglePopUpWhenExpiredCommand.RaiseCanExecuteChanged();
         this.TogglePromptOnExitCommand.RaiseCanExecuteChanged();
         this.ToggleReverseProgressBarCommand.RaiseCanExecuteChanged();
