@@ -491,6 +491,12 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
             return;
         }
 
+        if (!Dispatcher.UIThread.CheckAccess())
+        {
+            Dispatcher.UIThread.Post(this.ApplyStatusIconState);
+            return;
+        }
+
         _ = this.ApplyStatusIconStateAsync();
     }
 
@@ -498,7 +504,7 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
     {
         try
         {
-            await this.statusIconService.UpdateAsync(this.viewModel.StatusIconMenuState).ConfigureAwait(false);
+            await this.statusIconService.UpdateAsync(this.viewModel.StatusIconMenuState);
         }
         catch (Exception)
         {

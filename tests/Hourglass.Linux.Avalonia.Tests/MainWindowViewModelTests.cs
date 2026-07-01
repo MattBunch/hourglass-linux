@@ -1026,11 +1026,17 @@ public sealed class MainWindowViewModelTests
     public void StatusIconFactoryLoadsEmbeddedAvaloniaResource()
     {
         string codeBehind = File.ReadAllText(FindRepositoryFile("src/Hourglass.Linux.Avalonia/MainWindow.axaml.cs"));
+        int applyStatusIconStart = codeBehind.IndexOf("private void ApplyStatusIconState()", StringComparison.Ordinal);
+        int applyStatusIconEnd = codeBehind.IndexOf("private void HideToNotificationAreaRequested", applyStatusIconStart, StringComparison.Ordinal);
+        string applyStatusIcon = codeBehind[applyStatusIconStart..applyStatusIconEnd];
 
         Assert.Contains("avares://hourglass-linux/Assets/hourglass.png", codeBehind, StringComparison.Ordinal);
         Assert.Contains("AssetLoader.Open(StatusIconResourceUri)", codeBehind, StringComparison.Ordinal);
         Assert.Contains("new AvaloniaStatusIconService(new WindowIcon(iconStream))", codeBehind, StringComparison.Ordinal);
         Assert.DoesNotContain("new AvaloniaStatusIconService(Path.Combine", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("Dispatcher.UIThread.CheckAccess()", applyStatusIcon, StringComparison.Ordinal);
+        Assert.Contains("Dispatcher.UIThread.Post(this.ApplyStatusIconState)", applyStatusIcon, StringComparison.Ordinal);
+        Assert.DoesNotContain("ConfigureAwait(false)", applyStatusIcon, StringComparison.Ordinal);
     }
 
     [Fact]
