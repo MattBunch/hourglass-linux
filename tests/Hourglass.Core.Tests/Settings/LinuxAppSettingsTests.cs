@@ -26,6 +26,7 @@ public sealed class LinuxAppSettingsTests
         Assert.False(settings.DoNotKeepComputerAwake);
         Assert.False(settings.ShutDownWhenExpired);
         Assert.True(settings.ShowProgressInTaskbar);
+        Assert.False(settings.ShowInNotificationArea);
         Assert.Empty(settings.RecentTimerInputs);
     }
 
@@ -56,6 +57,7 @@ public sealed class LinuxAppSettingsTests
         Assert.False(updated.DoNotKeepComputerAwake);
         Assert.False(updated.ShutDownWhenExpired);
         Assert.True(updated.ShowProgressInTaskbar);
+        Assert.False(updated.ShowInNotificationArea);
     }
 
     [Fact]
@@ -76,7 +78,8 @@ public sealed class LinuxAppSettingsTests
             lockInterface: true,
             doNotKeepComputerAwake: true,
             shutDownWhenExpired: true,
-            showProgressInTaskbar: false);
+            showProgressInTaskbar: false,
+            showInNotificationArea: true);
 
         Assert.Equal(["15 minutes"], settings.RecentTimerInputs);
         Assert.False(settings.NotificationsEnabled);
@@ -93,6 +96,7 @@ public sealed class LinuxAppSettingsTests
         Assert.True(settings.DoNotKeepComputerAwake);
         Assert.True(settings.ShutDownWhenExpired);
         Assert.False(settings.ShowProgressInTaskbar);
+        Assert.True(settings.ShowInNotificationArea);
     }
 
     [Fact]
@@ -113,7 +117,8 @@ public sealed class LinuxAppSettingsTests
             lockInterface: true,
             doNotKeepComputerAwake: true,
             shutDownWhenExpired: true,
-            showProgressInTaskbar: false);
+            showProgressInTaskbar: false,
+            showInNotificationArea: true);
 
         LinuxAppSettings updated = settings.AddRecentTimerInput("2 seconds");
 
@@ -132,6 +137,7 @@ public sealed class LinuxAppSettingsTests
         Assert.True(updated.DoNotKeepComputerAwake);
         Assert.True(updated.ShutDownWhenExpired);
         Assert.False(updated.ShowProgressInTaskbar);
+        Assert.True(updated.ShowInNotificationArea);
     }
 
     [Fact]
@@ -157,6 +163,7 @@ public sealed class LinuxAppSettingsTests
         Assert.False(settings.DoNotKeepComputerAwake);
         Assert.False(settings.ShutDownWhenExpired);
         Assert.True(settings.ShowProgressInTaskbar);
+        Assert.False(settings.ShowInNotificationArea);
     }
 
     [Fact]
@@ -177,7 +184,8 @@ public sealed class LinuxAppSettingsTests
             lockInterface: true,
             doNotKeepComputerAwake: true,
             shutDownWhenExpired: true,
-            showProgressInTaskbar: false);
+            showProgressInTaskbar: false,
+            showInNotificationArea: true);
 
         string json = JsonSerializer.Serialize(settings);
         LinuxAppSettings? roundTripped = JsonSerializer.Deserialize<LinuxAppSettings>(json);
@@ -198,5 +206,6 @@ public sealed class LinuxAppSettingsTests
         Assert.True(roundTripped.DoNotKeepComputerAwake);
         Assert.True(roundTripped.ShutDownWhenExpired);
         Assert.False(roundTripped.ShowProgressInTaskbar);
+        Assert.True(roundTripped.ShowInNotificationArea);
     }
 }

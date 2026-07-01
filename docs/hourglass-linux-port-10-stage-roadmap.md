@@ -516,7 +516,7 @@ These items should not block the initial Linux MVP.
 
 ### Optional Tray / Status Notifier Support
 
-- Add `ITrayService`.
+- Add `IStatusIconService`.
 - Support KDE/StatusNotifierItem-friendly environments.
 - Treat GNOME tray absence as normal.
 - Avoid making tray required for completion alerts.

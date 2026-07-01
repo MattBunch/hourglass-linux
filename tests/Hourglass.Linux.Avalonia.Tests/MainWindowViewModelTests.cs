@@ -35,7 +35,13 @@ public sealed class MainWindowViewModelTests
 
         Assert.Equal("Tea", viewModel.TimerTitle);
         Assert.Equal("Tea", viewModel.WindowTitle);
-        Assert.Equal([nameof(viewModel.TimerTitle), nameof(viewModel.WindowTitle)], changedProperties);
+        Assert.Equal(
+            [
+                nameof(viewModel.TimerTitle),
+                nameof(viewModel.WindowTitle),
+                nameof(viewModel.StatusIconMenuState)
+            ],
+            changedProperties);
     }
 
     [Fact]
@@ -830,6 +836,16 @@ public sealed class MainWindowViewModelTests
         Assert.Equal("CheckBox", menuItems["Show progress in taskbar"].Attribute("ToggleType")?.Value);
         Assert.Equal("{Binding ShowProgressInTaskbar, Mode=OneWay}", menuItems["Show progress in taskbar"].Attribute("IsChecked")?.Value);
         Assert.Equal("{Binding ToggleShowProgressInTaskbarCommand}", menuItems["Show progress in taskbar"].Attribute("Command")?.Value);
+        Assert.Equal("CheckBox", menuItems["Show in notification area"].Attribute("ToggleType")?.Value);
+        Assert.Equal(
+            "{Binding ShowInNotificationArea, Mode=OneWay}",
+            menuItems["Show in notification area"].Attribute("IsChecked")?.Value);
+        Assert.Equal(
+            "{Binding IsStatusIconSupported}",
+            menuItems["Show in notification area"].Attribute("IsEnabled")?.Value);
+        Assert.Equal(
+            "{Binding ToggleShowInNotificationAreaCommand}",
+            menuItems["Show in notification area"].Attribute("Command")?.Value);
         Assert.Equal("CheckBox", menuItems["Prompt on exit"].Attribute("ToggleType")?.Value);
         Assert.Equal("{Binding PromptOnExit, Mode=OneWay}", menuItems["Prompt on exit"].Attribute("IsChecked")?.Value);
         Assert.Equal("{Binding TogglePromptOnExitCommand}", menuItems["Prompt on exit"].Attribute("Command")?.Value);
@@ -862,6 +878,12 @@ public sealed class MainWindowViewModelTests
         Assert.Equal("{Binding ShutDownWhenExpired, Mode=OneWay}", advancedItems["Shut down when expired"].Attribute("IsChecked")?.Value);
         Assert.Equal("{Binding IsShutdownSupported}", advancedItems["Shut down when expired"].Attribute("IsEnabled")?.Value);
         Assert.Equal("{Binding ToggleShutDownWhenExpiredCommand}", advancedItems["Shut down when expired"].Attribute("Command")?.Value);
+        Assert.Equal(
+            "{Binding CanHideToNotificationArea}",
+            menuItems["Hide to notification area"].Attribute("IsEnabled")?.Value);
+        Assert.Equal(
+            "{Binding HideToNotificationAreaCommand}",
+            menuItems["Hide to notification area"].Attribute("Command")?.Value);
         Assert.Equal("CheckBox", menuItems["Full screen"].Attribute("ToggleType")?.Value);
         Assert.Equal("FullScreenMenuItemClick", menuItems["Full screen"].Attribute("Click")?.Value);
         Assert.Equal("ExitMenuItemClick", menuItems["Exit"].Attribute("Click")?.Value);
@@ -964,9 +986,17 @@ public sealed class MainWindowViewModelTests
         int applyDesktopProgressStart = codeBehind.IndexOf("private void ApplyDesktopProgress", StringComparison.Ordinal);
         int applyDesktopProgressEnd = codeBehind.IndexOf("private void WindowAttentionRequested", applyDesktopProgressStart, StringComparison.Ordinal);
         string applyDesktopProgress = codeBehind[applyDesktopProgressStart..applyDesktopProgressEnd];
+        int statusIconExitStart = codeBehind.IndexOf("case StatusIconAction.Exit:", StringComparison.Ordinal);
+        int statusIconExitEnd = codeBehind.IndexOf("break;", statusIconExitStart, StringComparison.Ordinal);
+        string statusIconExit = codeBehind[statusIconExitStart..statusIconExitEnd];
 
         Assert.Contains("this.Close();", exitHandler, StringComparison.Ordinal);
         Assert.DoesNotContain("PendingSettingsSave", exitHandler, StringComparison.Ordinal);
+        Assert.Contains("this.windowAttentionController?.RequestAttention();", statusIconExit, StringComparison.Ordinal);
+        Assert.Contains("this.Close();", statusIconExit, StringComparison.Ordinal);
+        Assert.True(
+            statusIconExit.IndexOf("this.windowAttentionController?.RequestAttention();", StringComparison.Ordinal)
+            < statusIconExit.IndexOf("this.Close();", StringComparison.Ordinal));
         Assert.Contains("this.Closing += this.WindowClosing;", codeBehind, StringComparison.Ordinal);
         Assert.Contains("e.Cancel = this.closeCoordinator.RequestClose();", codeBehind, StringComparison.Ordinal);
         Assert.Contains("this.closeCoordinator.CompleteClose();", codeBehind, StringComparison.Ordinal);
@@ -990,6 +1020,27 @@ public sealed class MainWindowViewModelTests
         Assert.Contains("this.ApplyDesktopProgress();", codeBehind, StringComparison.Ordinal);
         Assert.Contains("if (this.isClosePreparing || this.isClosed)", applyDesktopProgress, StringComparison.Ordinal);
         Assert.Contains("this.viewModel.Dispose();", cleanup, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void StatusIconFactoryLoadsEmbeddedAvaloniaResource()
+    {
+        string codeBehind = File.ReadAllText(FindRepositoryFile("src/Hourglass.Linux.Avalonia/MainWindow.axaml.cs"));
+        string statusIconService = File.ReadAllText(FindRepositoryFile("src/Hourglass.Linux.Avalonia/AvaloniaStatusIconService.cs"));
+        int applyStatusIconStart = codeBehind.IndexOf("private void ApplyStatusIconState()", StringComparison.Ordinal);
+        int applyStatusIconEnd = codeBehind.IndexOf("private void HideToNotificationAreaRequested", applyStatusIconStart, StringComparison.Ordinal);
+        string applyStatusIcon = codeBehind[applyStatusIconStart..applyStatusIconEnd];
+        int hiddenBeforeIcon = statusIconService.IndexOf("IsVisible = false,", StringComparison.Ordinal);
+        int iconAssignment = statusIconService.IndexOf("Icon = icon,", StringComparison.Ordinal);
+
+        Assert.Contains("avares://hourglass-linux/Assets/hourglass.png", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("AssetLoader.Open(StatusIconResourceUri)", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("new AvaloniaStatusIconService(new WindowIcon(iconStream))", codeBehind, StringComparison.Ordinal);
+        Assert.DoesNotContain("new AvaloniaStatusIconService(Path.Combine", codeBehind, StringComparison.Ordinal);
+        Assert.InRange(hiddenBeforeIcon, 0, iconAssignment - 1);
+        Assert.Contains("Dispatcher.UIThread.CheckAccess()", applyStatusIcon, StringComparison.Ordinal);
+        Assert.Contains("Dispatcher.UIThread.Post(this.ApplyStatusIconState)", applyStatusIcon, StringComparison.Ordinal);
+        Assert.DoesNotContain("ConfigureAwait(false)", applyStatusIcon, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -1362,9 +1413,13 @@ public sealed class MainWindowViewModelTests
                 lockInterface: true,
                 doNotKeepComputerAwake: true,
                 shutDownWhenExpired: false,
-                showProgressInTaskbar: false)
+                showProgressInTaskbar: false,
+                showInNotificationArea: true)
         };
-        var viewModel = CreateViewModel(new ManualMonotonicClock(), settingsStore: settingsStore);
+        var viewModel = CreateViewModel(
+            new ManualMonotonicClock(),
+            settingsStore: settingsStore,
+            statusIconSupported: true);
 
         await viewModel.LoadSettingsAsync();
 
@@ -1382,6 +1437,7 @@ public sealed class MainWindowViewModelTests
         Assert.True(viewModel.DoNotKeepComputerAwake);
         Assert.False(viewModel.ShutDownWhenExpired);
         Assert.False(viewModel.ShowProgressInTaskbar);
+        Assert.True(viewModel.ShowInNotificationArea);
     }
 
     [Fact]
@@ -1442,6 +1498,139 @@ public sealed class MainWindowViewModelTests
         Assert.Contains(nameof(MainWindowViewModel.DesktopProgressRequest), changedProperties);
         Assert.NotNull(settingsStore.SavedSettings);
         Assert.False(settingsStore.SavedSettings.ShowProgressInTaskbar);
+    }
+
+    [Fact]
+    public async Task ToggleShowInNotificationAreaRequiresSupportedBackendAndSavesSettings()
+    {
+        var settingsStore = new RecordingSettingsStore();
+        var viewModel = CreateViewModel(
+            new ManualMonotonicClock(),
+            settingsStore: settingsStore,
+            statusIconSupported: true);
+        var changedProperties = new List<string?>();
+        viewModel.PropertyChanged += (_, args) => changedProperties.Add(args.PropertyName);
+
+        viewModel.ToggleShowInNotificationAreaCommand.Execute(null);
+        await viewModel.PendingSettingsSave;
+
+        Assert.True(viewModel.IsStatusIconSupported);
+        Assert.True(viewModel.ShowInNotificationArea);
+        Assert.False(viewModel.CanHideToNotificationArea);
+        Assert.True(viewModel.StatusIconMenuState.IsVisible);
+        Assert.False(viewModel.StatusIconMenuState.CanHideWindow);
+        Assert.Contains(nameof(MainWindowViewModel.ShowInNotificationArea), changedProperties);
+        Assert.Contains(nameof(MainWindowViewModel.CanHideToNotificationArea), changedProperties);
+        Assert.Contains(nameof(MainWindowViewModel.StatusIconMenuState), changedProperties);
+        Assert.NotNull(settingsStore.SavedSettings);
+        Assert.True(settingsStore.SavedSettings.ShowInNotificationArea);
+    }
+
+    [Fact]
+    public async Task UnsupportedStatusIconMasksPersistedSettingAndDoesNotSaveToggle()
+    {
+        var settingsStore = new RecordingSettingsStore
+        {
+            LoadedSettings = new LinuxAppSettings(showInNotificationArea: true)
+        };
+        var viewModel = CreateViewModel(new ManualMonotonicClock(), settingsStore: settingsStore);
+
+        await viewModel.LoadSettingsAsync();
+
+        Assert.False(viewModel.IsStatusIconSupported);
+        Assert.False(viewModel.ShowInNotificationArea);
+        Assert.False(viewModel.CanHideToNotificationArea);
+        Assert.False(viewModel.ToggleShowInNotificationAreaCommand.CanExecute(null));
+        viewModel.ToggleShowInNotificationAreaCommand.Execute(null);
+        await viewModel.PendingSettingsSave;
+        Assert.Null(settingsStore.SavedSettings);
+    }
+
+    [Fact]
+    public async Task HideToNotificationAreaCommandRequiresRecoverableStatusIcon()
+    {
+        var disabled = CreateViewModel(new ManualMonotonicClock(), statusIconSupported: true);
+        var unsupported = CreateViewModel(new ManualMonotonicClock());
+        var visibleButNotRecoverableSettings = new RecordingSettingsStore
+        {
+            LoadedSettings = new LinuxAppSettings(showInNotificationArea: true)
+        };
+        var visibleButNotRecoverable = CreateViewModel(
+            new ManualMonotonicClock(),
+            settingsStore: visibleButNotRecoverableSettings,
+            statusIconSupported: true);
+        var enabledSettings = new RecordingSettingsStore
+        {
+            LoadedSettings = new LinuxAppSettings(showInNotificationArea: true)
+        };
+        var enabled = CreateViewModel(
+            new ManualMonotonicClock(),
+            settingsStore: enabledSettings,
+            statusIconSupported: true,
+            statusIconCanRecoverHiddenWindow: true);
+        int disabledRequests = 0;
+        int unsupportedRequests = 0;
+        int visibleButNotRecoverableRequests = 0;
+        int enabledRequests = 0;
+        disabled.HideToNotificationAreaRequested += (_, _) => disabledRequests++;
+        unsupported.HideToNotificationAreaRequested += (_, _) => unsupportedRequests++;
+        visibleButNotRecoverable.HideToNotificationAreaRequested += (_, _) => visibleButNotRecoverableRequests++;
+        enabled.HideToNotificationAreaRequested += (_, _) => enabledRequests++;
+        await visibleButNotRecoverable.LoadSettingsAsync();
+        await enabled.LoadSettingsAsync();
+
+        disabled.HideToNotificationAreaCommand.Execute(null);
+        unsupported.HideToNotificationAreaCommand.Execute(null);
+        visibleButNotRecoverable.HideToNotificationAreaCommand.Execute(null);
+        enabled.HideToNotificationAreaCommand.Execute(null);
+
+        Assert.Equal(0, disabledRequests);
+        Assert.Equal(0, unsupportedRequests);
+        Assert.Equal(0, visibleButNotRecoverableRequests);
+        Assert.Equal(1, enabledRequests);
+        Assert.False(visibleButNotRecoverable.CanHideToNotificationArea);
+        Assert.False(visibleButNotRecoverable.StatusIconMenuState.CanHideWindow);
+    }
+
+    [Fact]
+    public async Task StatusIconMenuStateTracksTimerCommandAvailability()
+    {
+        var clock = new ManualMonotonicClock();
+        var settingsStore = new RecordingSettingsStore
+        {
+            LoadedSettings = new LinuxAppSettings(showInNotificationArea: true)
+        };
+        var viewModel = CreateViewModel(
+            clock,
+            settingsStore: settingsStore,
+            statusIconSupported: true,
+            statusIconCanRecoverHiddenWindow: true);
+        await viewModel.LoadSettingsAsync();
+
+        StatusIconMenuState stopped = viewModel.StatusIconMenuState;
+        viewModel.TimerTitle = "Tea";
+        viewModel.TimerInput = "1 minute";
+        viewModel.StartCommand.Execute(null);
+        StatusIconMenuState running = viewModel.StatusIconMenuState;
+        viewModel.PauseResumeCommand.Execute(null);
+        StatusIconMenuState paused = viewModel.StatusIconMenuState;
+
+        Assert.True(stopped.IsVisible);
+        Assert.Equal("Hourglass", stopped.ToolTipText);
+        Assert.False(stopped.CanPauseResume);
+        Assert.False(stopped.CanStop);
+        Assert.False(stopped.CanRestart);
+        Assert.True(stopped.CanHideWindow);
+        Assert.True(stopped.CanExit);
+        Assert.Equal("Tea", running.ToolTipText);
+        Assert.True(running.CanPauseResume);
+        Assert.True(running.CanStop);
+        Assert.True(running.CanRestart);
+        Assert.Equal("Pause", running.PauseResumeText);
+        Assert.True(paused.CanPauseResume);
+        Assert.True(paused.CanStop);
+        Assert.True(paused.CanRestart);
+        Assert.Equal("Resume", paused.PauseResumeText);
     }
 
     [Fact]
@@ -2342,7 +2531,9 @@ public sealed class MainWindowViewModelTests
         ISessionInhibitor? sessionInhibitor = null,
         ISettingsStore? settingsStore = null,
         IAudioAlertService? audioAlertService = null,
-        ISystemPowerService? systemPowerService = null)
+        ISystemPowerService? systemPowerService = null,
+        bool statusIconSupported = false,
+        bool statusIconCanRecoverHiddenWindow = false)
     {
         return new MainWindowViewModel(
             new CountdownEngine(clock),
@@ -2351,7 +2542,9 @@ public sealed class MainWindowViewModelTests
             sessionInhibitor ?? new RecordingSessionInhibitor(),
             settingsStore ?? new RecordingSettingsStore(),
             audioAlertService ?? new RecordingAudioAlertService(),
-            systemPowerService ?? new RecordingSystemPowerService());
+            systemPowerService ?? new RecordingSystemPowerService(),
+            statusIconSupported,
+            statusIconCanRecoverHiddenWindow);
     }
 
     private sealed class ManualMonotonicClock : IMonotonicClock

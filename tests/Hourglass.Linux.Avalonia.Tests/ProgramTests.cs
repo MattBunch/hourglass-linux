@@ -19,6 +19,22 @@ public sealed class ProgramTests
     }
 
     [Fact]
+    public void HourglassApplicationIconResourceIsPngForStatusIcon()
+    {
+        var assetLoader = new StandardAssetLoader();
+        assetLoader.SetDefaultAssembly(typeof(App).Assembly);
+        byte[] pngSignature = [137, 80, 78, 71, 13, 10, 26, 10];
+
+        using Stream stream = assetLoader.Open(
+            new Uri("avares://hourglass-linux/Assets/hourglass.png"));
+        byte[] actualSignature = new byte[pngSignature.Length];
+        int bytesRead = stream.Read(actualSignature);
+
+        Assert.Equal(pngSignature.Length, bytesRead);
+        Assert.Equal(pngSignature, actualSignature);
+    }
+
+    [Fact]
     public void RunStartsDesktopLifetimeWhenOwnershipIsAcquired()
     {
         string[] args = ["10 seconds", "--test"];

@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Platform;
 using Avalonia.Threading;
 using Hourglass.Linux.Services;
 using Hourglass.Platform;
@@ -17,6 +18,8 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
         "Sounds",
         "BeepNormal.wav");
 
+    private static readonly Uri StatusIconResourceUri = new("avares://hourglass-linux/Assets/hourglass.png");
+
     private const double RefreshIntervalMilliseconds = 250;
     private const double ExpiryFlashDurationMilliseconds = 420;
     private const double ValidationFeedbackDurationMilliseconds = 650;
@@ -26,6 +29,7 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
     private readonly DesktopProgressController desktopProgressController;
     private readonly DispatcherTimer expiryFlashTimer;
     private readonly DispatcherTimer refreshTimer;
+    private readonly IStatusIconService statusIconService;
     private readonly DispatcherTimer validationFeedbackTimer;
     private readonly WindowFullScreenController fullScreenController;
     private readonly MainWindowViewModel viewModel;
@@ -38,30 +42,48 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
     private int validationFeedbackGeneration;
 
     public MainWindow()
-        : this(new MainWindowViewModel(
-            new CountdownEngine(new SystemMonotonicClock()),
-            () => DateTime.Now,
-            new NotifySendNotificationService(),
-            new SystemdSessionInhibitor(),
-            new JsonFileSettingsStore(new XdgSettingsPathService()),
-            new LinuxAudioAlertService(NormalBeepPath),
-            new UnsupportedSystemPowerService()),
-            LinuxDesktopProgressServiceFactory.CreateDefault())
+        : this(CreateDefaultServices())
+    {
+    }
+
+    private MainWindow(DefaultMainWindowServices services)
+        : this(
+            new MainWindowViewModel(
+                new CountdownEngine(new SystemMonotonicClock()),
+                () => DateTime.Now,
+                new NotifySendNotificationService(),
+                new SystemdSessionInhibitor(),
+                new JsonFileSettingsStore(new XdgSettingsPathService()),
+                new LinuxAudioAlertService(NormalBeepPath),
+                new UnsupportedSystemPowerService(),
+                services.StatusIconService.IsSupported,
+                services.StatusIconService.CanRecoverHiddenWindow),
+            services.DesktopProgressService,
+            services.StatusIconService)
     {
     }
 
     internal MainWindow(MainWindowViewModel viewModel)
-        : this(viewModel, new UnsupportedDesktopProgressService())
+        : this(viewModel, new UnsupportedDesktopProgressService(), UnsupportedStatusIconService.Instance)
     {
     }
 
     internal MainWindow(MainWindowViewModel viewModel, IDesktopProgressService desktopProgressService)
+        : this(viewModel, desktopProgressService, UnsupportedStatusIconService.Instance)
+    {
+    }
+
+    internal MainWindow(
+        MainWindowViewModel viewModel,
+        IDesktopProgressService desktopProgressService,
+        IStatusIconService statusIconService)
     {
         InitializeComponent();
 
         this.viewModel = viewModel ?? throw new ArgumentNullException(nameof(viewModel));
         this.desktopProgressController = new DesktopProgressController(
             desktopProgressService ?? throw new ArgumentNullException(nameof(desktopProgressService)));
+        this.statusIconService = statusIconService ?? throw new ArgumentNullException(nameof(statusIconService));
         this.DataContext = this.viewModel;
         this.windowAttentionController = new WindowAttentionController(this);
         this.fullScreenController = new WindowFullScreenController(this);
@@ -106,8 +128,39 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
         this.viewModel.ExpiryVisualFeedbackRequested += this.ExpiryVisualFeedbackRequested;
         this.viewModel.ValidationFeedbackRequested += this.ValidationFeedbackRequested;
         this.viewModel.CloseRequested += this.CloseRequested;
+        this.viewModel.HideToNotificationAreaRequested += this.HideToNotificationAreaRequested;
+        this.statusIconService.ActionRequested += this.StatusIconActionRequested;
         this.UpdatePresentationClasses();
         this.ApplyDesktopProgress();
+        this.ApplyStatusIconState();
+    }
+
+    private static DefaultMainWindowServices CreateDefaultServices()
+    {
+        var environmentReader = new ProcessDesktopEnvironmentReader();
+        var sessionBusProbe = new EnvironmentSessionBusProbe(environmentReader);
+        IStatusIconService statusIconService = new LinuxStatusIconCapability(
+            environmentReader,
+            sessionBusProbe).IsSupported()
+            ? CreateAvaloniaStatusIconService()
+            : UnsupportedStatusIconService.Instance;
+
+        return new DefaultMainWindowServices(
+            LinuxDesktopProgressServiceFactory.CreateDefault(),
+            statusIconService);
+    }
+
+    private static IStatusIconService CreateAvaloniaStatusIconService()
+    {
+        try
+        {
+            using Stream iconStream = AssetLoader.Open(StatusIconResourceUri);
+            return new AvaloniaStatusIconService(new WindowIcon(iconStream));
+        }
+        catch (Exception)
+        {
+            return UnsupportedStatusIconService.Instance;
+        }
     }
 
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
@@ -335,6 +388,8 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
         this.viewModel.ExpiryVisualFeedbackRequested -= this.ExpiryVisualFeedbackRequested;
         this.viewModel.ValidationFeedbackRequested -= this.ValidationFeedbackRequested;
         this.viewModel.CloseRequested -= this.CloseRequested;
+        this.viewModel.HideToNotificationAreaRequested -= this.HideToNotificationAreaRequested;
+        this.statusIconService.ActionRequested -= this.StatusIconActionRequested;
         this.refreshTimer.Tick -= this.RefreshTimerTick;
         this.expiryFlashTimer.Tick -= this.ExpiryFlashTimerTick;
         this.completionCloseTimer.Tick -= this.CompletionCloseTimerTick;
@@ -344,6 +399,7 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
         this.Opened -= this.WindowOpened;
         this.SizeChanged -= this.WindowSizeChanged;
         this.RemoveHandler(KeyDownEvent, this.WindowKeyDown);
+        _ = this.statusIconService.DisposeAsync();
         this.viewModel.Dispose();
     }
 
@@ -412,6 +468,11 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
         {
             this.ApplyDesktopProgress();
         }
+
+        if (e.PropertyName is nameof(MainWindowViewModel.StatusIconMenuState))
+        {
+            this.ApplyStatusIconState();
+        }
     }
 
     private void ApplyDesktopProgress()
@@ -422,6 +483,84 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
         }
 
         _ = this.desktopProgressController.ApplyAsync(this.viewModel.DesktopProgressRequest);
+    }
+
+    private void ApplyStatusIconState()
+    {
+        if (this.isClosed)
+        {
+            return;
+        }
+
+        if (!Dispatcher.UIThread.CheckAccess())
+        {
+            Dispatcher.UIThread.Post(this.ApplyStatusIconState);
+            return;
+        }
+
+        _ = this.ApplyStatusIconStateAsync();
+    }
+
+    private async Task ApplyStatusIconStateAsync()
+    {
+        try
+        {
+            await this.statusIconService.UpdateAsync(this.viewModel.StatusIconMenuState);
+        }
+        catch (Exception)
+        {
+        }
+    }
+
+    private void HideToNotificationAreaRequested(object? sender, EventArgs e)
+    {
+        Dispatcher.UIThread.Post(this.HideToNotificationArea);
+    }
+
+    private void HideToNotificationArea()
+    {
+        if (this.isClosed || !this.viewModel.CanHideToNotificationArea)
+        {
+            return;
+        }
+
+        this.Hide();
+    }
+
+    private void StatusIconActionRequested(object? sender, StatusIconActionRequestedEventArgs e)
+    {
+        Dispatcher.UIThread.Post(() => this.HandleStatusIconAction(e.Action));
+    }
+
+    private void HandleStatusIconAction(StatusIconAction action)
+    {
+        if (this.isClosed)
+        {
+            return;
+        }
+
+        switch (action)
+        {
+            case StatusIconAction.ShowWindow:
+                this.windowAttentionController?.RequestAttention();
+                break;
+            case StatusIconAction.HideWindow:
+                this.HideToNotificationArea();
+                break;
+            case StatusIconAction.PauseResume:
+                ExecuteCommand(this.viewModel.PauseResumeCommand);
+                break;
+            case StatusIconAction.Stop:
+                ExecuteCommand(this.viewModel.ResetCommand);
+                break;
+            case StatusIconAction.Restart:
+                ExecuteCommand(this.viewModel.RestartCommand);
+                break;
+            case StatusIconAction.Exit:
+                this.windowAttentionController?.RequestAttention();
+                this.Close();
+                break;
+        }
     }
 
     private void WindowAttentionRequested(object? sender, EventArgs e)
@@ -547,4 +686,8 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
         // Keep feedback short and single-pass until a dependable platform signal is available.
         return true;
     }
+
+    private sealed record DefaultMainWindowServices(
+        IDesktopProgressService DesktopProgressService,
+        IStatusIconService StatusIconService);
 }
