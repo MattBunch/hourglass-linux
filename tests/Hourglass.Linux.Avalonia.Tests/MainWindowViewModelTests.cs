@@ -1512,9 +1512,9 @@ public sealed class MainWindowViewModelTests
 
         Assert.True(viewModel.IsStatusIconSupported);
         Assert.True(viewModel.ShowInNotificationArea);
-        Assert.True(viewModel.CanHideToNotificationArea);
+        Assert.False(viewModel.CanHideToNotificationArea);
         Assert.True(viewModel.StatusIconMenuState.IsVisible);
-        Assert.True(viewModel.StatusIconMenuState.CanHideWindow);
+        Assert.False(viewModel.StatusIconMenuState.CanHideWindow);
         Assert.Contains(nameof(MainWindowViewModel.ShowInNotificationArea), changedProperties);
         Assert.Contains(nameof(MainWindowViewModel.CanHideToNotificationArea), changedProperties);
         Assert.Contains(nameof(MainWindowViewModel.StatusIconMenuState), changedProperties);
@@ -1543,10 +1543,18 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
-    public async Task HideToNotificationAreaCommandPublishesOnlyWhenSupportedAndEnabled()
+    public async Task HideToNotificationAreaCommandRequiresRecoverableStatusIcon()
     {
         var disabled = CreateViewModel(new ManualMonotonicClock(), statusIconSupported: true);
         var unsupported = CreateViewModel(new ManualMonotonicClock());
+        var visibleButNotRecoverableSettings = new RecordingSettingsStore
+        {
+            LoadedSettings = new LinuxAppSettings(showInNotificationArea: true)
+        };
+        var visibleButNotRecoverable = CreateViewModel(
+            new ManualMonotonicClock(),
+            settingsStore: visibleButNotRecoverableSettings,
+            statusIconSupported: true);
         var enabledSettings = new RecordingSettingsStore
         {
             LoadedSettings = new LinuxAppSettings(showInNotificationArea: true)
@@ -1554,22 +1562,30 @@ public sealed class MainWindowViewModelTests
         var enabled = CreateViewModel(
             new ManualMonotonicClock(),
             settingsStore: enabledSettings,
-            statusIconSupported: true);
+            statusIconSupported: true,
+            statusIconCanRecoverHiddenWindow: true);
         int disabledRequests = 0;
         int unsupportedRequests = 0;
+        int visibleButNotRecoverableRequests = 0;
         int enabledRequests = 0;
         disabled.HideToNotificationAreaRequested += (_, _) => disabledRequests++;
         unsupported.HideToNotificationAreaRequested += (_, _) => unsupportedRequests++;
+        visibleButNotRecoverable.HideToNotificationAreaRequested += (_, _) => visibleButNotRecoverableRequests++;
         enabled.HideToNotificationAreaRequested += (_, _) => enabledRequests++;
+        await visibleButNotRecoverable.LoadSettingsAsync();
         await enabled.LoadSettingsAsync();
 
         disabled.HideToNotificationAreaCommand.Execute(null);
         unsupported.HideToNotificationAreaCommand.Execute(null);
+        visibleButNotRecoverable.HideToNotificationAreaCommand.Execute(null);
         enabled.HideToNotificationAreaCommand.Execute(null);
 
         Assert.Equal(0, disabledRequests);
         Assert.Equal(0, unsupportedRequests);
+        Assert.Equal(0, visibleButNotRecoverableRequests);
         Assert.Equal(1, enabledRequests);
+        Assert.False(visibleButNotRecoverable.CanHideToNotificationArea);
+        Assert.False(visibleButNotRecoverable.StatusIconMenuState.CanHideWindow);
     }
 
     [Fact]
@@ -1583,7 +1599,8 @@ public sealed class MainWindowViewModelTests
         var viewModel = CreateViewModel(
             clock,
             settingsStore: settingsStore,
-            statusIconSupported: true);
+            statusIconSupported: true,
+            statusIconCanRecoverHiddenWindow: true);
         await viewModel.LoadSettingsAsync();
 
         StatusIconMenuState stopped = viewModel.StatusIconMenuState;
@@ -2511,7 +2528,8 @@ public sealed class MainWindowViewModelTests
         ISettingsStore? settingsStore = null,
         IAudioAlertService? audioAlertService = null,
         ISystemPowerService? systemPowerService = null,
-        bool statusIconSupported = false)
+        bool statusIconSupported = false,
+        bool statusIconCanRecoverHiddenWindow = false)
     {
         return new MainWindowViewModel(
             new CountdownEngine(clock),
@@ -2521,7 +2539,8 @@ public sealed class MainWindowViewModelTests
             settingsStore ?? new RecordingSettingsStore(),
             audioAlertService ?? new RecordingAudioAlertService(),
             systemPowerService ?? new RecordingSystemPowerService(),
-            statusIconSupported);
+            statusIconSupported,
+            statusIconCanRecoverHiddenWindow);
     }
 
     private sealed class ManualMonotonicClock : IMonotonicClock

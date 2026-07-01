@@ -51,6 +51,8 @@ internal sealed class AvaloniaStatusIconService : IStatusIconService
 
     public bool IsSupported => true;
 
+    public bool CanRecoverHiddenWindow => false;
+
     public event EventHandler<StatusIconActionRequestedEventArgs>? ActionRequested;
 
     public Task UpdateAsync(StatusIconMenuState state, CancellationToken cancellationToken = default)

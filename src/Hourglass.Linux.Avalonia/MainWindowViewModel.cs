@@ -19,6 +19,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private readonly INotificationService notificationService;
     private readonly ISessionInhibitor sessionInhibitor;
     private readonly ISettingsStore settingsStore;
+    private readonly bool statusIconCanRecoverHiddenWindow;
     private readonly bool statusIconSupported;
     private readonly ISystemPowerService systemPowerService;
     private readonly Func<DateTime> wallClockNow;
@@ -108,7 +109,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         ISettingsStore settingsStore,
         IAudioAlertService audioAlertService,
         ISystemPowerService systemPowerService,
-        bool statusIconSupported = false)
+        bool statusIconSupported = false,
+        bool statusIconCanRecoverHiddenWindow = false)
     {
         this.engine = engine ?? throw new ArgumentNullException(nameof(engine));
         this.wallClockNow = wallClockNow ?? throw new ArgumentNullException(nameof(wallClockNow));
@@ -118,6 +120,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         this.audioAlertService = audioAlertService ?? throw new ArgumentNullException(nameof(audioAlertService));
         this.systemPowerService = systemPowerService ?? throw new ArgumentNullException(nameof(systemPowerService));
         this.statusIconSupported = statusIconSupported;
+        this.statusIconCanRecoverHiddenWindow = statusIconCanRecoverHiddenWindow;
         this.engine.Expired += this.OnEngineExpired;
 
         this.StartCommand = new RelayCommand(
@@ -314,7 +317,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     public bool ShowInNotificationArea => this.settings.ShowInNotificationArea && this.IsStatusIconSupported;
 
-    public bool CanHideToNotificationArea => this.ShowInNotificationArea;
+    public bool CanHideToNotificationArea => this.ShowInNotificationArea && this.statusIconCanRecoverHiddenWindow;
 
     public bool PopUpWhenExpired => this.settings.PopUpWhenExpired;
 

@@ -8,6 +8,8 @@ public sealed class UnsupportedStatusIconService : IStatusIconService
 
     public bool IsSupported => false;
 
+    public bool CanRecoverHiddenWindow => false;
+
     public event EventHandler<StatusIconActionRequestedEventArgs>? ActionRequested
     {
         add { }

@@ -4,6 +4,8 @@ Hourglass Linux status icon support is optional and capability-based. The first 
 
 `IStatusIconService.IsSupported` means Hourglass selected and initialized a status icon backend. It does not prove that the current desktop visibly rendered the icon. Visible support must be manually validated through the actual desktop, panel, and packaging path users will run.
 
+`IStatusIconService.CanRecoverHiddenWindow` is a stricter capability used for **Hide to notification area**. It must remain false unless the backend or launch path can verify that a hidden window is recoverable. The current Avalonia backend does not expose a reliable visible-icon acknowledgement, and Hourglass does not yet raise an existing hidden instance on relaunch, so hide-to-notification-area remains disabled even when the status icon itself is available.
+
 ## Backend Selection
 
 The Linux services layer reads:
@@ -44,7 +46,8 @@ For every tested environment, record:
 - backend selected;
 - whether the status icon is visible;
 - show/restore behavior;
-- hide-to-notification-area behavior;
+- whether hide-to-notification-area is enabled;
+- hidden-window recovery behavior, when enabled by a future backend;
 - pause/resume menu behavior;
 - stop menu behavior;
 - restart menu behavior;
@@ -64,13 +67,14 @@ Launch Hourglass through the installed `.desktop` entry where possible. Some des
 5. Start a duration timer and confirm Pause, Stop, and Restart are enabled.
 6. Pause and resume from the status icon menu.
 7. Stop from the status icon menu and confirm the window returns to the stopped state.
-8. Start again, hide to the notification area, then show/restore from the status icon.
+8. Confirm **Hide to notification area** remains disabled unless the selected backend explicitly reports hidden-window recovery support.
 9. Restart from the status icon menu and confirm the timer restarts from the original duration.
 10. Disable **Show in notification area** and confirm the icon disappears.
 11. Re-enable it and confirm the icon returns.
 12. Exit from the status icon menu and confirm normal close/prompt behavior still applies.
 13. Close Hourglass while the icon is visible and confirm no stale icon remains.
-14. Rapidly pause, resume, restart, hide, show, and stop, confirming the final state is correct and no exceptions occur.
+14. Rapidly pause, resume, restart, show, and stop, confirming the final state is correct and no exceptions occur.
+15. If a future backend enables hiding, start again, hide to the notification area, then show/restore from the status icon or relaunch path.
 
 ## Validated Combinations
 

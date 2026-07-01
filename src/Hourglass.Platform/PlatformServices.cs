@@ -34,6 +34,8 @@ public interface IStatusIconService : IAsyncDisposable
 {
     bool IsSupported { get; }
 
+    bool CanRecoverHiddenWindow { get; }
+
     event EventHandler<StatusIconActionRequestedEventArgs>? ActionRequested;
 
     Task UpdateAsync(StatusIconMenuState state, CancellationToken cancellationToken = default);

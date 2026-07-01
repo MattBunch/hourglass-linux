@@ -56,7 +56,8 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
                 new JsonFileSettingsStore(new XdgSettingsPathService()),
                 new LinuxAudioAlertService(NormalBeepPath),
                 new UnsupportedSystemPowerService(),
-                services.StatusIconService.IsSupported),
+                services.StatusIconService.IsSupported,
+                services.StatusIconService.CanRecoverHiddenWindow),
             services.DesktopProgressService,
             services.StatusIconService)
     {

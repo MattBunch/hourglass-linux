@@ -25,6 +25,7 @@ public sealed class UnsupportedStatusIconServiceTests
         await service.DisposeAsync();
 
         Assert.False(service.IsSupported);
+        Assert.False(service.CanRecoverHiddenWindow);
         Assert.Equal(0, actionCount);
     }
 }

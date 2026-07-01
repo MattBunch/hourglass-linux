@@ -434,6 +434,8 @@ Tray support is optional because some desktop environments, particularly stock G
 
 The Linux implementation keeps tray support optional. It adds an `IStatusIconService` boundary, an Avalonia status icon backend selected only for recognized tray-capable desktop identifiers or the explicit `HOURGLASS_STATUS_ICON_BACKEND=avalonia` override, and an unsupported no-op backend everywhere else. The persistent **Show in notification area** option is disabled by default and masked off when no backend is supported.
 
+The current Avalonia backend does not enable hiding the only timer window. It can initialize a status icon, but it cannot prove that the desktop visibly rendered that icon or that the user has a reliable recovery path after hiding the window. Hide-to-notification-area should remain disabled until a backend can verify recoverability or relaunch activation can raise the existing instance.
+
 #### Required behavior
 
 - Add an `IStatusIconService` capability abstraction.
@@ -445,13 +447,13 @@ The Linux implementation keeps tray support optional. It adds an `IStatusIconSer
   - stop and restart the selected timer where supported by the current timer state;
   - exit the application.
 - Add a persistent `ShowInNotificationArea` option only when a supported backend is available.
-- Allow hiding to the notification area only when the status icon backend is initialized and the option is enabled.
+- Allow hiding to the notification area only when the status icon backend is initialized, the option is enabled, and the backend or launch path provides a verified recovery path.
 - If minimizing to tray is enabled later, ensure the user always has a recovery path through notifications or application relaunch.
 
 #### Acceptance criteria
 
 - The app remains fully usable without a tray.
-- Hiding a window is not allowed unless the status icon backend has initialized successfully.
+- Hiding a window is not allowed unless the status icon backend has initialized successfully and can recover the hidden window.
 - Re-launching the app raises the hidden existing instance after command handoff is implemented.
 - Tray menu state reflects the actual timer state.
 
