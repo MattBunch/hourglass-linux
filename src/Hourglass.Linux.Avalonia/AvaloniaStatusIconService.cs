@@ -41,8 +41,8 @@ internal sealed class AvaloniaStatusIconService : IStatusIconService
 
         this.trayIcon = new TrayIcon
         {
-            Icon = icon,
             IsVisible = false,
+            Icon = icon,
             Menu = menu,
             ToolTipText = "Hourglass"
         };
