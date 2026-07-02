@@ -1,6 +1,7 @@
 namespace Hourglass.Core.Tests.Settings;
 
 using System.Text.Json;
+using Hourglass.Serialization;
 using Hourglass.Settings;
 using Hourglass.Timing;
 using Xunit;
@@ -88,5 +89,61 @@ public sealed class SavedTimersDocumentTests
         Assert.Equal(TimerState.Paused, timerInfo.State);
         Assert.Equal(TimeSpan.FromSeconds(4), timerInfo.TimeElapsed);
         Assert.Equal(TimeSpan.FromSeconds(6), timerInfo.TimeLeft);
+    }
+
+    [Fact]
+    public void ActiveSessionDocumentUsesStoredStartInputWhenEditorTextIsInvalid()
+    {
+        var document = new ActiveTimerSessionDocument(
+            timerInput: "10 secon",
+            timerStartInput: "10 seconds",
+            state: TimerState.Paused,
+            timeElapsedTicks: TimeSpan.FromSeconds(4).Ticks,
+            timeLeftTicks: TimeSpan.FromSeconds(6).Ticks,
+            totalTimeTicks: TimeSpan.FromSeconds(10).Ticks);
+
+        var timerInfo = document.ToTimerInfo(new DateTime(2026, 7, 2, 8, 0, 0));
+
+        Assert.NotNull(timerInfo);
+        Assert.Equal(TimerState.Paused, timerInfo.State);
+        Assert.NotNull(timerInfo.TimerStart);
+    }
+
+    [Fact]
+    public void ActiveSessionDocumentFallsBackToTimerInputForOlderSchema()
+    {
+        const string json = """
+            {
+              "Version": 1,
+              "TimerInput": "10 seconds",
+              "State": 2,
+              "TimeElapsedTicks": 40000000,
+              "TimeLeftTicks": 60000000,
+              "TotalTimeTicks": 100000000
+            }
+            """;
+
+        ActiveTimerSessionDocument? document = JsonSerializer.Deserialize<ActiveTimerSessionDocument>(json);
+
+        Assert.NotNull(document);
+        var timerInfo = document.ToTimerInfo(new DateTime(2026, 7, 2, 8, 0, 0));
+        Assert.NotNull(timerInfo);
+        Assert.Equal(TimerState.Paused, timerInfo.State);
+    }
+
+    [Fact]
+    public void ActiveSessionDocumentRejectsActiveSessionWithoutValidStartExpression()
+    {
+        var document = new ActiveTimerSessionDocument(
+            timerInput: "not valid",
+            timerStartInput: "also not valid",
+            state: TimerState.Paused,
+            timeElapsedTicks: TimeSpan.FromSeconds(4).Ticks,
+            timeLeftTicks: TimeSpan.FromSeconds(6).Ticks,
+            totalTimeTicks: TimeSpan.FromSeconds(10).Ticks);
+
+        TimerInfo? timerInfo = document.ToTimerInfo(new DateTime(2026, 7, 2, 8, 0, 0));
+
+        Assert.Null(timerInfo);
     }
 }

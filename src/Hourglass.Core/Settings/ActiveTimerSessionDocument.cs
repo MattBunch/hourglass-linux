@@ -20,6 +20,7 @@ public sealed record ActiveTimerSessionDocument
     public ActiveTimerSessionDocument(
         int version = CurrentVersion,
         string timerInput = "",
+        string timerStartInput = "",
         string timerTitle = "",
         ActiveTimerPresentationMode presentationMode = ActiveTimerPresentationMode.Input,
         DateTime? savedAt = null,
@@ -33,6 +34,7 @@ public sealed record ActiveTimerSessionDocument
     {
         this.Version = version;
         this.TimerInput = timerInput ?? string.Empty;
+        this.TimerStartInput = timerStartInput ?? string.Empty;
         this.TimerTitle = timerTitle ?? string.Empty;
         this.PresentationMode = presentationMode;
         this.SavedAt = savedAt;
@@ -48,6 +50,8 @@ public sealed record ActiveTimerSessionDocument
     public int Version { get; }
 
     public string TimerInput { get; }
+
+    public string TimerStartInput { get; }
 
     public string TimerTitle { get; }
 
@@ -81,6 +85,7 @@ public sealed record ActiveTimerSessionDocument
         return new ActiveTimerSessionDocument(
             CurrentVersion,
             timerInput,
+            timerInfo.TimerStart?.TimerStartToken?.ToString() ?? timerInput,
             timerTitle,
             presentationMode,
             savedAt,
@@ -95,7 +100,7 @@ public sealed record ActiveTimerSessionDocument
 
     public TimerInfo? ToTimerInfo(DateTime wallClockNow)
     {
-        TimerStart? timerStart = TimerStart.FromString(this.TimerInput);
+        TimerStart? timerStart = this.GetTimerStart();
         if (this.State != TimerState.Stopped && timerStart == null)
         {
             return null;
@@ -196,5 +201,11 @@ public sealed record ActiveTimerSessionDocument
             TotalTime = totalTime,
             TimerStart = timerStart?.ToTimerStartInfo()
         };
+    }
+
+    private TimerStart? GetTimerStart()
+    {
+        TimerStart? timerStart = TimerStart.FromString(this.TimerStartInput);
+        return timerStart ?? TimerStart.FromString(this.TimerInput);
     }
 }

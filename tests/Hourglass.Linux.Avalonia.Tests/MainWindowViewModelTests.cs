@@ -2040,6 +2040,8 @@ public sealed class MainWindowViewModelTests
             },
             audioAlertService: restoredAudio);
         int visualRequests = 0;
+        int attentionRequests = 0;
+        restored.WindowAttentionRequested += (_, _) => attentionRequests++;
         restored.ExpiryVisualFeedbackRequested += (_, _) => visualRequests++;
 
         await restored.LoadSettingsAsync();
@@ -2049,8 +2051,140 @@ public sealed class MainWindowViewModelTests
         Assert.Equal("Timer complete", restored.StatusText);
         Assert.Equal("Tea", restored.TimerTitle);
         Assert.Equal(1, visualRequests);
+        Assert.Equal(1, attentionRequests);
         Assert.Equal(1, restoredNotifications.CallCount);
         Assert.Equal(1, restoredAudio.CallCount);
+    }
+
+    [Fact]
+    public async Task AlreadyExpiredActiveSessionRestoresCompletedDisplayWithoutReplayingEffects()
+    {
+        DateTime start = new(2026, 7, 2, 8, 0, 0);
+        DateTime end = start.AddSeconds(10);
+        var notificationService = new RecordingNotificationService();
+        var audioAlertService = new RecordingAudioAlertService();
+        var settingsStore = new RecordingSettingsStore
+        {
+            LoadedSettings = LinuxAppSettings.Default,
+            LoadedActiveSession = new ActiveTimerSessionDocument(
+                timerInput: "10 seconds",
+                timerStartInput: "10 seconds",
+                timerTitle: "Tea",
+                presentationMode: ActiveTimerPresentationMode.Status,
+                savedAt: end.AddSeconds(5),
+                state: TimerState.Expired,
+                startTime: start,
+                endTime: end,
+                timeElapsedTicks: TimeSpan.FromSeconds(15).Ticks,
+                timeLeftTicks: TimeSpan.Zero.Ticks,
+                timeExpiredTicks: TimeSpan.FromSeconds(5).Ticks,
+                totalTimeTicks: TimeSpan.FromSeconds(10).Ticks)
+        };
+        var viewModel = CreateViewModel(
+            new ManualMonotonicClock(),
+            wallClockNow: () => end.AddSeconds(15),
+            notificationService: notificationService,
+            settingsStore: settingsStore,
+            audioAlertService: audioAlertService);
+        int visualRequests = 0;
+        int attentionRequests = 0;
+        viewModel.ExpiryVisualFeedbackRequested += (_, _) => visualRequests++;
+        viewModel.WindowAttentionRequested += (_, _) => attentionRequests++;
+
+        await viewModel.LoadSettingsAsync();
+
+        Assert.Equal(TimerState.Expired, viewModel.State);
+        Assert.Equal("Timer complete", viewModel.StatusText);
+        Assert.True(viewModel.IsCompletionTextVisible);
+        Assert.True(viewModel.HasCompletionEmphasis);
+        Assert.Equal("10 seconds", viewModel.TimerInput);
+        Assert.Equal("Tea", viewModel.TimerTitle);
+        Assert.Equal(0, visualRequests);
+        Assert.Equal(0, attentionRequests);
+        Assert.Equal(0, notificationService.CallCount);
+        Assert.Equal(0, audioAlertService.CallCount);
+    }
+
+    [Fact]
+    public async Task ActiveSessionPreservesRunningTimerWhenEditorTextIsInvalid()
+    {
+        var clock = new ManualMonotonicClock();
+        DateTime now = new(2026, 7, 2, 8, 0, 0);
+        var settingsStore = new RecordingSettingsStore();
+        var viewModel = CreateViewModel(clock, wallClockNow: () => now, settingsStore: settingsStore);
+        viewModel.TimerInput = "10 seconds";
+        viewModel.TimerTitle = "Tea";
+        viewModel.StartCommand.Execute(null);
+        Assert.True(viewModel.TryEnterTimerInputMode());
+        viewModel.TimerInput = "10 secon";
+        await viewModel.PendingSettingsSave;
+
+        Assert.NotNull(settingsStore.SavedActiveSession);
+        Assert.Equal("10 secon", settingsStore.SavedActiveSession.TimerInput);
+        Assert.Equal("10 seconds", settingsStore.SavedActiveSession.TimerStartInput);
+
+        now = now.AddSeconds(4);
+        var sessionInhibitor = new RecordingSessionInhibitor();
+        var restored = CreateViewModel(
+            new ManualMonotonicClock(),
+            wallClockNow: () => now,
+            sessionInhibitor: sessionInhibitor,
+            settingsStore: new RecordingSettingsStore
+            {
+                LoadedSettings = LinuxAppSettings.Default,
+                LoadedActiveSession = settingsStore.SavedActiveSession
+            });
+
+        await restored.LoadSettingsAsync();
+
+        Assert.Equal(TimerState.Running, restored.State);
+        Assert.True(restored.IsTimerInputVisible);
+        Assert.False(restored.IsRemainingTimeVisible);
+        Assert.Equal("10 secon", restored.TimerInput);
+        Assert.Equal("Tea", restored.TimerTitle);
+        Assert.Equal(1, sessionInhibitor.AcquireCount);
+    }
+
+    [Fact]
+    public async Task ActiveSessionPreservesPausedTimerWhenEditorTextIsInvalid()
+    {
+        var clock = new ManualMonotonicClock();
+        DateTime now = new(2026, 7, 2, 8, 0, 0);
+        var settingsStore = new RecordingSettingsStore();
+        var viewModel = CreateViewModel(clock, wallClockNow: () => now, settingsStore: settingsStore);
+        viewModel.TimerInput = "10 seconds";
+        viewModel.TimerTitle = "Tea";
+        viewModel.StartCommand.Execute(null);
+        clock.Advance(TimeSpan.FromSeconds(4));
+        viewModel.Tick();
+        viewModel.PauseResumeCommand.Execute(null);
+        Assert.True(viewModel.TryEnterTimerInputMode());
+        viewModel.TimerInput = "10 secon";
+        await viewModel.PendingSettingsSave;
+
+        Assert.NotNull(settingsStore.SavedActiveSession);
+        Assert.Equal("10 secon", settingsStore.SavedActiveSession.TimerInput);
+        Assert.Equal("10 seconds", settingsStore.SavedActiveSession.TimerStartInput);
+
+        var sessionInhibitor = new RecordingSessionInhibitor();
+        var restored = CreateViewModel(
+            new ManualMonotonicClock(),
+            wallClockNow: () => now.AddMinutes(5),
+            sessionInhibitor: sessionInhibitor,
+            settingsStore: new RecordingSettingsStore
+            {
+                LoadedSettings = LinuxAppSettings.Default,
+                LoadedActiveSession = settingsStore.SavedActiveSession
+            });
+
+        await restored.LoadSettingsAsync();
+
+        Assert.Equal(TimerState.Paused, restored.State);
+        Assert.True(restored.IsTimerInputVisible);
+        Assert.False(restored.IsRemainingTimeVisible);
+        Assert.Equal("10 secon", restored.TimerInput);
+        Assert.Equal("Tea", restored.TimerTitle);
+        Assert.Equal(0, sessionInhibitor.AcquireCount);
     }
 
     [Fact]

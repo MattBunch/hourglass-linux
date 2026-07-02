@@ -481,6 +481,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             return false;
         }
 
+        bool expiredWhileClosed = session.State == TimerState.Running
+            && timerInfo.State == TimerState.Expired;
+
         this.engine.Restore(timerInfo);
         TimerPresentationMode presentationMode = timerInfo.State == TimerState.Expired
             ? TimerPresentationMode.Status
@@ -502,7 +505,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         {
             _ = this.AcquireInhibitionAsync();
         }
-        else if (this.engine.State == TimerState.Expired)
+        else if (expiredWhileClosed)
         {
             _ = this.HandleRestoredExpiredAsync();
         }
