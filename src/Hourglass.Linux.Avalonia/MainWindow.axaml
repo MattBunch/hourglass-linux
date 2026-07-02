@@ -154,6 +154,10 @@
                   Command="{Binding ResetCommand}" />
         <MenuItem Header="Restart"
                   Command="{Binding RestartCommand}" />
+        <MenuItem x:Name="RecentInputsMenuItem"
+                  Header="Recent inputs" />
+        <MenuItem x:Name="SavedTimersMenuItem"
+                  Header="Saved timers" />
         <Separator />
         <MenuItem Header="Notifications"
                   ToggleType="CheckBox"
@@ -218,6 +222,14 @@
                     IsChecked="{Binding ShutDownWhenExpired, Mode=OneWay}"
                     IsEnabled="{Binding IsShutdownSupported}"
                     Command="{Binding ToggleShutDownWhenExpiredCommand}" />
+          <MenuItem Header="Restore active session on startup"
+                    ToggleType="CheckBox"
+                    IsChecked="{Binding RestoreActiveSessionOnStartup, Mode=OneWay}"
+                    Command="{Binding ToggleRestoreActiveSessionOnStartupCommand}" />
+          <MenuItem Header="Open saved timers on startup"
+                    ToggleType="CheckBox"
+                    IsChecked="{Binding OpenSavedTimersOnStartup, Mode=OneWay}"
+                    Command="{Binding ToggleOpenSavedTimersOnStartupCommand}" />
         </MenuItem>
         <MenuItem x:Name="FullScreenMenuItem"
                   Header="Full screen"

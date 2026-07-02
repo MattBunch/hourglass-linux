@@ -2,6 +2,7 @@ namespace Hourglass.Linux.Services.Tests;
 
 using Hourglass.Platform;
 using Hourglass.Settings;
+using Hourglass.Timing;
 using Xunit;
 
 public sealed class JsonFileSettingsStoreTests : IDisposable
@@ -72,6 +73,37 @@ public sealed class JsonFileSettingsStoreTests : IDisposable
         LinuxAppSettings? loaded = await store.LoadAsync<LinuxAppSettings>("app");
 
         Assert.Null(loaded);
+    }
+
+    [Fact]
+    public async Task SaveAndLoadRoundTripsSavedTimersAndActiveSession()
+    {
+        var store = this.CreateStore();
+        var savedTimers = new SavedTimersDocument(timers:
+        [
+            new SavedTimerDefinition("timer-1", "10 seconds", "Tea")
+        ]);
+        var activeSession = new ActiveTimerSessionDocument(
+            timerInput: "10 seconds",
+            timerTitle: "Tea",
+            state: TimerState.Running,
+            startTime: new DateTime(2026, 7, 2, 8, 0, 0),
+            endTime: new DateTime(2026, 7, 2, 8, 0, 10),
+            totalTimeTicks: TimeSpan.FromSeconds(10).Ticks);
+
+        await store.SaveAsync("saved-timers", savedTimers);
+        await store.SaveAsync("active-session", activeSession);
+
+        SavedTimersDocument? loadedSavedTimers = await store.LoadAsync<SavedTimersDocument>("saved-timers");
+        ActiveTimerSessionDocument? loadedActiveSession = await store.LoadAsync<ActiveTimerSessionDocument>("active-session");
+
+        Assert.NotNull(loadedSavedTimers);
+        SavedTimerDefinition loadedTimer = Assert.Single(loadedSavedTimers.Timers);
+        Assert.Equal("timer-1", loadedTimer.Id);
+        Assert.Equal("10 seconds", loadedTimer.TimerInput);
+        Assert.Equal("Tea", loadedTimer.TimerTitle);
+        Assert.NotNull(loadedActiveSession);
+        Assert.Equal(activeSession, loadedActiveSession);
     }
 
     [Fact]

@@ -821,6 +821,8 @@ public sealed class MainWindowViewModelTests
         Assert.Equal("{Binding PauseResumeCommand}", menuItems["{Binding PauseResumeText}"].Attribute("Command")?.Value);
         Assert.Equal("{Binding ResetCommand}", menuItems["Stop"].Attribute("Command")?.Value);
         Assert.Equal("{Binding RestartCommand}", menuItems["Restart"].Attribute("Command")?.Value);
+        Assert.Equal("RecentInputsMenuItem", menuItems["Recent inputs"].Attribute(xaml + "Name")?.Value);
+        Assert.Equal("SavedTimersMenuItem", menuItems["Saved timers"].Attribute(xaml + "Name")?.Value);
         Assert.Equal("CheckBox", menuItems["Notifications"].Attribute("ToggleType")?.Value);
         Assert.Equal("{Binding NotificationsEnabled, Mode=OneWay}", menuItems["Notifications"].Attribute("IsChecked")?.Value);
         Assert.Equal("{Binding ToggleNotificationsCommand}", menuItems["Notifications"].Attribute("Command")?.Value);
@@ -878,6 +880,20 @@ public sealed class MainWindowViewModelTests
         Assert.Equal("{Binding ShutDownWhenExpired, Mode=OneWay}", advancedItems["Shut down when expired"].Attribute("IsChecked")?.Value);
         Assert.Equal("{Binding IsShutdownSupported}", advancedItems["Shut down when expired"].Attribute("IsEnabled")?.Value);
         Assert.Equal("{Binding ToggleShutDownWhenExpiredCommand}", advancedItems["Shut down when expired"].Attribute("Command")?.Value);
+        Assert.Equal("CheckBox", advancedItems["Restore active session on startup"].Attribute("ToggleType")?.Value);
+        Assert.Equal(
+            "{Binding RestoreActiveSessionOnStartup, Mode=OneWay}",
+            advancedItems["Restore active session on startup"].Attribute("IsChecked")?.Value);
+        Assert.Equal(
+            "{Binding ToggleRestoreActiveSessionOnStartupCommand}",
+            advancedItems["Restore active session on startup"].Attribute("Command")?.Value);
+        Assert.Equal("CheckBox", advancedItems["Open saved timers on startup"].Attribute("ToggleType")?.Value);
+        Assert.Equal(
+            "{Binding OpenSavedTimersOnStartup, Mode=OneWay}",
+            advancedItems["Open saved timers on startup"].Attribute("IsChecked")?.Value);
+        Assert.Equal(
+            "{Binding ToggleOpenSavedTimersOnStartupCommand}",
+            advancedItems["Open saved timers on startup"].Attribute("Command")?.Value);
         Assert.Equal(
             "{Binding CanHideToNotificationArea}",
             menuItems["Hide to notification area"].Attribute("IsEnabled")?.Value);
@@ -1878,10 +1894,15 @@ public sealed class MainWindowViewModelTests
         settingsStore.Complete(new LinuxAppSettings(["15 minutes"], notificationsEnabled: true));
 
         Assert.False(loadTask.IsCompleted);
-        Assert.Equal(1, scheduler.PendingCount);
+        Assert.True(scheduler.PendingCount > 0);
         Assert.Equal("5 minutes", viewModel.TimerInput);
 
-        scheduler.RunNext();
+        while (!loadTask.IsCompleted)
+        {
+            Assert.True(scheduler.PendingCount > 0);
+            scheduler.RunNext();
+        }
+
         await loadTask;
 
         Assert.Equal("15 minutes", viewModel.TimerInput);
@@ -1911,6 +1932,146 @@ public sealed class MainWindowViewModelTests
 
         Assert.NotNull(settingsStore.SavedSettings);
         Assert.Equal(["90 seconds"], settingsStore.SavedSettings.RecentTimerInputs);
+    }
+
+    [Fact]
+    public async Task RecentInputCommandLoadsInputModeWithoutStartingTimer()
+    {
+        var settingsStore = new RecordingSettingsStore
+        {
+            LoadedSettings = new LinuxAppSettings(["15 minutes", "10 seconds"])
+        };
+        var viewModel = CreateViewModel(new ManualMonotonicClock(), settingsStore: settingsStore);
+        await viewModel.LoadSettingsAsync();
+
+        viewModel.SelectRecentInputCommand.Execute("10 seconds");
+        await viewModel.PendingSettingsSave;
+
+        Assert.Equal("10 seconds", viewModel.TimerInput);
+        Assert.Equal(TimerState.Stopped, viewModel.State);
+        Assert.True(viewModel.IsTimerInputVisible);
+        Assert.Equal(["15 minutes", "10 seconds"], viewModel.RecentInputMenuItems.Select(item => item.TimerInput).ToArray());
+        Assert.NotNull(settingsStore.SavedActiveSession);
+        Assert.Equal("10 seconds", settingsStore.SavedActiveSession.TimerInput);
+    }
+
+    [Fact]
+    public async Task ClearRecentInputsUpdatesSettingsAndMenu()
+    {
+        var settingsStore = new RecordingSettingsStore
+        {
+            LoadedSettings = new LinuxAppSettings(["15 minutes", "10 seconds"])
+        };
+        var viewModel = CreateViewModel(new ManualMonotonicClock(), settingsStore: settingsStore);
+        await viewModel.LoadSettingsAsync();
+
+        viewModel.ClearRecentInputsCommand.Execute(null);
+        await viewModel.PendingSettingsSave;
+
+        Assert.Empty(viewModel.RecentInputMenuItems);
+        Assert.NotNull(settingsStore.SavedSettings);
+        Assert.Empty(settingsStore.SavedSettings.RecentTimerInputs);
+    }
+
+    [Fact]
+    public async Task SaveOpenAndRemoveSavedTimerUsesSeparateDocument()
+    {
+        var settingsStore = new RecordingSettingsStore();
+        var viewModel = CreateViewModel(new ManualMonotonicClock(), settingsStore: settingsStore);
+        viewModel.TimerInput = "90 seconds";
+        viewModel.TimerTitle = "Tea";
+        viewModel.ToggleReverseProgressBarCommand.Execute(null);
+
+        viewModel.SaveCurrentTimerCommand.Execute(null);
+        await viewModel.PendingSettingsSave;
+
+        Assert.NotNull(settingsStore.SavedTimers);
+        SavedTimerDefinition savedTimer = Assert.Single(settingsStore.SavedTimers.Timers);
+        Assert.Equal("Tea — 90 seconds", savedTimer.Header);
+        Assert.True(savedTimer.Options.ReverseProgressBar);
+        Assert.Single(viewModel.SavedTimerMenuItems);
+
+        viewModel.TimerInput = "5 minutes";
+        viewModel.TimerTitle = "";
+        viewModel.OpenSavedTimerCommand.Execute(savedTimer.Id);
+        await viewModel.PendingSettingsSave;
+
+        Assert.Equal("90 seconds", viewModel.TimerInput);
+        Assert.Equal("Tea", viewModel.TimerTitle);
+        Assert.True(viewModel.ReverseProgressBar);
+        Assert.Equal(TimerState.Stopped, viewModel.State);
+
+        viewModel.RemoveSavedTimerCommand.Execute(savedTimer.Id);
+        await viewModel.PendingSettingsSave;
+
+        Assert.Empty(viewModel.SavedTimerMenuItems);
+        Assert.NotNull(settingsStore.SavedTimers);
+        Assert.Empty(settingsStore.SavedTimers.Timers);
+    }
+
+    [Fact]
+    public async Task ActiveSessionPersistsRunningTimerAndRestoresExpiredOnStartup()
+    {
+        var clock = new ManualMonotonicClock();
+        DateTime now = new(2026, 7, 2, 8, 0, 0);
+        var settingsStore = new RecordingSettingsStore();
+        var viewModel = CreateViewModel(clock, wallClockNow: () => now, settingsStore: settingsStore);
+        viewModel.TimerInput = "10 seconds";
+        viewModel.TimerTitle = "Tea";
+
+        viewModel.StartCommand.Execute(null);
+        await viewModel.PendingSettingsSave;
+
+        Assert.NotNull(settingsStore.SavedActiveSession);
+        Assert.Equal(TimerState.Running, settingsStore.SavedActiveSession.State);
+        Assert.Equal("10 seconds", settingsStore.SavedActiveSession.TimerInput);
+        Assert.Equal("Tea", settingsStore.SavedActiveSession.TimerTitle);
+
+        var restoredNotifications = new RecordingNotificationService();
+        var restoredAudio = new RecordingAudioAlertService();
+        var restored = CreateViewModel(
+            new ManualMonotonicClock(),
+            wallClockNow: () => now.AddSeconds(15),
+            notificationService: restoredNotifications,
+            settingsStore: new RecordingSettingsStore
+            {
+                LoadedSettings = LinuxAppSettings.Default,
+                LoadedActiveSession = settingsStore.SavedActiveSession
+            },
+            audioAlertService: restoredAudio);
+        int visualRequests = 0;
+        restored.ExpiryVisualFeedbackRequested += (_, _) => visualRequests++;
+
+        await restored.LoadSettingsAsync();
+
+        Assert.Equal(TimerState.Expired, restored.State);
+        Assert.True(restored.IsCompletionTextVisible);
+        Assert.Equal("Timer complete", restored.StatusText);
+        Assert.Equal("Tea", restored.TimerTitle);
+        Assert.Equal(1, visualRequests);
+        Assert.Equal(1, restoredNotifications.CallCount);
+        Assert.Equal(1, restoredAudio.CallCount);
+    }
+
+    [Fact]
+    public async Task DisabledActiveSessionRestoreUsesRecentInputFallback()
+    {
+        var settingsStore = new RecordingSettingsStore
+        {
+            LoadedSettings = new LinuxAppSettings(["15 minutes"], restoreActiveSessionOnStartup: false),
+            LoadedActiveSession = new ActiveTimerSessionDocument(
+                timerInput: "10 seconds",
+                state: TimerState.Running,
+                startTime: new DateTime(2026, 7, 2, 8, 0, 0),
+                endTime: new DateTime(2026, 7, 2, 8, 0, 10),
+                totalTimeTicks: TimeSpan.FromSeconds(10).Ticks)
+        };
+        var viewModel = CreateViewModel(new ManualMonotonicClock(), settingsStore: settingsStore);
+
+        await viewModel.LoadSettingsAsync();
+
+        Assert.Equal(TimerState.Stopped, viewModel.State);
+        Assert.Equal("15 minutes", viewModel.TimerInput);
     }
 
     [Fact]
@@ -2672,7 +2833,15 @@ public sealed class MainWindowViewModelTests
     {
         public LinuxAppSettings? LoadedSettings { get; init; }
 
+        public SavedTimersDocument? LoadedSavedTimers { get; init; }
+
+        public ActiveTimerSessionDocument? LoadedActiveSession { get; init; }
+
         public LinuxAppSettings? SavedSettings { get; private set; }
+
+        public SavedTimersDocument? SavedTimers { get; private set; }
+
+        public ActiveTimerSessionDocument? SavedActiveSession { get; private set; }
 
         public bool ThrowOnLoad { get; init; }
 
@@ -2685,19 +2854,39 @@ public sealed class MainWindowViewModelTests
                 return Task.FromException<T?>(new InvalidOperationException("Settings failed."));
             }
 
-            return Task.FromResult((T?)(object?)this.LoadedSettings);
+            object? value = key switch
+            {
+                "app" => this.LoadedSettings,
+                "saved-timers" => this.LoadedSavedTimers,
+                "active-session" => this.LoadedActiveSession,
+                _ => null
+            };
+
+            return Task.FromResult((T?)value);
         }
 
         public Task SaveAsync<T>(string key, T value, CancellationToken cancellationToken = default)
         {
-            Assert.Equal("app", key);
-
             if (this.ThrowOnSave)
             {
                 return Task.FromException(new InvalidOperationException("Settings save failed."));
             }
 
-            this.SavedSettings = Assert.IsType<LinuxAppSettings>(value);
+            switch (key)
+            {
+                case "app":
+                    this.SavedSettings = Assert.IsType<LinuxAppSettings>(value);
+                    break;
+                case "saved-timers":
+                    this.SavedTimers = Assert.IsType<SavedTimersDocument>(value);
+                    break;
+                case "active-session":
+                    this.SavedActiveSession = Assert.IsType<ActiveTimerSessionDocument>(value);
+                    break;
+                default:
+                    throw new InvalidOperationException($"Unexpected key: {key}");
+            }
+
             return Task.CompletedTask;
         }
     }
@@ -2708,8 +2897,10 @@ public sealed class MainWindowViewModelTests
 
         public Task<T?> LoadAsync<T>(string key, CancellationToken cancellationToken = default)
         {
-            Assert.Equal("app", key);
-            Assert.Equal(typeof(LinuxAppSettings), typeof(T));
+            if (key != "app")
+            {
+                return Task.FromResult<T?>(default);
+            }
 
             return (Task<T?>)(object)this.loadTask.Task;
         }
