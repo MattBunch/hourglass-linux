@@ -45,6 +45,57 @@ public sealed class Milestone6CoordinatorTests
         Assert.Equal(1, inner.ReleaseCount);
     }
 
+    [Fact]
+    public void CoordinatorOwnedWindowsUseSingleSettingsLoadPath()
+    {
+        string coordinator = File.ReadAllText(FindRepositoryFile("src/Hourglass.Linux.Avalonia/TimerWindowCoordinator.cs"));
+        string window = File.ReadAllText(FindRepositoryFile("src/Hourglass.Linux.Avalonia/MainWindow.axaml.cs"));
+
+        Assert.Contains("loadSettingsOnOpened: false", coordinator, StringComparison.Ordinal);
+        Assert.Contains("if (this.loadSettingsOnOpened)", window, StringComparison.Ordinal);
+        Assert.Contains("await this.viewModel.LoadSettingsAsync();", window, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void CoordinatorFlushesClosingWindowSessionBeforeFinalClose()
+    {
+        string coordinator = File.ReadAllText(FindRepositoryFile("src/Hourglass.Linux.Avalonia/TimerWindowCoordinator.cs"));
+        string window = File.ReadAllText(FindRepositoryFile("src/Hourglass.Linux.Avalonia/MainWindow.axaml.cs"));
+
+        Assert.Contains("prepareCoordinatorClose: this.PrepareWindowCloseAsync", coordinator, StringComparison.Ordinal);
+        Assert.Contains("await this.prepareCoordinatorClose(this).ConfigureAwait(false);", window, StringComparison.Ordinal);
+        Assert.Contains("this.closingWindows.Add(window);", coordinator, StringComparison.Ordinal);
+        Assert.Contains("await this.QueueSessionSave().ConfigureAwait(false);", coordinator, StringComparison.Ordinal);
+        Assert.Contains(".Where(window => !this.closingWindows.Contains(window.Window))", coordinator, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void CoordinatorDistinguishesMissingActiveSessionsFromEmptyActiveSessions()
+    {
+        string coordinator = File.ReadAllText(FindRepositoryFile("src/Hourglass.Linux.Avalonia/TimerWindowCoordinator.cs"));
+
+        Assert.Contains("LoadDocumentResult<ActiveTimerSessionsDocument>", coordinator, StringComparison.Ordinal);
+        Assert.Contains("if (activeSessions.Found)", coordinator, StringComparison.Ordinal);
+        Assert.Contains("return activeSessions.Value ?? ActiveTimerSessionsDocument.Empty;", coordinator, StringComparison.Ordinal);
+        Assert.Contains("LoadOptionalDocumentAsync<ActiveTimerSessionDocument>", coordinator, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void CoordinatorStatusIconUpdatesAreDispatchedToUiThread()
+    {
+        string coordinator = File.ReadAllText(FindRepositoryFile("src/Hourglass.Linux.Avalonia/TimerWindowCoordinator.cs"));
+        int applyStatusIconStart = coordinator.IndexOf("private void ApplyStatusIconState()", StringComparison.Ordinal);
+        int applyStatusIconAsyncStart = coordinator.IndexOf("private async Task ApplyStatusIconStateAsync()", StringComparison.Ordinal);
+
+        Assert.True(applyStatusIconStart >= 0);
+        Assert.True(applyStatusIconAsyncStart > applyStatusIconStart);
+        string syncMethod = coordinator[applyStatusIconStart..applyStatusIconAsyncStart];
+
+        Assert.Contains("if (!Dispatcher.UIThread.CheckAccess())", syncMethod, StringComparison.Ordinal);
+        Assert.Contains("Dispatcher.UIThread.Post(this.ApplyStatusIconState);", syncMethod, StringComparison.Ordinal);
+        Assert.Contains("_ = this.ApplyStatusIconStateAsync();", syncMethod, StringComparison.Ordinal);
+    }
+
     private sealed class RecordingSessionInhibitor : ISessionInhibitor
     {
         public int AcquireCount { get; private set; }
@@ -81,5 +132,22 @@ public sealed class Milestone6CoordinatorTests
     private sealed class TestMonotonicClock : IMonotonicClock
     {
         public TimeSpan Elapsed { get; private set; }
+    }
+
+    private static string FindRepositoryFile(string relativePath)
+    {
+        string? directory = AppContext.BaseDirectory;
+        while (directory != null)
+        {
+            string candidate = Path.Combine(directory, relativePath);
+            if (File.Exists(candidate))
+            {
+                return candidate;
+            }
+
+            directory = Directory.GetParent(directory)?.FullName;
+        }
+
+        throw new FileNotFoundException($"Could not find {relativePath} from {AppContext.BaseDirectory}.");
     }
 }

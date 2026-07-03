@@ -33,6 +33,7 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
     private readonly IStatusIconService statusIconService;
     private readonly ISystemPowerService systemPowerService;
     private readonly CoordinatedSessionInhibitor sessionInhibitor;
+    private readonly HashSet<MainWindow> closingWindows = [];
     private readonly List<WindowRegistration> windows = [];
     private Task pendingSessionSave = Task.CompletedTask;
     private bool isShuttingDown;
@@ -136,7 +137,12 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
             sessionId,
             persistActiveSessionDirectly: false,
             restoreActiveSessionOnLoad: false);
-        var window = new MainWindow(viewModel, new UnsupportedDesktopProgressService(), UnsupportedStatusIconService.Instance);
+        var window = new MainWindow(
+            viewModel,
+            new UnsupportedDesktopProgressService(),
+            UnsupportedStatusIconService.Instance,
+            loadSettingsOnOpened: false,
+            prepareCoordinatorClose: this.PrepareWindowCloseAsync);
         var registration = new WindowRegistration(window, viewModel);
 
         this.windows.Add(registration);
@@ -155,7 +161,7 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
 
         _ = this.LoadWindowAsync(registration, session, savedTimer);
         window.Show();
-        this.QueueSessionSave();
+        _ = this.QueueSessionSave();
         this.ApplyDesktopProgress();
         this.ApplyStatusIconState();
         return window;
@@ -179,20 +185,19 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
             registration.ViewModel.ApplySavedTimer(savedTimer);
         }
 
-        this.QueueSessionSave();
+        _ = this.QueueSessionSave();
         this.ApplyDesktopProgress();
         this.ApplyStatusIconState();
     }
 
     private async Task<ActiveTimerSessionsDocument> LoadActiveSessionsAsync(CancellationToken cancellationToken)
     {
-        ActiveTimerSessionsDocument activeSessions = await this.LoadDocumentAsync(
+        LoadDocumentResult<ActiveTimerSessionsDocument> activeSessions = await this.TryLoadDocumentAsync<ActiveTimerSessionsDocument>(
             ActiveSessionsKey,
-            ActiveTimerSessionsDocument.Empty,
             cancellationToken).ConfigureAwait(true);
-        if (activeSessions.Sessions.Length > 0)
+        if (activeSessions.Found)
         {
-            return activeSessions;
+            return activeSessions.Value ?? ActiveTimerSessionsDocument.Empty;
         }
 
         ActiveTimerSessionDocument? legacySession = await this.LoadOptionalDocumentAsync<ActiveTimerSessionDocument>(
@@ -219,6 +224,25 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
         catch (Exception)
         {
             return fallback;
+        }
+    }
+
+    private async Task<LoadDocumentResult<T>> TryLoadDocumentAsync<T>(string key, CancellationToken cancellationToken)
+    {
+        try
+        {
+            T? value = await this.settingsStore.LoadAsync<T>(key, cancellationToken).ConfigureAwait(true);
+            return value == null
+                ? new LoadDocumentResult<T>(false, default)
+                : new LoadDocumentResult<T>(true, value);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception)
+        {
+            return new LoadDocumentResult<T>(false, default);
         }
     }
 
@@ -258,7 +282,7 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
 
     private void ViewModelActiveSessionChanged(object? sender, EventArgs e)
     {
-        this.QueueSessionSave();
+        _ = this.QueueSessionSave();
         this.ApplyStatusIconState();
     }
 
@@ -318,6 +342,7 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
         registration.ViewModel.ActiveSessionChanged -= this.ViewModelActiveSessionChanged;
         registration.ViewModel.NewTimerRequested -= this.ViewModelNewTimerRequested;
         registration.ViewModel.OpenAllSavedTimersRequested -= this.ViewModelOpenAllSavedTimersRequested;
+        this.closingWindows.Remove(window);
         this.windows.Remove(registration);
 
         if (this.mostRecentWindow == registration)
@@ -325,7 +350,7 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
             this.mostRecentWindow = this.windows.LastOrDefault();
         }
 
-        this.QueueSessionSave();
+        _ = this.QueueSessionSave();
         this.ApplyDesktopProgress();
         this.ApplyStatusIconState();
 
@@ -397,15 +422,17 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
             .FirstOrDefault();
     }
 
-    private void QueueSessionSave()
+    private Task QueueSessionSave()
     {
         ActiveTimerSessionsDocument document = this.CreateActiveSessionsDocument();
         this.pendingSessionSave = this.SaveSessionsAfterAsync(this.pendingSessionSave, document);
+        return this.pendingSessionSave;
     }
 
     private ActiveTimerSessionsDocument CreateActiveSessionsDocument()
     {
         ActiveTimerSessionDefinition[] sessions = this.windows
+            .Where(window => !this.closingWindows.Contains(window.Window))
             .Select(window => new ActiveTimerSessionDefinition(
                 window.ViewModel.SessionId,
                 window.ViewModel.CreateActiveSessionDocument()))
@@ -452,6 +479,17 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
 
     private void ApplyStatusIconState()
     {
+        if (!Dispatcher.UIThread.CheckAccess())
+        {
+            Dispatcher.UIThread.Post(this.ApplyStatusIconState);
+            return;
+        }
+
+        _ = this.ApplyStatusIconStateAsync();
+    }
+
+    private async Task ApplyStatusIconStateAsync()
+    {
         WindowRegistration? target = this.GetStatusIconTarget();
         StatusIconMenuState state = target?.ViewModel.StatusIconMenuState
             ?? new StatusIconMenuState(
@@ -463,7 +501,25 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
                 false,
                 false,
                 true);
-        _ = this.statusIconService.UpdateAsync(state);
+
+        try
+        {
+            await this.statusIconService.UpdateAsync(state).ConfigureAwait(true);
+        }
+        catch (Exception)
+        {
+        }
+    }
+
+    private async Task PrepareWindowCloseAsync(MainWindow window)
+    {
+        if (!this.windows.Any(registration => registration.Window == window))
+        {
+            return;
+        }
+
+        this.closingWindows.Add(window);
+        await this.QueueSessionSave().ConfigureAwait(false);
     }
 
     private static IStatusIconService CreateStatusIconService()
@@ -485,6 +541,8 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
             return UnsupportedStatusIconService.Instance;
         }
     }
+
+    private readonly record struct LoadDocumentResult<T>(bool Found, T? Value);
 
     private sealed record WindowRegistration(MainWindow Window, MainWindowViewModel ViewModel);
 }

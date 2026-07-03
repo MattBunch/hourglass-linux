@@ -32,6 +32,8 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
     private readonly IStatusIconService statusIconService;
     private readonly DispatcherTimer validationFeedbackTimer;
     private readonly WindowFullScreenController fullScreenController;
+    private readonly Func<MainWindow, Task> prepareCoordinatorClose;
+    private readonly bool loadSettingsOnOpened;
     private readonly MainWindowViewModel viewModel;
     private readonly WindowAttentionController? windowAttentionController;
     private int expiryFlashGeneration;
@@ -76,7 +78,9 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
     internal MainWindow(
         MainWindowViewModel viewModel,
         IDesktopProgressService desktopProgressService,
-        IStatusIconService statusIconService)
+        IStatusIconService statusIconService,
+        bool loadSettingsOnOpened = true,
+        Func<MainWindow, Task>? prepareCoordinatorClose = null)
     {
         InitializeComponent();
 
@@ -84,6 +88,8 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
         this.desktopProgressController = new DesktopProgressController(
             desktopProgressService ?? throw new ArgumentNullException(nameof(desktopProgressService)));
         this.statusIconService = statusIconService ?? throw new ArgumentNullException(nameof(statusIconService));
+        this.loadSettingsOnOpened = loadSettingsOnOpened;
+        this.prepareCoordinatorClose = prepareCoordinatorClose ?? (_ => Task.CompletedTask);
         this.DataContext = this.viewModel;
         this.windowAttentionController = new WindowAttentionController(this);
         this.fullScreenController = new WindowFullScreenController(this);
@@ -333,6 +339,7 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
         this.refreshTimer.Stop();
         await this.viewModel.PendingSettingsSave.ConfigureAwait(false);
         await this.desktopProgressController.ClearAsync().ConfigureAwait(false);
+        await this.prepareCoordinatorClose(this).ConfigureAwait(false);
     }
 
     private void UpdatePresentationClasses()
@@ -361,7 +368,10 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
     private async void WindowOpened(object? sender, EventArgs e)
     {
         this.UpdateResponsiveLayout();
-        await this.viewModel.LoadSettingsAsync();
+        if (this.loadSettingsOnOpened)
+        {
+            await this.viewModel.LoadSettingsAsync();
+        }
     }
 
     private void WindowClosing(object? sender, WindowClosingEventArgs e)
