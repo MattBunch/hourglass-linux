@@ -2057,6 +2057,57 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
+    public async Task RestoredExpiredSessionClearsLockInterfaceBeforeRestart()
+    {
+        DateTime start = new(2026, 7, 2, 8, 0, 0);
+        DateTime end = start.AddSeconds(10);
+        var notificationService = new RecordingNotificationService();
+        var audioAlertService = new RecordingAudioAlertService();
+        var settingsStore = new RecordingSettingsStore
+        {
+            LoadedSettings = LinuxAppSettings.Default with { LockInterface = true },
+            LoadedActiveSession = new ActiveTimerSessionDocument(
+                timerInput: "10 seconds",
+                timerStartInput: "10 seconds",
+                timerTitle: "Tea",
+                presentationMode: ActiveTimerPresentationMode.Status,
+                savedAt: start.AddSeconds(5),
+                state: TimerState.Running,
+                startTime: start,
+                endTime: end,
+                timeElapsedTicks: TimeSpan.FromSeconds(5).Ticks,
+                timeLeftTicks: TimeSpan.FromSeconds(5).Ticks,
+                totalTimeTicks: TimeSpan.FromSeconds(10).Ticks)
+        };
+        var viewModel = CreateViewModel(
+            new ManualMonotonicClock(),
+            wallClockNow: () => end.AddSeconds(5),
+            notificationService: notificationService,
+            settingsStore: settingsStore,
+            audioAlertService: audioAlertService);
+        int visualRequests = 0;
+        viewModel.ExpiryVisualFeedbackRequested += (_, _) => visualRequests++;
+
+        await viewModel.LoadSettingsAsync();
+        await viewModel.PendingSettingsSave;
+
+        Assert.Equal(TimerState.Expired, viewModel.State);
+        Assert.True(viewModel.IsCompletionTextVisible);
+        Assert.False(viewModel.LockInterface);
+        Assert.False(viewModel.IsTimerModificationLocked);
+        Assert.NotNull(settingsStore.SavedSettings);
+        Assert.False(settingsStore.SavedSettings.LockInterface);
+        Assert.Equal(1, visualRequests);
+        Assert.Equal(1, notificationService.CallCount);
+        Assert.Equal(1, audioAlertService.CallCount);
+
+        viewModel.RestartCommand.Execute(null);
+
+        Assert.Equal(TimerState.Running, viewModel.State);
+        Assert.False(viewModel.IsTimerModificationLocked);
+    }
+
+    [Fact]
     public async Task AlreadyExpiredActiveSessionRestoresCompletedDisplayWithoutReplayingEffects()
     {
         DateTime start = new(2026, 7, 2, 8, 0, 0);

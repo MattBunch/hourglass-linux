@@ -1162,10 +1162,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         this.RefreshDisplay(TimerViewState.TimerCompleteStatusText, hasValidationError: false);
         this.QueueActiveSessionSave();
 
-        if (this.settings.LockInterface)
-        {
-            this.ReplaceSettings(this.settings with { LockInterface = false }, save: true);
-        }
+        this.ClearLockInterfaceAfterCompletion();
 
         PublishSafely(this.ExpiryVisualFeedbackRequested);
 
@@ -1204,6 +1201,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             HasValidationError = false
         });
         this.RefreshDisplay(TimerViewState.TimerCompleteStatusText, hasValidationError: false);
+        this.ClearLockInterfaceAfterCompletion();
 
         PublishSafely(this.ExpiryVisualFeedbackRequested);
 
@@ -1215,6 +1213,14 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         await this.NotifyTimerExpiredAsync().ConfigureAwait(false);
         await this.PlayTimerExpiredAudioAsync().ConfigureAwait(false);
         this.QueueActiveSessionSave();
+    }
+
+    private void ClearLockInterfaceAfterCompletion()
+    {
+        if (this.settings.LockInterface)
+        {
+            this.ReplaceSettings(this.settings with { LockInterface = false }, save: true);
+        }
     }
 
     private void ShowValidationError()
