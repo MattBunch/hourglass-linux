@@ -632,6 +632,9 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
 
         switch (action)
         {
+            case StatusIconAction.NewTimer:
+                ExecuteCommand(this.viewModel.NewTimerCommand);
+                break;
             case StatusIconAction.ShowWindow:
                 this.windowAttentionController?.RequestAttention();
                 break;

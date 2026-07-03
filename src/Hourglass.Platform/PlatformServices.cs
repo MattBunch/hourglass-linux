@@ -7,6 +7,7 @@ public interface INotificationService
 
 public enum StatusIconAction
 {
+    NewTimer,
     ShowWindow,
     HideWindow,
     PauseResume,

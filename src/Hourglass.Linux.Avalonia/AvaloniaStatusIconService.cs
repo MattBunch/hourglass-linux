@@ -7,6 +7,7 @@ internal sealed class AvaloniaStatusIconService : IStatusIconService
 {
     private readonly NativeMenuItem exitItem;
     private readonly NativeMenuItem hideItem;
+    private readonly NativeMenuItem newTimerItem;
     private readonly NativeMenuItem pauseResumeItem;
     private readonly NativeMenuItem restartItem;
     private readonly NativeMenuItem showItem;
@@ -17,6 +18,7 @@ internal sealed class AvaloniaStatusIconService : IStatusIconService
     {
         ArgumentNullException.ThrowIfNull(icon);
 
+        this.newTimerItem = this.CreateMenuItem("New timer", StatusIconAction.NewTimer);
         this.showItem = this.CreateMenuItem("Show", StatusIconAction.ShowWindow);
         this.hideItem = this.CreateMenuItem("Hide", StatusIconAction.HideWindow);
         this.pauseResumeItem = this.CreateMenuItem("Pause", StatusIconAction.PauseResume);
@@ -28,6 +30,8 @@ internal sealed class AvaloniaStatusIconService : IStatusIconService
         {
             Items =
             {
+                this.newTimerItem,
+                new NativeMenuItemSeparator(),
                 this.showItem,
                 this.hideItem,
                 new NativeMenuItemSeparator(),
@@ -61,6 +65,7 @@ internal sealed class AvaloniaStatusIconService : IStatusIconService
 
         this.trayIcon.ToolTipText = state.ToolTipText;
         this.trayIcon.IsVisible = state.IsVisible;
+        this.newTimerItem.IsEnabled = state.IsVisible;
         this.showItem.IsEnabled = state.IsVisible;
         this.hideItem.IsEnabled = state.IsVisible && state.CanHideWindow;
         this.pauseResumeItem.Header = state.PauseResumeText;

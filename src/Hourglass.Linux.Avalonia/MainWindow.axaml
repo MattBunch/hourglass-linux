@@ -146,6 +146,8 @@
         Classes="content-active">
     <Grid.ContextMenu>
       <ContextMenu>
+        <MenuItem Header="New timer"
+                  Command="{Binding NewTimerCommand}" />
         <MenuItem Header="Start"
                   Command="{Binding StartCommand}" />
         <MenuItem Header="{Binding PauseResumeText}"
