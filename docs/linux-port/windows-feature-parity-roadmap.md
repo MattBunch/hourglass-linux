@@ -465,6 +465,8 @@ Exact tested combinations belong in `docs/linux-port/status-icon-compatibility.m
 
 ## Milestone 5: Recent Inputs, Saved Timers, and Session Restoration
 
+**Status:** Implemented for the current single-window Linux application. Recent inputs, saved timer definitions, and active-session restoration persist through separate JSON documents. Multi-window actions such as opening all saved timers as independent windows remain deferred until Milestone 6.
+
 ### 5.1 Recent Inputs Menu
 
 **Priority:** P1  
@@ -508,6 +510,8 @@ Saved timer definitions are reusable presets, distinct from currently running ti
 - Invalid or partially migrated entries are skipped without preventing the app from opening.
 - Open All creates independent timer windows only after multi-window support exists.
 
+The current Linux implementation keeps **Open All saved timers** disabled because there is only one timer window. It records saved definitions in a separate versioned document so Milestone 6 can add independent window creation without changing the saved-timer schema.
+
 ### 5.3 Active Session Persistence
 
 **Priority:** P1  
@@ -537,6 +541,8 @@ Saved timer definitions are reusable presets, distinct from currently running ti
 - Avoid opening duplicate windows when a second process hands off to the existing instance.
 - Cap or warn about unusually large restored window counts.
 - Restore windows on visible displays if saved monitor geometry is no longer valid.
+
+The current Linux implementation exposes the startup preferences and restores the active single-window session. Opening multiple saved timers on startup is persisted as a preference but does not create additional windows until Milestone 6 supplies multi-window behavior.
 
 ---
 

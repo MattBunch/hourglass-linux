@@ -131,6 +131,8 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
         this.viewModel.HideToNotificationAreaRequested += this.HideToNotificationAreaRequested;
         this.statusIconService.ActionRequested += this.StatusIconActionRequested;
         this.UpdatePresentationClasses();
+        this.RebuildRecentInputsMenu();
+        this.RebuildSavedTimersMenu();
         this.ApplyDesktopProgress();
         this.ApplyStatusIconState();
     }
@@ -473,6 +475,95 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
         {
             this.ApplyStatusIconState();
         }
+
+        if (e.PropertyName is nameof(MainWindowViewModel.RecentInputMenuItems))
+        {
+            this.RebuildRecentInputsMenu();
+        }
+
+        if (e.PropertyName is nameof(MainWindowViewModel.SavedTimerMenuItems)
+            or nameof(MainWindowViewModel.CanSaveCurrentTimer))
+        {
+            this.RebuildSavedTimersMenu();
+        }
+    }
+
+    private void RebuildRecentInputsMenu()
+    {
+        this.RecentInputsMenuItem.Items.Clear();
+
+        foreach (RecentInputMenuItem recentInput in this.viewModel.RecentInputMenuItems)
+        {
+            this.RecentInputsMenuItem.Items.Add(new MenuItem
+            {
+                Header = recentInput.TimerInput,
+                Command = this.viewModel.SelectRecentInputCommand,
+                CommandParameter = recentInput.TimerInput
+            });
+        }
+
+        if (this.viewModel.RecentInputMenuItems.Length > 0)
+        {
+            this.RecentInputsMenuItem.Items.Add(new Separator());
+        }
+
+        this.RecentInputsMenuItem.Items.Add(new MenuItem
+        {
+            Header = "Clear recent inputs",
+            Command = this.viewModel.ClearRecentInputsCommand
+        });
+    }
+
+    private void RebuildSavedTimersMenu()
+    {
+        this.SavedTimersMenuItem.Items.Clear();
+        this.SavedTimersMenuItem.Items.Add(new MenuItem
+        {
+            Header = "Save current timer",
+            Command = this.viewModel.SaveCurrentTimerCommand
+        });
+        this.SavedTimersMenuItem.Items.Add(new MenuItem
+        {
+            Header = "Open all saved timers",
+            Command = this.viewModel.OpenAllSavedTimersCommand
+        });
+
+        if (this.viewModel.SavedTimerMenuItems.Length > 0)
+        {
+            this.SavedTimersMenuItem.Items.Add(new Separator());
+        }
+
+        foreach (SavedTimerMenuItem savedTimer in this.viewModel.SavedTimerMenuItems)
+        {
+            var savedTimerMenuItem = new MenuItem
+            {
+                Header = savedTimer.Header
+            };
+            savedTimerMenuItem.Items.Add(new MenuItem
+            {
+                Header = "Open",
+                Command = this.viewModel.OpenSavedTimerCommand,
+                CommandParameter = savedTimer.Id
+            });
+            savedTimerMenuItem.Items.Add(new MenuItem
+            {
+                Header = "Remove",
+                Command = this.viewModel.RemoveSavedTimerCommand,
+                CommandParameter = savedTimer.Id
+            });
+            this.SavedTimersMenuItem.Items.Add(savedTimerMenuItem);
+        }
+
+        if (this.viewModel.SavedTimerMenuItems.Length > 0)
+        {
+            this.SavedTimersMenuItem.Items.Add(new Separator());
+        }
+
+        this.SavedTimersMenuItem.Items.Add(new MenuItem
+        {
+            Header = "Clear saved timers",
+            Command = this.viewModel.ClearSavedTimersCommand
+        });
     }
 
     private void ApplyDesktopProgress()

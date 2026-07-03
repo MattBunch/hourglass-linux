@@ -127,6 +127,13 @@ public sealed class CountdownEngine
         return this.state.ToTimerInfo();
     }
 
+    public void Restore(TimerInfo timerInfo)
+    {
+        ArgumentNullException.ThrowIfNull(timerInfo);
+
+        this.state = CountdownState.FromTimerInfo(timerInfo, this.clock.Elapsed);
+    }
+
     private void Apply(CountdownTransition transition)
     {
         this.state = transition.State;

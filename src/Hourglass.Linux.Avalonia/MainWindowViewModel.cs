@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using Hourglass.Platform;
+using Hourglass.Serialization;
 using Hourglass.Settings;
 using Hourglass.Timing;
 
@@ -13,6 +14,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private const string SessionInhibitionReason = "Hourglass timer is running";
     private const string NotificationBody = "Timer complete";
     private const string SettingsKey = "app";
+    private const string SavedTimersKey = "saved-timers";
+    private const string ActiveSessionKey = "active-session";
 
     private readonly IAudioAlertService audioAlertService;
     private readonly CountdownEngine engine;
@@ -25,7 +28,10 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private readonly Func<DateTime> wallClockNow;
     private IAsyncDisposable? activeAudioPlayback;
     private IAsyncDisposable? inhibitionLease;
+    private Task pendingActiveSessionSave = Task.CompletedTask;
+    private Task pendingSavedTimersSave = Task.CompletedTask;
     private Task pendingSettingsSave = Task.CompletedTask;
+    private SavedTimersDocument savedTimers = SavedTimersDocument.Empty;
     private LinuxAppSettings settings = LinuxAppSettings.Default;
     private TimerViewState viewState = TimerViewState.Initial;
 
@@ -156,6 +162,15 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         this.ToggleShutDownWhenExpiredCommand = new RelayCommand(
             this.ToggleShutDownWhenExpired,
             () => !this.IsTimerModificationLocked && this.systemPowerService.IsShutdownSupported);
+        this.ToggleRestoreActiveSessionOnStartupCommand = new RelayCommand(this.ToggleRestoreActiveSessionOnStartup, () => !this.IsTimerModificationLocked);
+        this.ToggleOpenSavedTimersOnStartupCommand = new RelayCommand(this.ToggleOpenSavedTimersOnStartup, () => !this.IsTimerModificationLocked);
+        this.SelectRecentInputCommand = new RelayCommand<string>(this.SelectRecentInput, input => !string.IsNullOrWhiteSpace(input) && !this.IsTimerModificationLocked);
+        this.ClearRecentInputsCommand = new RelayCommand(this.ClearRecentInputs, () => this.RecentInputMenuItems.Length > 0 && !this.IsTimerModificationLocked);
+        this.SaveCurrentTimerCommand = new RelayCommand(this.SaveCurrentTimer, () => !this.IsTimerModificationLocked && this.CanSaveCurrentTimer);
+        this.OpenSavedTimerCommand = new RelayCommand<string>(this.OpenSavedTimer, id => !string.IsNullOrWhiteSpace(id) && !this.IsTimerModificationLocked);
+        this.RemoveSavedTimerCommand = new RelayCommand<string>(this.RemoveSavedTimer, id => !string.IsNullOrWhiteSpace(id) && !this.IsTimerModificationLocked);
+        this.ClearSavedTimersCommand = new RelayCommand(this.ClearSavedTimers, () => this.SavedTimerMenuItems.Length > 0 && !this.IsTimerModificationLocked);
+        this.OpenAllSavedTimersCommand = new RelayCommand(() => { }, () => false);
 
         this.RefreshDisplay();
     }
@@ -232,6 +247,24 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     public RelayCommand ToggleShutDownWhenExpiredCommand { get; }
 
+    public RelayCommand ToggleRestoreActiveSessionOnStartupCommand { get; }
+
+    public RelayCommand ToggleOpenSavedTimersOnStartupCommand { get; }
+
+    public RelayCommand<string> SelectRecentInputCommand { get; }
+
+    public RelayCommand ClearRecentInputsCommand { get; }
+
+    public RelayCommand SaveCurrentTimerCommand { get; }
+
+    public RelayCommand<string> OpenSavedTimerCommand { get; }
+
+    public RelayCommand<string> RemoveSavedTimerCommand { get; }
+
+    public RelayCommand ClearSavedTimersCommand { get; }
+
+    public RelayCommand OpenAllSavedTimersCommand { get; }
+
     public string TimerInput
     {
         get => this.viewState.TimerInput;
@@ -243,6 +276,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             {
                 this.ReplaceViewState(this.viewState with { TimerInput = value, HasValidationError = false });
                 this.RefreshDisplay(this.engine.State == TimerState.Stopped ? TimerViewState.ReadyStatusText : this.StatusText);
+                this.OnPropertyChanged(nameof(this.CanSaveCurrentTimer));
+                this.SaveCurrentTimerCommand.RaiseCanExecuteChanged();
+                this.QueueActiveSessionSave();
             }
         }
     }
@@ -268,6 +304,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
                 this.OnPropertyChanged(nameof(this.WindowTitle));
                 this.OnPropertyChanged(nameof(this.StatusIconMenuState));
             }
+
+            this.QueueActiveSessionSave();
         }
     }
 
@@ -341,6 +379,19 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     public bool IsShutdownSupported => this.systemPowerService.IsShutdownSupported;
 
+    public bool RestoreActiveSessionOnStartup => this.settings.RestoreActiveSessionOnStartup;
+
+    public bool OpenSavedTimersOnStartup => this.settings.OpenSavedTimersOnStartup;
+
+    public RecentInputMenuItem[] RecentInputMenuItems =>
+        this.settings.RecentTimerInputs.Select(input => new RecentInputMenuItem(input)).ToArray();
+
+    public SavedTimerMenuItem[] SavedTimerMenuItems =>
+        this.savedTimers.Timers.Select(timer => new SavedTimerMenuItem(timer.Id, timer.Header)).ToArray();
+
+    public bool CanSaveCurrentTimer =>
+        TimerStart.FromString(this.TimerInput) is { IsValid: true };
+
     public bool IsTimerModificationLocked =>
         this.settings.LockInterface && (this.engine.State is TimerState.Running or TimerState.Paused);
 
@@ -361,19 +412,41 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     public bool HasCompletionEmphasis => this.viewState.HasCompletionEmphasis;
 
-    internal Task PendingSettingsSave => this.pendingSettingsSave;
+    internal Task PendingSettingsSave => Task.WhenAll(
+        this.pendingSettingsSave,
+        this.pendingSavedTimersSave,
+        this.pendingActiveSessionSave);
 
     internal DesktopProgressRequest DesktopProgressRequest =>
         DesktopProgressProjection.FromViewState(this.viewState, this.settings.ShowProgressInTaskbar);
 
     public async Task LoadSettingsAsync(CancellationToken cancellationToken = default)
     {
-        LinuxAppSettings loadedSettings;
+        LinuxAppSettings loadedSettings = await this.LoadDocumentAsync(SettingsKey, LinuxAppSettings.Default, cancellationToken);
+        SavedTimersDocument loadedSavedTimers = await this.LoadDocumentAsync(SavedTimersKey, SavedTimersDocument.Empty, cancellationToken);
 
+        this.ReplaceSettings(loadedSettings, save: false);
+        this.ReplaceSavedTimers(loadedSavedTimers, save: false);
+
+        if (loadedSettings.RestoreActiveSessionOnStartup
+            && await this.TryRestoreActiveSessionAsync(cancellationToken))
+        {
+            return;
+        }
+
+        if (this.engine.State == TimerState.Stopped)
+        {
+            this.ReplaceViewState(this.viewState with { TimerInput = loadedSettings.GetInitialTimerInput(TimerViewState.DefaultTimerInput) });
+            this.RefreshDisplay(TimerViewState.ReadyStatusText);
+        }
+    }
+
+    private async Task<T> LoadDocumentAsync<T>(string key, T fallback, CancellationToken cancellationToken)
+    {
         try
         {
-            loadedSettings = await this.settingsStore.LoadAsync<LinuxAppSettings>(SettingsKey, cancellationToken)
-                ?? LinuxAppSettings.Default;
+            return await this.settingsStore.LoadAsync<T>(key, cancellationToken)
+                ?? fallback;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -381,16 +454,63 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         }
         catch (Exception)
         {
-            loadedSettings = LinuxAppSettings.Default;
+            return fallback;
         }
+    }
 
-        this.ReplaceSettings(loadedSettings, save: false);
+    private async Task<bool> TryRestoreActiveSessionAsync(CancellationToken cancellationToken)
+    {
+        ActiveTimerSessionDocument? session;
 
-        if (this.engine.State == TimerState.Stopped)
+        try
         {
-            this.ReplaceViewState(this.viewState with { TimerInput = loadedSettings.GetInitialTimerInput(TimerViewState.DefaultTimerInput) });
-            this.RefreshDisplay(TimerViewState.ReadyStatusText);
+            session = await this.settingsStore.LoadAsync<ActiveTimerSessionDocument>(ActiveSessionKey, cancellationToken);
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception)
+        {
+            session = null;
+        }
+
+        TimerInfo? timerInfo = session?.ToTimerInfo(this.wallClockNow());
+        if (session == null || timerInfo == null)
+        {
+            return false;
+        }
+
+        bool expiredWhileClosed = session.State == TimerState.Running
+            && timerInfo.State == TimerState.Expired;
+
+        this.engine.Restore(timerInfo);
+        TimerPresentationMode presentationMode = timerInfo.State == TimerState.Expired
+            ? TimerPresentationMode.Status
+            : ToTimerPresentationMode(session.PresentationMode);
+        this.ReplaceViewState(TimerViewState.FromTimerState(
+            string.IsNullOrWhiteSpace(session.TimerInput) ? TimerViewState.DefaultTimerInput : session.TimerInput,
+            this.engine.Snapshot,
+            session.TimerTitle,
+            null,
+            presentationMode,
+            null,
+            false,
+            this.settings.ShowTimeElapsed,
+            this.settings.ReverseProgressBar,
+            this.IsTimerModificationLocked));
+        this.RefreshDisplay(timerInfo.State == TimerState.Stopped ? TimerViewState.ReadyStatusText : null, hasValidationError: false);
+
+        if (this.engine.State == TimerState.Running)
+        {
+            _ = this.AcquireInhibitionAsync();
+        }
+        else if (expiredWhileClosed)
+        {
+            _ = this.HandleRestoredExpiredAsync();
+        }
+
+        return true;
     }
 
     public void Dispose()
@@ -446,6 +566,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             HasValidationError = false
         });
         this.RefreshDisplay();
+        this.QueueActiveSessionSave();
         return true;
     }
 
@@ -487,6 +608,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         this.RefreshDisplay(TimerViewState.RunningStatusText, hasValidationError: false);
         _ = this.AcquireInhibitionAsync();
         this.ReplaceSettings(this.settings.AddRecentTimerInput(this.TimerInput), save: true);
+        this.QueueActiveSessionSave();
     }
 
     private void PauseOrResume()
@@ -496,6 +618,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             this.engine.Pause();
             this.RefreshDisplay(TimerViewState.PausedStatusText);
             _ = this.ReleaseInhibitionAsync();
+            this.QueueActiveSessionSave();
             return;
         }
 
@@ -504,6 +627,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             this.engine.Resume(this.wallClockNow());
             this.RefreshDisplay(TimerViewState.RunningStatusText);
             _ = this.AcquireInhibitionAsync();
+            this.QueueActiveSessionSave();
         }
     }
 
@@ -530,6 +654,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         });
         this.RefreshDisplay(TimerViewState.RunningStatusText, hasValidationError: false);
         _ = this.AcquireInhibitionAsync();
+        this.QueueActiveSessionSave();
     }
 
     private void CancelActiveTimerEdit()
@@ -547,6 +672,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             HasValidationError = false
         });
         this.RefreshDisplay();
+        this.QueueActiveSessionSave();
     }
 
     private void StopAndShowInput(string timerInput)
@@ -563,6 +689,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         });
         this.RefreshDisplay(TimerViewState.ReadyStatusText);
         _ = this.ReleaseInhibitionAsync();
+        this.QueueActiveSessionSave();
 
         if (wasLocked)
         {
@@ -734,6 +861,123 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             save: true);
     }
 
+    private void ToggleRestoreActiveSessionOnStartup()
+    {
+        this.ReplaceSettings(
+            this.settings with { RestoreActiveSessionOnStartup = !this.settings.RestoreActiveSessionOnStartup },
+            save: true);
+    }
+
+    private void ToggleOpenSavedTimersOnStartup()
+    {
+        this.ReplaceSettings(
+            this.settings with { OpenSavedTimersOnStartup = !this.settings.OpenSavedTimersOnStartup },
+            save: true);
+    }
+
+    private void SelectRecentInput(string? timerInput)
+    {
+        if (string.IsNullOrWhiteSpace(timerInput))
+        {
+            return;
+        }
+
+        if (this.engine.State == TimerState.Expired)
+        {
+            this.TryEnterInputModeFromExpired();
+        }
+        else if (this.viewState.PresentationMode != TimerPresentationMode.Input)
+        {
+            this.TryEnterTimerInputMode();
+        }
+
+        this.ReplaceViewState(this.viewState with
+        {
+            TimerInput = timerInput,
+            PresentationMode = TimerPresentationMode.Input,
+            HasValidationError = false
+        });
+        this.RefreshDisplay(this.engine.State == TimerState.Stopped ? TimerViewState.ReadyStatusText : this.StatusText, hasValidationError: false);
+        this.QueueActiveSessionSave();
+    }
+
+    private void ClearRecentInputs()
+    {
+        this.ReplaceSettings(this.settings.ClearRecentTimerInputs(), save: true);
+    }
+
+    private void SaveCurrentTimer()
+    {
+        if (!this.CanSaveCurrentTimer)
+        {
+            this.ShowValidationError();
+            return;
+        }
+
+        SavedTimerDefinition? existing = this.savedTimers.Timers.FirstOrDefault(timer =>
+            StringComparer.Ordinal.Equals(timer.TimerInput, this.TimerInput.Trim())
+            && StringComparer.Ordinal.Equals(timer.TimerTitle, this.TimerTitle ?? string.Empty));
+        SavedTimerDefinition savedTimer = existing == null
+            ? SavedTimerDefinition.Create(this.TimerInput, this.TimerTitle ?? string.Empty, this.settings)
+            : new SavedTimerDefinition(
+                existing.Id,
+                this.TimerInput,
+                this.TimerTitle ?? string.Empty,
+                existing.DisplayName,
+                SavedTimerOptions.FromSettings(this.settings));
+
+        this.ReplaceSavedTimers(this.savedTimers.AddOrReplace(savedTimer), save: true);
+    }
+
+    private void OpenSavedTimer(string? id)
+    {
+        SavedTimerDefinition? savedTimer = this.FindSavedTimer(id);
+        if (savedTimer == null)
+        {
+            return;
+        }
+
+        _ = this.StopActiveAudioAsync();
+        this.engine.Stop();
+        this.ReplaceSettings(savedTimer.Options.ApplyTo(this.settings), save: true);
+        this.ReplaceViewState(this.viewState with
+        {
+            TimerInput = savedTimer.TimerInput,
+            TimerTitle = savedTimer.TimerTitle,
+            PresentationMode = TimerPresentationMode.Input,
+            InputBeforeEdit = null,
+            HasValidationError = false
+        });
+        this.RefreshDisplay(TimerViewState.ReadyStatusText, hasValidationError: false);
+        _ = this.ReleaseInhibitionAsync();
+        this.QueueActiveSessionSave();
+    }
+
+    private void RemoveSavedTimer(string? id)
+    {
+        if (this.FindSavedTimer(id) == null)
+        {
+            return;
+        }
+
+        this.ReplaceSavedTimers(this.savedTimers.Remove(id!), save: true);
+    }
+
+    private void ClearSavedTimers()
+    {
+        this.ReplaceSavedTimers(SavedTimersDocument.Empty, save: true);
+    }
+
+    private SavedTimerDefinition? FindSavedTimer(string? id)
+    {
+        if (string.IsNullOrWhiteSpace(id))
+        {
+            return null;
+        }
+
+        return this.savedTimers.Timers.FirstOrDefault(timer => StringComparer.Ordinal.Equals(timer.Id, id.Trim()));
+    }
+
     private void RefreshDisplay(string? explicitStatus = null, bool? hasValidationError = null)
     {
         this.ReplaceViewState(TimerViewState.FromTimerState(
@@ -770,11 +1014,19 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         this.OnPropertyChanged(nameof(this.StatusIconMenuState));
         this.OnPropertyChanged(nameof(this.HasValidationError));
         this.OnPropertyChanged(nameof(this.HasCompletionEmphasis));
+        this.OnPropertyChanged(nameof(this.CanSaveCurrentTimer));
         this.StartCommand.RaiseCanExecuteChanged();
         this.PauseResumeCommand.RaiseCanExecuteChanged();
         this.ResetCommand.RaiseCanExecuteChanged();
         this.RestartCommand.RaiseCanExecuteChanged();
         this.CancelEditCommand.RaiseCanExecuteChanged();
+        this.SelectRecentInputCommand.RaiseCanExecuteChanged();
+        this.ClearRecentInputsCommand.RaiseCanExecuteChanged();
+        this.SaveCurrentTimerCommand.RaiseCanExecuteChanged();
+        this.OpenSavedTimerCommand.RaiseCanExecuteChanged();
+        this.RemoveSavedTimerCommand.RaiseCanExecuteChanged();
+        this.ClearSavedTimersCommand.RaiseCanExecuteChanged();
+        this.OpenAllSavedTimersCommand.RaiseCanExecuteChanged();
         this.RaiseSettingsCommandCanExecuteChanged();
     }
 
@@ -800,6 +1052,12 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
         LinuxAppSettings previous = this.settings;
         this.settings = next;
+
+        if (!previous.RecentTimerInputs.SequenceEqual(next.RecentTimerInputs, StringComparer.Ordinal))
+        {
+            this.OnPropertyChanged(nameof(this.RecentInputMenuItems));
+            this.ClearRecentInputsCommand.RaiseCanExecuteChanged();
+        }
 
         if (previous.NotificationsEnabled != next.NotificationsEnabled)
         {
@@ -847,6 +1105,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         PublishSettingsChange(previous.CloseWhenExpired, next.CloseWhenExpired, nameof(this.CloseWhenExpired));
         PublishSettingsChange(previous.DoNotKeepComputerAwake, next.DoNotKeepComputerAwake, nameof(this.DoNotKeepComputerAwake));
         PublishSettingsChange(previous.ShutDownWhenExpired, next.ShutDownWhenExpired, nameof(this.ShutDownWhenExpired));
+        PublishSettingsChange(previous.RestoreActiveSessionOnStartup, next.RestoreActiveSessionOnStartup, nameof(this.RestoreActiveSessionOnStartup));
+        PublishSettingsChange(previous.OpenSavedTimersOnStartup, next.OpenSavedTimersOnStartup, nameof(this.OpenSavedTimersOnStartup));
 
         if (previous.LockInterface != next.LockInterface)
         {
@@ -859,9 +1119,29 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         if (save)
         {
             this.QueueSettingsSave(next);
+            this.QueueActiveSessionSave();
         }
 
         this.RaiseSettingsCommandCanExecuteChanged();
+    }
+
+    private void ReplaceSavedTimers(SavedTimersDocument next, bool save)
+    {
+        ArgumentNullException.ThrowIfNull(next);
+
+        if (this.savedTimers == next)
+        {
+            return;
+        }
+
+        this.savedTimers = next;
+        this.OnPropertyChanged(nameof(this.SavedTimerMenuItems));
+        this.ClearSavedTimersCommand.RaiseCanExecuteChanged();
+
+        if (save)
+        {
+            this.QueueSavedTimersSave(next);
+        }
     }
 
     private async void OnEngineExpired(object? sender, EventArgs e)
@@ -880,11 +1160,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             HasValidationError = false
         });
         this.RefreshDisplay(TimerViewState.TimerCompleteStatusText, hasValidationError: false);
+        this.QueueActiveSessionSave();
 
-        if (this.settings.LockInterface)
-        {
-            this.ReplaceSettings(this.settings with { LockInterface = false }, save: true);
-        }
+        this.ClearLockInterfaceAfterCompletion();
 
         PublishSafely(this.ExpiryVisualFeedbackRequested);
 
@@ -911,6 +1189,37 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         if (closeWhenExpired)
         {
             PublishSafely(this.CloseRequested);
+        }
+    }
+
+    private async Task HandleRestoredExpiredAsync()
+    {
+        this.ReplaceViewState(this.viewState with
+        {
+            PresentationMode = TimerPresentationMode.Status,
+            InputBeforeEdit = null,
+            HasValidationError = false
+        });
+        this.RefreshDisplay(TimerViewState.TimerCompleteStatusText, hasValidationError: false);
+        this.ClearLockInterfaceAfterCompletion();
+        this.QueueActiveSessionSave();
+
+        PublishSafely(this.ExpiryVisualFeedbackRequested);
+
+        if (this.settings.PopUpWhenExpired)
+        {
+            PublishSafely(this.WindowAttentionRequested);
+        }
+
+        await this.NotifyTimerExpiredAsync().ConfigureAwait(false);
+        await this.PlayTimerExpiredAudioAsync().ConfigureAwait(false);
+    }
+
+    private void ClearLockInterfaceAfterCompletion()
+    {
+        if (this.settings.LockInterface)
+        {
+            this.ReplaceSettings(this.settings with { LockInterface = false }, save: true);
         }
     }
 
@@ -1021,6 +1330,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         });
         this.RefreshDisplay(TimerViewState.RunningStatusText, hasValidationError: false);
         _ = this.AcquireInhibitionAsync();
+        this.QueueActiveSessionSave();
     }
 
     private async Task AcquireInhibitionAsync()
@@ -1069,17 +1379,58 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         this.pendingSettingsSave = this.SaveSettingsAfterAsync(this.pendingSettingsSave, settingsSnapshot);
     }
 
+    private void QueueSavedTimersSave(SavedTimersDocument savedTimersSnapshot)
+    {
+        this.pendingSavedTimersSave = this.SaveDocumentAfterAsync(this.pendingSavedTimersSave, SavedTimersKey, savedTimersSnapshot);
+    }
+
+    private void QueueActiveSessionSave()
+    {
+        ActiveTimerSessionDocument session = ActiveTimerSessionDocument.FromTimerInfo(
+            this.TimerInput,
+            this.TimerTitle ?? string.Empty,
+            ToActiveTimerPresentationMode(this.viewState.PresentationMode),
+            this.engine.ToTimerInfo(),
+            this.wallClockNow());
+        this.pendingActiveSessionSave = this.SaveDocumentAfterAsync(this.pendingActiveSessionSave, ActiveSessionKey, session);
+    }
+
     private async Task SaveSettingsAfterAsync(Task previousSave, LinuxAppSettings settingsSnapshot)
     {
-        await previousSave.ConfigureAwait(false);
+        await this.SaveDocumentAfterAsync(previousSave, SettingsKey, settingsSnapshot).ConfigureAwait(false);
+    }
 
+    private async Task SaveDocumentAfterAsync<T>(Task previousSave, string key, T document)
+    {
         try
         {
-            await this.settingsStore.SaveAsync(SettingsKey, settingsSnapshot).ConfigureAwait(false);
+            await previousSave.ConfigureAwait(false);
         }
         catch (Exception)
         {
         }
+
+        try
+        {
+            await this.settingsStore.SaveAsync(key, document).ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+        }
+    }
+
+    private static ActiveTimerPresentationMode ToActiveTimerPresentationMode(TimerPresentationMode presentationMode)
+    {
+        return presentationMode == TimerPresentationMode.Status
+            ? ActiveTimerPresentationMode.Status
+            : ActiveTimerPresentationMode.Input;
+    }
+
+    private static TimerPresentationMode ToTimerPresentationMode(ActiveTimerPresentationMode presentationMode)
+    {
+        return presentationMode == ActiveTimerPresentationMode.Status
+            ? TimerPresentationMode.Status
+            : TimerPresentationMode.Input;
     }
 
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null)
@@ -1105,6 +1456,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         this.ToggleLockInterfaceCommand.RaiseCanExecuteChanged();
         this.ToggleDoNotKeepComputerAwakeCommand.RaiseCanExecuteChanged();
         this.ToggleShutDownWhenExpiredCommand.RaiseCanExecuteChanged();
+        this.ToggleRestoreActiveSessionOnStartupCommand.RaiseCanExecuteChanged();
+        this.ToggleOpenSavedTimersOnStartupCommand.RaiseCanExecuteChanged();
     }
 
     private void PublishSettingsChange(bool previous, bool next, string propertyName)

@@ -11,7 +11,7 @@ public sealed record LinuxAppSettings
     private readonly string[] recentTimerInputs;
 
     public LinuxAppSettings()
-        : this(null, true, true, false, true, true, false, false, false, false, false, false, false, false, true, false)
+        : this(null, true, true, false, true, true, false, false, false, false, false, false, false, false, true, false, true, false)
     {
     }
 
@@ -32,7 +32,9 @@ public sealed record LinuxAppSettings
         bool doNotKeepComputerAwake = false,
         bool shutDownWhenExpired = false,
         bool showProgressInTaskbar = true,
-        bool showInNotificationArea = false)
+        bool showInNotificationArea = false,
+        bool restoreActiveSessionOnStartup = true,
+        bool openSavedTimersOnStartup = false)
     {
         this.recentTimerInputs = NormalizeRecentTimerInputs(recentTimerInputs, DefaultMaxRecentTimerInputs);
         this.NotificationsEnabled = notificationsEnabled;
@@ -50,6 +52,8 @@ public sealed record LinuxAppSettings
         this.ShutDownWhenExpired = shutDownWhenExpired;
         this.ShowProgressInTaskbar = showProgressInTaskbar;
         this.ShowInNotificationArea = showInNotificationArea;
+        this.RestoreActiveSessionOnStartup = restoreActiveSessionOnStartup;
+        this.OpenSavedTimersOnStartup = openSavedTimersOnStartup;
     }
 
     public static LinuxAppSettings Default { get; } = new();
@@ -86,6 +90,10 @@ public sealed record LinuxAppSettings
 
     public bool ShowInNotificationArea { get; init; }
 
+    public bool RestoreActiveSessionOnStartup { get; init; }
+
+    public bool OpenSavedTimersOnStartup { get; init; }
+
     public LinuxAppSettings AddRecentTimerInput(string timerInput, int maxRecentTimerInputs = DefaultMaxRecentTimerInputs)
     {
         if (maxRecentTimerInputs < 1)
@@ -120,7 +128,32 @@ public sealed record LinuxAppSettings
             this.DoNotKeepComputerAwake,
             this.ShutDownWhenExpired,
             this.ShowProgressInTaskbar,
-            this.ShowInNotificationArea);
+            this.ShowInNotificationArea,
+            this.RestoreActiveSessionOnStartup,
+            this.OpenSavedTimersOnStartup);
+    }
+
+    public LinuxAppSettings ClearRecentTimerInputs()
+    {
+        return new LinuxAppSettings(
+            [],
+            this.NotificationsEnabled,
+            this.AudioAlertsEnabled,
+            this.AlwaysOnTop,
+            this.PopUpWhenExpired,
+            this.PromptOnExit,
+            this.ReverseProgressBar,
+            this.ShowTimeElapsed,
+            this.LoopTimer,
+            this.LoopSound,
+            this.CloseWhenExpired,
+            this.LockInterface,
+            this.DoNotKeepComputerAwake,
+            this.ShutDownWhenExpired,
+            this.ShowProgressInTaskbar,
+            this.ShowInNotificationArea,
+            this.RestoreActiveSessionOnStartup,
+            this.OpenSavedTimersOnStartup);
     }
 
     public string GetInitialTimerInput(string defaultTimerInput)
