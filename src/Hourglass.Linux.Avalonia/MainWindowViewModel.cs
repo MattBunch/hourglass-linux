@@ -1202,6 +1202,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         });
         this.RefreshDisplay(TimerViewState.TimerCompleteStatusText, hasValidationError: false);
         this.ClearLockInterfaceAfterCompletion();
+        this.QueueActiveSessionSave();
 
         PublishSafely(this.ExpiryVisualFeedbackRequested);
 
@@ -1212,7 +1213,6 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
         await this.NotifyTimerExpiredAsync().ConfigureAwait(false);
         await this.PlayTimerExpiredAudioAsync().ConfigureAwait(false);
-        this.QueueActiveSessionSave();
     }
 
     private void ClearLockInterfaceAfterCompletion()

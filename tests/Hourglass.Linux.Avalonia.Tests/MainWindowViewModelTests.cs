@@ -2108,6 +2108,50 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
+    public async Task RestoredExpiredSessionQueuesSessionSaveBeforeSlowNotificationCompletes()
+    {
+        DateTime start = new(2026, 7, 2, 8, 0, 0);
+        DateTime end = start.AddSeconds(10);
+        var notificationCompletion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var notificationService = new RecordingNotificationService
+        {
+            Completion = notificationCompletion.Task
+        };
+        var settingsStore = new RecordingSettingsStore
+        {
+            LoadedSettings = LinuxAppSettings.Default,
+            LoadedActiveSession = new ActiveTimerSessionDocument(
+                timerInput: "10 seconds",
+                timerStartInput: "10 seconds",
+                timerTitle: "Tea",
+                presentationMode: ActiveTimerPresentationMode.Status,
+                savedAt: start.AddSeconds(5),
+                state: TimerState.Running,
+                startTime: start,
+                endTime: end,
+                timeElapsedTicks: TimeSpan.FromSeconds(5).Ticks,
+                timeLeftTicks: TimeSpan.FromSeconds(5).Ticks,
+                totalTimeTicks: TimeSpan.FromSeconds(10).Ticks)
+        };
+        var viewModel = CreateViewModel(
+            new ManualMonotonicClock(),
+            wallClockNow: () => end.AddSeconds(5),
+            notificationService: notificationService,
+            settingsStore: settingsStore);
+
+        await viewModel.LoadSettingsAsync();
+        await viewModel.PendingSettingsSave;
+
+        Assert.Equal(TimerState.Expired, viewModel.State);
+        Assert.NotNull(settingsStore.SavedActiveSession);
+        Assert.Equal(TimerState.Expired, settingsStore.SavedActiveSession.State);
+        Assert.Equal(TimeSpan.Zero.Ticks, settingsStore.SavedActiveSession.TimeLeftTicks);
+        Assert.Equal(1, notificationService.CallCount);
+
+        notificationCompletion.SetResult();
+    }
+
+    [Fact]
     public async Task AlreadyExpiredActiveSessionRestoresCompletedDisplayWithoutReplayingEffects()
     {
         DateTime start = new(2026, 7, 2, 8, 0, 0);
@@ -2913,6 +2957,8 @@ public sealed class MainWindowViewModelTests
 
         public bool ThrowOnNotify { get; init; }
 
+        public Task Completion { get; init; } = Task.CompletedTask;
+
         public Task ShowTimerExpiredAsync(string title, string body, CancellationToken cancellationToken = default)
         {
             this.CallCount++;
@@ -2924,7 +2970,7 @@ public sealed class MainWindowViewModelTests
                 return Task.FromException(new InvalidOperationException("Notification failed."));
             }
 
-            return Task.CompletedTask;
+            return this.Completion;
         }
     }
 
