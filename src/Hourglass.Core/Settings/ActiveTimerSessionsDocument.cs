@@ -24,11 +24,13 @@ public sealed record ActiveTimerSessionsDocument
 {
     public const int CurrentVersion = 1;
 
+    private readonly ActiveTimerSessionDefinition[] sessions;
+
     [JsonConstructor]
     public ActiveTimerSessionsDocument(int version = CurrentVersion, ActiveTimerSessionDefinition[]? sessions = null)
     {
         this.Version = version;
-        this.Sessions = (sessions ?? [])
+        this.sessions = (sessions ?? [])
             .Where(session => session.IsValid)
             .GroupBy(session => session.SessionId, StringComparer.Ordinal)
             .Select(group => group.First())
@@ -37,7 +39,7 @@ public sealed record ActiveTimerSessionsDocument
 
     public int Version { get; }
 
-    public ActiveTimerSessionDefinition[] Sessions { get; }
+    public ActiveTimerSessionDefinition[] Sessions => this.sessions.ToArray();
 
     public static ActiveTimerSessionsDocument Empty { get; } = new();
 
@@ -46,7 +48,7 @@ public sealed record ActiveTimerSessionsDocument
         ArgumentNullException.ThrowIfNull(session);
 
         ActiveTimerSessionDefinition replacement = new(sessionId, session);
-        ActiveTimerSessionDefinition[] updated = this.Sessions
+        ActiveTimerSessionDefinition[] updated = this.sessions
             .Where(existing => !StringComparer.Ordinal.Equals(existing.SessionId, replacement.SessionId))
             .Append(replacement)
             .ToArray();
@@ -62,7 +64,7 @@ public sealed record ActiveTimerSessionsDocument
 
         return new ActiveTimerSessionsDocument(
             CurrentVersion,
-            this.Sessions
+            this.sessions
                 .Where(session => !StringComparer.Ordinal.Equals(session.SessionId, sessionId.Trim()))
                 .ToArray());
     }

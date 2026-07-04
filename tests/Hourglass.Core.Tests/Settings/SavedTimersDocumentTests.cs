@@ -167,6 +167,46 @@ public sealed class SavedTimersDocumentTests
     }
 
     [Fact]
+    public void ActiveTimerSessionsDocumentCopiesConstructorInput()
+    {
+        var first = new ActiveTimerSessionDefinition(
+            "session-1",
+            new ActiveTimerSessionDocument(timerInput: "10 seconds"));
+        var replacement = new ActiveTimerSessionDefinition(
+            "session-2",
+            new ActiveTimerSessionDocument(timerInput: "20 seconds"));
+        ActiveTimerSessionDefinition[] sessions = [first];
+        var document = new ActiveTimerSessionsDocument(sessions: sessions);
+
+        sessions[0] = replacement;
+
+        ActiveTimerSessionDefinition session = Assert.Single(document.Sessions);
+        Assert.Equal("session-1", session.SessionId);
+        Assert.NotNull(session.Session);
+        Assert.Equal("10 seconds", session.Session.TimerInput);
+    }
+
+    [Fact]
+    public void ActiveTimerSessionsDocumentReturnsSessionSnapshots()
+    {
+        var first = new ActiveTimerSessionDefinition(
+            "session-1",
+            new ActiveTimerSessionDocument(timerInput: "10 seconds"));
+        var replacement = new ActiveTimerSessionDefinition(
+            "session-2",
+            new ActiveTimerSessionDocument(timerInput: "20 seconds"));
+        var document = new ActiveTimerSessionsDocument(sessions: [first]);
+        ActiveTimerSessionDefinition[] sessions = document.Sessions;
+
+        sessions[0] = replacement;
+
+        ActiveTimerSessionDefinition session = Assert.Single(document.Sessions);
+        Assert.Equal("session-1", session.SessionId);
+        Assert.NotNull(session.Session);
+        Assert.Equal("10 seconds", session.Session.TimerInput);
+    }
+
+    [Fact]
     public void ActiveTimerSessionsDocumentAddReplaceAndRemovePreservesOtherSessions()
     {
         var first = new ActiveTimerSessionDocument(timerInput: "10 seconds");
