@@ -1559,7 +1559,9 @@ public sealed class MainWindowViewModelTests
             statusIconSupported: true);
 
         await viewModel.LoadSettingsAsync();
-        settingsStore.LoadedSettings = new LinuxAppSettings(showInNotificationArea: true);
+        settingsStore.LoadedSettings = new LinuxAppSettings(
+            ["20 minutes", "12 minutes"],
+            showInNotificationArea: true);
 
         viewModel.TimerInput = "12 minutes";
         viewModel.StartCommand.Execute(null);
@@ -1567,7 +1569,7 @@ public sealed class MainWindowViewModelTests
 
         Assert.NotNull(settingsStore.SavedSettings);
         Assert.True(settingsStore.SavedSettings.ShowInNotificationArea);
-        Assert.Equal("12 minutes", Assert.Single(settingsStore.SavedSettings.RecentTimerInputs));
+        Assert.Equal(["12 minutes", "20 minutes"], settingsStore.SavedSettings.RecentTimerInputs);
     }
 
     [Fact]
@@ -1593,6 +1595,48 @@ public sealed class MainWindowViewModelTests
         Assert.False(settingsStore.SavedSettings.NotificationsEnabled);
         Assert.True(settingsStore.SavedSettings.ReverseProgressBar);
         Assert.True(settingsStore.SavedSettings.ShowInNotificationArea);
+    }
+
+    [Fact]
+    public async Task SettingsSaveAppliesCloseWhenExpiredAsCoherentOptionGroup()
+    {
+        var settingsStore = new RecordingSettingsStore
+        {
+            LoadedSettings = LinuxAppSettings.Default
+        };
+        var viewModel = CreateViewModel(new ManualMonotonicClock(), settingsStore: settingsStore);
+
+        await viewModel.LoadSettingsAsync();
+        settingsStore.LoadedSettings = LinuxAppSettings.Default with { LoopTimer = true };
+
+        viewModel.ToggleCloseWhenExpiredCommand.Execute(null);
+        await viewModel.PendingSettingsSave;
+
+        Assert.NotNull(settingsStore.SavedSettings);
+        Assert.True(settingsStore.SavedSettings.CloseWhenExpired);
+        Assert.False(settingsStore.SavedSettings.LoopTimer);
+        Assert.False(settingsStore.SavedSettings.LoopSound);
+    }
+
+    [Fact]
+    public async Task SettingsSaveAppliesLoopSoundAsCoherentOptionGroup()
+    {
+        var settingsStore = new RecordingSettingsStore
+        {
+            LoadedSettings = LinuxAppSettings.Default
+        };
+        var viewModel = CreateViewModel(new ManualMonotonicClock(), settingsStore: settingsStore);
+
+        await viewModel.LoadSettingsAsync();
+        settingsStore.LoadedSettings = LinuxAppSettings.Default with { CloseWhenExpired = true };
+
+        viewModel.ToggleLoopSoundCommand.Execute(null);
+        await viewModel.PendingSettingsSave;
+
+        Assert.NotNull(settingsStore.SavedSettings);
+        Assert.True(settingsStore.SavedSettings.LoopSound);
+        Assert.False(settingsStore.SavedSettings.CloseWhenExpired);
+        Assert.False(settingsStore.SavedSettings.LoopTimer);
     }
 
     [Fact]

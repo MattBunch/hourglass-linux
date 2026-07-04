@@ -1528,9 +1528,18 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         LinuxAppSettings requested,
         LinuxAppSettings latest)
     {
-        string[] recentTimerInputs = previous.RecentTimerInputs.SequenceEqual(requested.RecentTimerInputs, StringComparer.Ordinal)
-            ? latest.RecentTimerInputs
-            : requested.RecentTimerInputs;
+        string[] recentTimerInputs = MergeRecentTimerInputs(previous, requested, latest);
+        bool loopTimer = SelectChanged(previous.LoopTimer, requested.LoopTimer, latest.LoopTimer);
+        bool loopSound = SelectChanged(previous.LoopSound, requested.LoopSound, latest.LoopSound);
+        bool closeWhenExpired = SelectChanged(previous.CloseWhenExpired, requested.CloseWhenExpired, latest.CloseWhenExpired);
+        if (previous.LoopTimer != requested.LoopTimer
+            || previous.LoopSound != requested.LoopSound
+            || previous.CloseWhenExpired != requested.CloseWhenExpired)
+        {
+            loopTimer = requested.LoopTimer;
+            loopSound = requested.LoopSound;
+            closeWhenExpired = requested.CloseWhenExpired;
+        }
 
         return new LinuxAppSettings(
             recentTimerInputs,
@@ -1541,9 +1550,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             SelectChanged(previous.PromptOnExit, requested.PromptOnExit, latest.PromptOnExit),
             SelectChanged(previous.ReverseProgressBar, requested.ReverseProgressBar, latest.ReverseProgressBar),
             SelectChanged(previous.ShowTimeElapsed, requested.ShowTimeElapsed, latest.ShowTimeElapsed),
-            SelectChanged(previous.LoopTimer, requested.LoopTimer, latest.LoopTimer),
-            SelectChanged(previous.LoopSound, requested.LoopSound, latest.LoopSound),
-            SelectChanged(previous.CloseWhenExpired, requested.CloseWhenExpired, latest.CloseWhenExpired),
+            loopTimer,
+            loopSound,
+            closeWhenExpired,
             SelectChanged(previous.LockInterface, requested.LockInterface, latest.LockInterface),
             SelectChanged(
                 previous.DoNotKeepComputerAwake,
@@ -1566,6 +1575,29 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
                 previous.OpenSavedTimersOnStartup,
                 requested.OpenSavedTimersOnStartup,
                 latest.OpenSavedTimersOnStartup));
+    }
+
+    private static string[] MergeRecentTimerInputs(
+        LinuxAppSettings previous,
+        LinuxAppSettings requested,
+        LinuxAppSettings latest)
+    {
+        string[] previousInputs = previous.RecentTimerInputs;
+        string[] requestedInputs = requested.RecentTimerInputs;
+        if (previousInputs.SequenceEqual(requestedInputs, StringComparer.Ordinal))
+        {
+            return latest.RecentTimerInputs;
+        }
+
+        if (requestedInputs.Length == 0)
+        {
+            return requestedInputs;
+        }
+
+        return requestedInputs
+            .Concat(latest.RecentTimerInputs)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
     }
 
     private static bool SelectChanged(bool previous, bool requested, bool latest)
