@@ -30,6 +30,7 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
     private readonly IAudioAlertService audioAlertService;
     private readonly INotificationService notificationService;
     private readonly ISettingsStore settingsStore;
+    private readonly ISavedTimersStore savedTimersStore;
     private readonly IStatusIconService statusIconService;
     private readonly ISystemPowerService systemPowerService;
     private readonly CoordinatedSessionInhibitor sessionInhibitor;
@@ -70,6 +71,7 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
         this.audioAlertService = audioAlertService ?? throw new ArgumentNullException(nameof(audioAlertService));
         this.sessionInhibitor = sessionInhibitor ?? throw new ArgumentNullException(nameof(sessionInhibitor));
         this.systemPowerService = systemPowerService ?? throw new ArgumentNullException(nameof(systemPowerService));
+        this.savedTimersStore = new CoordinatedSavedTimersStore(this.settingsStore);
         this.desktopProgressController = new DesktopProgressController(
             desktopProgressService ?? throw new ArgumentNullException(nameof(desktopProgressService)));
         this.statusIconService = statusIconService ?? throw new ArgumentNullException(nameof(statusIconService));
@@ -135,6 +137,7 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
             this.notificationService,
             this.sessionInhibitor,
             this.settingsStore,
+            this.savedTimersStore,
             this.audioAlertService,
             this.systemPowerService,
             this.statusIconService.IsSupported,

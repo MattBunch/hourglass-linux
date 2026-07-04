@@ -2133,6 +2133,68 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
+    public async Task CoordinatedSavedTimerSavesPreserveAdditionsFromOtherWindows()
+    {
+        var settingsStore = new RecordingSettingsStore();
+        var savedTimersStore = new CoordinatedSavedTimersStore(settingsStore);
+        var firstWindow = CreateViewModel(
+            new ManualMonotonicClock(),
+            settingsStore: settingsStore,
+            savedTimersStore: savedTimersStore);
+        var secondWindow = CreateViewModel(
+            new ManualMonotonicClock(),
+            settingsStore: settingsStore,
+            savedTimersStore: savedTimersStore);
+        await firstWindow.LoadSettingsAsync();
+        await secondWindow.LoadSettingsAsync();
+
+        firstWindow.TimerInput = "10 minutes";
+        firstWindow.TimerTitle = "Tea";
+        firstWindow.SaveCurrentTimerCommand.Execute(null);
+        secondWindow.TimerInput = "20 minutes";
+        secondWindow.TimerTitle = "Coffee";
+        secondWindow.SaveCurrentTimerCommand.Execute(null);
+        await Task.WhenAll(firstWindow.PendingSettingsSave, secondWindow.PendingSettingsSave);
+
+        Assert.NotNull(settingsStore.SavedTimers);
+        Assert.Equal(
+            ["Coffee — 20 minutes", "Tea — 10 minutes"],
+            settingsStore.SavedTimers.Timers.Select(timer => timer.Header).ToArray());
+    }
+
+    [Fact]
+    public async Task CoordinatedSavedTimerRemovePreservesAdditionsFromOtherWindows()
+    {
+        var originalTimer = new SavedTimerDefinition("timer-1", "10 minutes", "Tea");
+        var settingsStore = new RecordingSettingsStore
+        {
+            LoadedSavedTimers = new SavedTimersDocument(timers: [originalTimer])
+        };
+        var savedTimersStore = new CoordinatedSavedTimersStore(settingsStore);
+        var firstWindow = CreateViewModel(
+            new ManualMonotonicClock(),
+            settingsStore: settingsStore,
+            savedTimersStore: savedTimersStore);
+        var secondWindow = CreateViewModel(
+            new ManualMonotonicClock(),
+            settingsStore: settingsStore,
+            savedTimersStore: savedTimersStore);
+        await firstWindow.LoadSettingsAsync();
+        await secondWindow.LoadSettingsAsync();
+
+        firstWindow.TimerInput = "20 minutes";
+        firstWindow.TimerTitle = "Coffee";
+        firstWindow.SaveCurrentTimerCommand.Execute(null);
+        await firstWindow.PendingSettingsSave;
+        secondWindow.RemoveSavedTimerCommand.Execute(originalTimer.Id);
+        await secondWindow.PendingSettingsSave;
+
+        Assert.NotNull(settingsStore.SavedTimers);
+        SavedTimerDefinition remainingTimer = Assert.Single(settingsStore.SavedTimers.Timers);
+        Assert.Equal("Coffee — 20 minutes", remainingTimer.Header);
+    }
+
+    [Fact]
     public async Task ActiveSessionPersistsRunningTimerAndRestoresExpiredOnStartup()
     {
         var clock = new ManualMonotonicClock();
@@ -3043,17 +3105,21 @@ public sealed class MainWindowViewModelTests
         INotificationService? notificationService = null,
         ISessionInhibitor? sessionInhibitor = null,
         ISettingsStore? settingsStore = null,
+        ISavedTimersStore? savedTimersStore = null,
         IAudioAlertService? audioAlertService = null,
         ISystemPowerService? systemPowerService = null,
         bool statusIconSupported = false,
         bool statusIconCanRecoverHiddenWindow = false)
     {
+        ISettingsStore resolvedSettingsStore = settingsStore ?? new RecordingSettingsStore();
+
         return new MainWindowViewModel(
             new CountdownEngine(clock),
             wallClockNow ?? (() => new DateTime(2026, 6, 8, 10, 0, 0)),
             notificationService ?? new RecordingNotificationService(),
             sessionInhibitor ?? new RecordingSessionInhibitor(),
-            settingsStore ?? new RecordingSettingsStore(),
+            resolvedSettingsStore,
+            savedTimersStore ?? new DirectSavedTimersStore(resolvedSettingsStore),
             audioAlertService ?? new RecordingAudioAlertService(),
             systemPowerService ?? new RecordingSystemPowerService(),
             statusIconSupported,
@@ -3211,7 +3277,7 @@ public sealed class MainWindowViewModelTests
             object? value = key switch
             {
                 "app" => this.SavedSettings ?? this.LoadedSettings,
-                "saved-timers" => this.LoadedSavedTimers,
+                "saved-timers" => this.SavedTimers ?? this.LoadedSavedTimers,
                 "active-session" => this.LoadedActiveSession,
                 _ => null
             };

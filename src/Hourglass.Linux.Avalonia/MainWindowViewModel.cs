@@ -14,12 +14,12 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private const string SessionInhibitionReason = "Hourglass timer is running";
     private const string NotificationBody = "Timer complete";
     private const string SettingsKey = "app";
-    private const string SavedTimersKey = "saved-timers";
     private const string ActiveSessionKey = "active-session";
 
     private readonly IAudioAlertService audioAlertService;
     private readonly CountdownEngine engine;
     private readonly INotificationService notificationService;
+    private readonly ISavedTimersStore savedTimersStore;
     private readonly ISessionInhibitor sessionInhibitor;
     private readonly ISettingsStore settingsStore;
     private readonly bool persistActiveSessionDirectly;
@@ -122,12 +122,44 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         string? sessionId = null,
         bool persistActiveSessionDirectly = true,
         bool restoreActiveSessionOnLoad = true)
+        : this(
+            engine,
+            wallClockNow,
+            notificationService,
+            sessionInhibitor,
+            settingsStore,
+            new DirectSavedTimersStore(settingsStore),
+            audioAlertService,
+            systemPowerService,
+            statusIconSupported,
+            statusIconCanRecoverHiddenWindow,
+            sessionId,
+            persistActiveSessionDirectly,
+            restoreActiveSessionOnLoad)
+    {
+    }
+
+    internal MainWindowViewModel(
+        CountdownEngine engine,
+        Func<DateTime> wallClockNow,
+        INotificationService notificationService,
+        ISessionInhibitor sessionInhibitor,
+        ISettingsStore settingsStore,
+        ISavedTimersStore savedTimersStore,
+        IAudioAlertService audioAlertService,
+        ISystemPowerService systemPowerService,
+        bool statusIconSupported = false,
+        bool statusIconCanRecoverHiddenWindow = false,
+        string? sessionId = null,
+        bool persistActiveSessionDirectly = true,
+        bool restoreActiveSessionOnLoad = true)
     {
         this.engine = engine ?? throw new ArgumentNullException(nameof(engine));
         this.wallClockNow = wallClockNow ?? throw new ArgumentNullException(nameof(wallClockNow));
         this.notificationService = notificationService ?? throw new ArgumentNullException(nameof(notificationService));
         this.sessionInhibitor = sessionInhibitor ?? throw new ArgumentNullException(nameof(sessionInhibitor));
         this.settingsStore = settingsStore ?? throw new ArgumentNullException(nameof(settingsStore));
+        this.savedTimersStore = savedTimersStore ?? throw new ArgumentNullException(nameof(savedTimersStore));
         this.audioAlertService = audioAlertService ?? throw new ArgumentNullException(nameof(audioAlertService));
         this.systemPowerService = systemPowerService ?? throw new ArgumentNullException(nameof(systemPowerService));
         this.statusIconSupported = statusIconSupported;
@@ -442,7 +474,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     public async Task LoadSettingsAsync(CancellationToken cancellationToken = default)
     {
         LinuxAppSettings loadedSettings = await this.LoadDocumentAsync(SettingsKey, LinuxAppSettings.Default, cancellationToken);
-        SavedTimersDocument loadedSavedTimers = await this.LoadDocumentAsync(SavedTimersKey, SavedTimersDocument.Empty, cancellationToken);
+        SavedTimersDocument loadedSavedTimers = await this.LoadSavedTimersAsync(cancellationToken);
 
         this.ReplaceSettings(loadedSettings, save: false);
         this.ReplaceSavedTimers(loadedSavedTimers, save: false);
@@ -475,6 +507,22 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         catch (Exception)
         {
             return fallback;
+        }
+    }
+
+    private async Task<SavedTimersDocument> LoadSavedTimersAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await this.savedTimersStore.LoadAsync(cancellationToken).ConfigureAwait(true);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception)
+        {
+            return SavedTimersDocument.Empty;
         }
     }
 
@@ -1200,13 +1248,14 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             return;
         }
 
+        SavedTimersDocument previous = this.savedTimers;
         this.savedTimers = next;
         this.OnPropertyChanged(nameof(this.SavedTimerMenuItems));
         this.ClearSavedTimersCommand.RaiseCanExecuteChanged();
 
         if (save)
         {
-            this.QueueSavedTimersSave(next);
+            this.QueueSavedTimersSave(previous, next);
         }
     }
 
@@ -1469,9 +1518,12 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             requestedSettings);
     }
 
-    private void QueueSavedTimersSave(SavedTimersDocument savedTimersSnapshot)
+    private void QueueSavedTimersSave(SavedTimersDocument previousSavedTimers, SavedTimersDocument requestedSavedTimers)
     {
-        this.pendingSavedTimersSave = this.SaveDocumentAfterAsync(this.pendingSavedTimersSave, SavedTimersKey, savedTimersSnapshot);
+        this.pendingSavedTimersSave = this.SaveSavedTimersAfterAsync(
+            this.pendingSavedTimersSave,
+            previousSavedTimers,
+            requestedSavedTimers);
     }
 
     private void QueueActiveSessionSave()
@@ -1525,6 +1577,28 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         try
         {
             await this.settingsStore.SaveAsync(key, document).ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+        }
+    }
+
+    private async Task SaveSavedTimersAfterAsync(
+        Task previousSave,
+        SavedTimersDocument previousSavedTimers,
+        SavedTimersDocument requestedSavedTimers)
+    {
+        try
+        {
+            await previousSave.ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+        }
+
+        try
+        {
+            await this.savedTimersStore.SaveAsync(previousSavedTimers, requestedSavedTimers).ConfigureAwait(false);
         }
         catch (Exception)
         {
