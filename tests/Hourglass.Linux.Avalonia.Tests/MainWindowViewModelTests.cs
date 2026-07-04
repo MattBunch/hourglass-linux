@@ -2195,6 +2195,38 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
+    public async Task CoordinatedSavedTimerSaveDoesNotRestoreTimerRemovedByOtherWindow()
+    {
+        var originalTimer = new SavedTimerDefinition("timer-1", "10 minutes", "Tea");
+        var settingsStore = new RecordingSettingsStore
+        {
+            LoadedSavedTimers = new SavedTimersDocument(timers: [originalTimer])
+        };
+        var savedTimersStore = new CoordinatedSavedTimersStore(settingsStore);
+        var firstWindow = CreateViewModel(
+            new ManualMonotonicClock(),
+            settingsStore: settingsStore,
+            savedTimersStore: savedTimersStore);
+        var secondWindow = CreateViewModel(
+            new ManualMonotonicClock(),
+            settingsStore: settingsStore,
+            savedTimersStore: savedTimersStore);
+        await firstWindow.LoadSettingsAsync();
+        await secondWindow.LoadSettingsAsync();
+
+        firstWindow.RemoveSavedTimerCommand.Execute(originalTimer.Id);
+        await firstWindow.PendingSettingsSave;
+        secondWindow.TimerInput = "20 minutes";
+        secondWindow.TimerTitle = "Coffee";
+        secondWindow.SaveCurrentTimerCommand.Execute(null);
+        await secondWindow.PendingSettingsSave;
+
+        Assert.NotNull(settingsStore.SavedTimers);
+        SavedTimerDefinition remainingTimer = Assert.Single(settingsStore.SavedTimers.Timers);
+        Assert.Equal("Coffee — 20 minutes", remainingTimer.Header);
+    }
+
+    [Fact]
     public async Task ActiveSessionPersistsRunningTimerAndRestoresExpiredOnStartup()
     {
         var clock = new ManualMonotonicClock();

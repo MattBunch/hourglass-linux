@@ -137,7 +137,7 @@ internal sealed class CoordinatedSavedTimersStore : ISavedTimersStore
             .OfType<SavedTimerDefinition>();
 
         IEnumerable<SavedTimerDefinition> requestedAdditions = requestedTimers
-            .Where(timer => !latestIds.Contains(timer.Id));
+            .Where(timer => !latestIds.Contains(timer.Id) && !previousIds.Contains(timer.Id));
 
         return new SavedTimersDocument(timers: requestedAdditions.Concat(mergedLatest).ToArray());
     }
