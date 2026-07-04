@@ -354,7 +354,31 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
         this.refreshTimer.Stop();
         await this.viewModel.PendingSettingsSave.ConfigureAwait(false);
         await this.desktopProgressController.ClearAsync().ConfigureAwait(false);
-        await this.prepareCoordinatorClose(this).ConfigureAwait(false);
+        await this.PrepareCoordinatorCloseOnUiThreadAsync().ConfigureAwait(false);
+    }
+
+    private Task PrepareCoordinatorCloseOnUiThreadAsync()
+    {
+        if (Dispatcher.UIThread.CheckAccess())
+        {
+            return this.prepareCoordinatorClose(this);
+        }
+
+        var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        Dispatcher.UIThread.Post(async () =>
+        {
+            try
+            {
+                await this.prepareCoordinatorClose(this).ConfigureAwait(true);
+                completion.SetResult();
+            }
+            catch (Exception exception)
+            {
+                completion.SetException(exception);
+            }
+        });
+
+        return completion.Task;
     }
 
     private void UpdatePresentationClasses()

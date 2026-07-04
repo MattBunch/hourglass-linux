@@ -63,7 +63,8 @@ public sealed class Milestone6CoordinatorTests
         string window = File.ReadAllText(FindRepositoryFile("src/Hourglass.Linux.Avalonia/MainWindow.axaml.cs"));
 
         Assert.Contains("prepareCoordinatorClose: this.PrepareWindowCloseAsync", coordinator, StringComparison.Ordinal);
-        Assert.Contains("await this.prepareCoordinatorClose(this).ConfigureAwait(false);", window, StringComparison.Ordinal);
+        Assert.Contains("await this.PrepareCoordinatorCloseOnUiThreadAsync().ConfigureAwait(false);", window, StringComparison.Ordinal);
+        Assert.Contains("Dispatcher.UIThread.Post(async () =>", window, StringComparison.Ordinal);
         Assert.Contains("this.closingWindows.Add(window);", coordinator, StringComparison.Ordinal);
         Assert.Contains("await this.QueueSessionSave().ConfigureAwait(false);", coordinator, StringComparison.Ordinal);
         Assert.Contains(".Where(window => !this.closingWindows.Contains(window.Window))", coordinator, StringComparison.Ordinal);

@@ -1020,6 +1020,10 @@ public sealed class MainWindowViewModelTests
         Assert.Contains("LinuxDesktopProgressServiceFactory.CreateDefault()", codeBehind, StringComparison.Ordinal);
         Assert.Contains("this.viewModel.PendingSettingsSave", prepareClose, StringComparison.Ordinal);
         Assert.Contains("this.desktopProgressController.ClearAsync()", prepareClose, StringComparison.Ordinal);
+        Assert.Contains("await this.PrepareCoordinatorCloseOnUiThreadAsync().ConfigureAwait(false);", prepareClose, StringComparison.Ordinal);
+        Assert.Contains("private Task PrepareCoordinatorCloseOnUiThreadAsync()", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("Dispatcher.UIThread.CheckAccess()", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("Dispatcher.UIThread.Post(async () =>", codeBehind, StringComparison.Ordinal);
         Assert.Contains("this.isClosePreparing = true;", prepareClose, StringComparison.Ordinal);
         Assert.Contains("this.refreshTimer.Stop();", prepareClose, StringComparison.Ordinal);
         Assert.True(
@@ -1539,6 +1543,55 @@ public sealed class MainWindowViewModelTests
         Assert.Contains(nameof(MainWindowViewModel.CanHideToNotificationArea), changedProperties);
         Assert.Contains(nameof(MainWindowViewModel.StatusIconMenuState), changedProperties);
         Assert.NotNull(settingsStore.SavedSettings);
+        Assert.True(settingsStore.SavedSettings.ShowInNotificationArea);
+    }
+
+    [Fact]
+    public async Task SettingsSaveMergesRecentInputWithLatestPersistedSettings()
+    {
+        var settingsStore = new RecordingSettingsStore
+        {
+            LoadedSettings = new LinuxAppSettings(showInNotificationArea: false)
+        };
+        var viewModel = CreateViewModel(
+            new ManualMonotonicClock(),
+            settingsStore: settingsStore,
+            statusIconSupported: true);
+
+        await viewModel.LoadSettingsAsync();
+        settingsStore.LoadedSettings = new LinuxAppSettings(showInNotificationArea: true);
+
+        viewModel.TimerInput = "12 minutes";
+        viewModel.StartCommand.Execute(null);
+        await viewModel.PendingSettingsSave;
+
+        Assert.NotNull(settingsStore.SavedSettings);
+        Assert.True(settingsStore.SavedSettings.ShowInNotificationArea);
+        Assert.Equal("12 minutes", Assert.Single(settingsStore.SavedSettings.RecentTimerInputs));
+    }
+
+    [Fact]
+    public async Task SettingsSaveMergesChangedOptionOverLatestPersistedSettings()
+    {
+        var settingsStore = new RecordingSettingsStore
+        {
+            LoadedSettings = LinuxAppSettings.Default
+        };
+        var viewModel = CreateViewModel(new ManualMonotonicClock(), settingsStore: settingsStore);
+
+        await viewModel.LoadSettingsAsync();
+        settingsStore.LoadedSettings = LinuxAppSettings.Default with
+        {
+            ReverseProgressBar = true,
+            ShowInNotificationArea = true
+        };
+
+        viewModel.ToggleNotificationsCommand.Execute(null);
+        await viewModel.PendingSettingsSave;
+
+        Assert.NotNull(settingsStore.SavedSettings);
+        Assert.False(settingsStore.SavedSettings.NotificationsEnabled);
+        Assert.True(settingsStore.SavedSettings.ReverseProgressBar);
         Assert.True(settingsStore.SavedSettings.ShowInNotificationArea);
     }
 
@@ -3062,7 +3115,7 @@ public sealed class MainWindowViewModelTests
 
     private sealed class RecordingSettingsStore : ISettingsStore
     {
-        public LinuxAppSettings? LoadedSettings { get; init; }
+        public LinuxAppSettings? LoadedSettings { get; set; }
 
         public SavedTimersDocument? LoadedSavedTimers { get; init; }
 
@@ -3087,7 +3140,7 @@ public sealed class MainWindowViewModelTests
 
             object? value = key switch
             {
-                "app" => this.LoadedSettings,
+                "app" => this.SavedSettings ?? this.LoadedSettings,
                 "saved-timers" => this.LoadedSavedTimers,
                 "active-session" => this.LoadedActiveSession,
                 _ => null

@@ -1184,7 +1184,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
         if (save)
         {
-            this.QueueSettingsSave(next);
+            this.QueueSettingsSave(previous, next);
             this.QueueActiveSessionSave();
         }
 
@@ -1440,9 +1440,12 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         }
     }
 
-    private void QueueSettingsSave(LinuxAppSettings settingsSnapshot)
+    private void QueueSettingsSave(LinuxAppSettings previousSettings, LinuxAppSettings requestedSettings)
     {
-        this.pendingSettingsSave = this.SaveSettingsAfterAsync(this.pendingSettingsSave, settingsSnapshot);
+        this.pendingSettingsSave = this.SaveSettingsAfterAsync(
+            this.pendingSettingsSave,
+            previousSettings,
+            requestedSettings);
     }
 
     private void QueueSavedTimersSave(SavedTimersDocument savedTimersSnapshot)
@@ -1463,9 +1466,29 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         this.pendingActiveSessionSave = this.SaveDocumentAfterAsync(this.pendingActiveSessionSave, ActiveSessionKey, session);
     }
 
-    private async Task SaveSettingsAfterAsync(Task previousSave, LinuxAppSettings settingsSnapshot)
+    private async Task SaveSettingsAfterAsync(
+        Task previousSave,
+        LinuxAppSettings previousSettings,
+        LinuxAppSettings requestedSettings)
     {
-        await this.SaveDocumentAfterAsync(previousSave, SettingsKey, settingsSnapshot).ConfigureAwait(false);
+        try
+        {
+            await previousSave.ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+        }
+
+        LinuxAppSettings latestSettings = await this.LoadLatestSettingsForSaveAsync(previousSettings).ConfigureAwait(false);
+        LinuxAppSettings mergedSettings = MergeSettingsChange(previousSettings, requestedSettings, latestSettings);
+
+        try
+        {
+            await this.settingsStore.SaveAsync(SettingsKey, mergedSettings).ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+        }
     }
 
     private async Task SaveDocumentAfterAsync<T>(Task previousSave, string key, T document)
@@ -1485,6 +1508,69 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         catch (Exception)
         {
         }
+    }
+
+    private async Task<LinuxAppSettings> LoadLatestSettingsForSaveAsync(LinuxAppSettings fallback)
+    {
+        try
+        {
+            return await this.settingsStore.LoadAsync<LinuxAppSettings>(SettingsKey).ConfigureAwait(false)
+                ?? fallback;
+        }
+        catch (Exception)
+        {
+            return fallback;
+        }
+    }
+
+    private static LinuxAppSettings MergeSettingsChange(
+        LinuxAppSettings previous,
+        LinuxAppSettings requested,
+        LinuxAppSettings latest)
+    {
+        string[] recentTimerInputs = previous.RecentTimerInputs.SequenceEqual(requested.RecentTimerInputs, StringComparer.Ordinal)
+            ? latest.RecentTimerInputs
+            : requested.RecentTimerInputs;
+
+        return new LinuxAppSettings(
+            recentTimerInputs,
+            SelectChanged(previous.NotificationsEnabled, requested.NotificationsEnabled, latest.NotificationsEnabled),
+            SelectChanged(previous.AudioAlertsEnabled, requested.AudioAlertsEnabled, latest.AudioAlertsEnabled),
+            SelectChanged(previous.AlwaysOnTop, requested.AlwaysOnTop, latest.AlwaysOnTop),
+            SelectChanged(previous.PopUpWhenExpired, requested.PopUpWhenExpired, latest.PopUpWhenExpired),
+            SelectChanged(previous.PromptOnExit, requested.PromptOnExit, latest.PromptOnExit),
+            SelectChanged(previous.ReverseProgressBar, requested.ReverseProgressBar, latest.ReverseProgressBar),
+            SelectChanged(previous.ShowTimeElapsed, requested.ShowTimeElapsed, latest.ShowTimeElapsed),
+            SelectChanged(previous.LoopTimer, requested.LoopTimer, latest.LoopTimer),
+            SelectChanged(previous.LoopSound, requested.LoopSound, latest.LoopSound),
+            SelectChanged(previous.CloseWhenExpired, requested.CloseWhenExpired, latest.CloseWhenExpired),
+            SelectChanged(previous.LockInterface, requested.LockInterface, latest.LockInterface),
+            SelectChanged(
+                previous.DoNotKeepComputerAwake,
+                requested.DoNotKeepComputerAwake,
+                latest.DoNotKeepComputerAwake),
+            SelectChanged(previous.ShutDownWhenExpired, requested.ShutDownWhenExpired, latest.ShutDownWhenExpired),
+            SelectChanged(
+                previous.ShowProgressInTaskbar,
+                requested.ShowProgressInTaskbar,
+                latest.ShowProgressInTaskbar),
+            SelectChanged(
+                previous.ShowInNotificationArea,
+                requested.ShowInNotificationArea,
+                latest.ShowInNotificationArea),
+            SelectChanged(
+                previous.RestoreActiveSessionOnStartup,
+                requested.RestoreActiveSessionOnStartup,
+                latest.RestoreActiveSessionOnStartup),
+            SelectChanged(
+                previous.OpenSavedTimersOnStartup,
+                requested.OpenSavedTimersOnStartup,
+                latest.OpenSavedTimersOnStartup));
+    }
+
+    private static bool SelectChanged(bool previous, bool requested, bool latest)
+    {
+        return previous == requested ? latest : requested;
     }
 
     private static ActiveTimerPresentationMode ToActiveTimerPresentationMode(TimerPresentationMode presentationMode)
