@@ -70,6 +70,31 @@ public sealed class Milestone6CoordinatorTests
     }
 
     [Fact]
+    public void CoordinatorWaitsForFinalSessionSaveBeforeShutdown()
+    {
+        string coordinator = File.ReadAllText(FindRepositoryFile("src/Hourglass.Linux.Avalonia/TimerWindowCoordinator.cs"));
+        int windowClosedStart = coordinator.IndexOf("private void WindowClosed(object? sender, EventArgs e)", StringComparison.Ordinal);
+        int statusIconActionStart = coordinator.IndexOf("private void StatusIconActionRequested", StringComparison.Ordinal);
+        int shutdownHelperStart = coordinator.IndexOf(
+            "private async Task ShutdownAfterFinalSessionSaveAsync(Task sessionSave)",
+            StringComparison.Ordinal);
+        int prepareCloseStart = coordinator.IndexOf("private async Task PrepareWindowCloseAsync", StringComparison.Ordinal);
+
+        Assert.True(windowClosedStart >= 0);
+        Assert.True(statusIconActionStart > windowClosedStart);
+        Assert.True(shutdownHelperStart > 0);
+        Assert.True(prepareCloseStart > shutdownHelperStart);
+        string windowClosedMethod = coordinator[windowClosedStart..statusIconActionStart];
+        string shutdownHelper = coordinator[shutdownHelperStart..prepareCloseStart];
+
+        Assert.Contains("Task sessionSave = this.QueueSessionSave();", windowClosedMethod, StringComparison.Ordinal);
+        Assert.Contains("_ = this.ShutdownAfterFinalSessionSaveAsync(sessionSave);", windowClosedMethod, StringComparison.Ordinal);
+        Assert.DoesNotContain("this.lifetime.Shutdown();", windowClosedMethod, StringComparison.Ordinal);
+        Assert.Contains("await sessionSave.ConfigureAwait(true);", shutdownHelper, StringComparison.Ordinal);
+        Assert.Contains("this.lifetime.Shutdown();", shutdownHelper, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void CoordinatorDistinguishesMissingActiveSessionsFromEmptyActiveSessions()
     {
         string coordinator = File.ReadAllText(FindRepositoryFile("src/Hourglass.Linux.Avalonia/TimerWindowCoordinator.cs"));
@@ -139,6 +164,41 @@ public sealed class Milestone6CoordinatorTests
         Assert.Contains("this.ApplyDesktopProgress();", propertyChangedMethod, StringComparison.Ordinal);
         Assert.Contains("this.ApplyStatusIconState();", propertyChangedMethod, StringComparison.Ordinal);
         Assert.Contains("this.mostRecentWindow = registration;", activatedMethod, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void CoordinatorUsesGlobalNotificationAreaVisibilityForTrayState()
+    {
+        string coordinator = File.ReadAllText(FindRepositoryFile("src/Hourglass.Linux.Avalonia/TimerWindowCoordinator.cs"));
+        int propertyChangedStart = coordinator.IndexOf(
+            "private void ViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)",
+            StringComparison.Ordinal);
+        int activatedStart = coordinator.IndexOf("private void WindowActivated(object? sender, EventArgs e)", StringComparison.Ordinal);
+        int applyStatusStart = coordinator.IndexOf("private async Task ApplyStatusIconStateAsync()", StringComparison.Ordinal);
+        int shutdownHelperStart = coordinator.IndexOf(
+            "private async Task ShutdownAfterFinalSessionSaveAsync",
+            StringComparison.Ordinal);
+
+        Assert.True(propertyChangedStart >= 0);
+        Assert.True(activatedStart > propertyChangedStart);
+        Assert.True(applyStatusStart > activatedStart);
+        Assert.True(shutdownHelperStart > applyStatusStart);
+        string propertyChangedMethod = coordinator[propertyChangedStart..activatedStart];
+        string applyStatusMethod = coordinator[applyStatusStart..shutdownHelperStart];
+
+        Assert.Contains("private bool showInNotificationArea;", coordinator, StringComparison.Ordinal);
+        Assert.Contains(
+            "this.showInNotificationArea = settings.ShowInNotificationArea && this.statusIconService.IsSupported;",
+            coordinator,
+            StringComparison.Ordinal);
+        Assert.Contains("nameof(MainWindowViewModel.ShowInNotificationArea)", propertyChangedMethod, StringComparison.Ordinal);
+        Assert.Contains("this.showInNotificationArea = viewModel.ShowInNotificationArea;", propertyChangedMethod, StringComparison.Ordinal);
+        Assert.Contains("StatusIconMenuState targetState = target?.ViewModel.StatusIconMenuState", applyStatusMethod, StringComparison.Ordinal);
+        Assert.Contains("IsVisible = this.showInNotificationArea", applyStatusMethod, StringComparison.Ordinal);
+        Assert.Contains(
+            "CanHideWindow = this.showInNotificationArea && this.statusIconService.CanRecoverHiddenWindow",
+            applyStatusMethod,
+            StringComparison.Ordinal);
     }
 
     [Fact]

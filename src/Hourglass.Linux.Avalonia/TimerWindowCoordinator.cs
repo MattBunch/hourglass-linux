@@ -38,6 +38,7 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
     private Task pendingSessionSave = Task.CompletedTask;
     private bool exitCloseInProgress;
     private bool isShuttingDown;
+    private bool showInNotificationArea;
     private WindowRegistration? mostRecentWindow;
 
     public TimerWindowCoordinator(IClassicDesktopStyleApplicationLifetime lifetime)
@@ -81,6 +82,7 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
             .ConfigureAwait(true);
         ActiveTimerSessionsDocument activeSessions = await this.LoadActiveSessionsAsync(cancellationToken)
             .ConfigureAwait(true);
+        this.showInNotificationArea = settings.ShowInNotificationArea && this.statusIconService.IsSupported;
 
         bool restoredAny = false;
         if (settings.RestoreActiveSessionOnStartup)
@@ -296,13 +298,20 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
 
     private void ViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
+        if (e.PropertyName is nameof(MainWindowViewModel.ShowInNotificationArea)
+            && sender is MainWindowViewModel viewModel)
+        {
+            this.showInNotificationArea = viewModel.ShowInNotificationArea;
+        }
+
         if (e.PropertyName is nameof(MainWindowViewModel.DesktopProgressRequest))
         {
             this.ApplyDesktopProgress();
         }
 
         if (e.PropertyName is nameof(MainWindowViewModel.StatusIconMenuState)
-            or nameof(MainWindowViewModel.WindowTitle))
+            or nameof(MainWindowViewModel.WindowTitle)
+            or nameof(MainWindowViewModel.ShowInNotificationArea))
         {
             this.ApplyStatusIconState();
         }
@@ -349,14 +358,14 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
             this.mostRecentWindow = this.windows.LastOrDefault();
         }
 
-        _ = this.QueueSessionSave();
+        Task sessionSave = this.QueueSessionSave();
         this.ApplyDesktopProgress();
         this.ApplyStatusIconState();
 
         if (this.windows.Count == 0 && !this.isShuttingDown)
         {
             this.isShuttingDown = true;
-            this.lifetime.Shutdown();
+            _ = this.ShutdownAfterFinalSessionSaveAsync(sessionSave);
         }
     }
 
@@ -527,7 +536,7 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
     private async Task ApplyStatusIconStateAsync()
     {
         WindowRegistration? target = this.GetStatusIconTarget();
-        StatusIconMenuState state = target?.ViewModel.StatusIconMenuState
+        StatusIconMenuState targetState = target?.ViewModel.StatusIconMenuState
             ?? new StatusIconMenuState(
                 "Hourglass",
                 false,
@@ -537,6 +546,11 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
                 false,
                 false,
                 true);
+        StatusIconMenuState state = targetState with
+        {
+            IsVisible = this.showInNotificationArea,
+            CanHideWindow = this.showInNotificationArea && this.statusIconService.CanRecoverHiddenWindow
+        };
 
         try
         {
@@ -545,6 +559,19 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
         catch (Exception)
         {
         }
+    }
+
+    private async Task ShutdownAfterFinalSessionSaveAsync(Task sessionSave)
+    {
+        try
+        {
+            await sessionSave.ConfigureAwait(true);
+        }
+        catch (Exception)
+        {
+        }
+
+        this.lifetime.Shutdown();
     }
 
     private async Task PrepareWindowCloseAsync(MainWindow window)
