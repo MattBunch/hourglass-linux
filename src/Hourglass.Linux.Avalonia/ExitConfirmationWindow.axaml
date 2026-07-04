@@ -10,7 +10,7 @@
         WindowStartupLocation="CenterOwner">
   <Grid Margin="20"
         RowDefinitions="*,Auto">
-    <TextBlock Text="A timer is still running. Exit Hourglass?"
+    <TextBlock Text="One or more timers are still running or paused. Exit Hourglass?"
                TextWrapping="Wrap"
                VerticalAlignment="Center" />
     <StackPanel Grid.Row="1"

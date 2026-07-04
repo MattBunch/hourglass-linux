@@ -141,6 +141,56 @@ public sealed class Milestone6CoordinatorTests
         Assert.Contains("this.mostRecentWindow = registration;", activatedMethod, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void CoordinatorTrayExitCollectsOneApplicationApprovalBeforeClosingWindows()
+    {
+        string coordinator = File.ReadAllText(FindRepositoryFile("src/Hourglass.Linux.Avalonia/TimerWindowCoordinator.cs"));
+        int exitCaseStart = coordinator.IndexOf("case StatusIconAction.Exit:", StringComparison.Ordinal);
+        int closeAllStart = coordinator.IndexOf("private async Task CloseAllWindowsAsync()", StringComparison.Ordinal);
+        int targetStart = coordinator.IndexOf("private WindowRegistration? GetStatusIconTarget()", StringComparison.Ordinal);
+
+        Assert.True(exitCaseStart >= 0);
+        Assert.True(closeAllStart > exitCaseStart);
+        Assert.True(targetStart > closeAllStart);
+        string exitCase = coordinator[exitCaseStart..closeAllStart];
+        string closeAllMethod = coordinator[closeAllStart..targetStart];
+
+        Assert.Contains("_ = this.CloseAllWindowsAsync();", exitCase, StringComparison.Ordinal);
+        Assert.Contains("this.exitCloseInProgress", closeAllMethod, StringComparison.Ordinal);
+        Assert.Contains("snapshot.Any(registration => registration.Window.RequiresExitConfirmation)", closeAllMethod, StringComparison.Ordinal);
+        Assert.Contains("var dialog = new ExitConfirmationWindow();", closeAllMethod, StringComparison.Ordinal);
+        Assert.Contains("await dialog.ShowDialog<bool>(owner.Window).ConfigureAwait(true);", closeAllMethod, StringComparison.Ordinal);
+        Assert.Contains("if (!approved)", closeAllMethod, StringComparison.Ordinal);
+        Assert.Contains("return;", closeAllMethod, StringComparison.Ordinal);
+        Assert.Contains("registration.Window.CloseWithPreapprovedExit();", closeAllMethod, StringComparison.Ordinal);
+        Assert.DoesNotContain("registration.Window.Close();", closeAllMethod, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void MainWindowCoordinatorApprovedCloseBypassesOnlyExitPrompt()
+    {
+        string window = File.ReadAllText(FindRepositoryFile("src/Hourglass.Linux.Avalonia/MainWindow.axaml.cs"));
+        int approvedCloseStart = window.IndexOf("internal void CloseWithPreapprovedExit()", StringComparison.Ordinal);
+        int createServicesStart = window.IndexOf("private static DefaultMainWindowServices CreateDefaultServices()", StringComparison.Ordinal);
+        int approvalStart = window.IndexOf("private async Task<bool> RequestCloseApprovalAsync()", StringComparison.Ordinal);
+        int prepareStart = window.IndexOf("private async Task PrepareCloseAsync()", StringComparison.Ordinal);
+
+        Assert.True(approvedCloseStart >= 0);
+        Assert.True(createServicesStart > approvedCloseStart);
+        Assert.True(approvalStart > createServicesStart);
+        Assert.True(prepareStart > approvalStart);
+        string approvedCloseMethod = window[approvedCloseStart..createServicesStart];
+        string approvalMethod = window[approvalStart..prepareStart];
+
+        Assert.Contains("internal bool RequiresExitConfirmation => this.viewModel.ShouldPromptOnExit;", window, StringComparison.Ordinal);
+        Assert.Contains("this.closeApprovalPreapproved = true;", approvedCloseMethod, StringComparison.Ordinal);
+        Assert.Contains("this.Close();", approvedCloseMethod, StringComparison.Ordinal);
+        Assert.Contains("if (this.closeApprovalPreapproved)", approvalMethod, StringComparison.Ordinal);
+        Assert.Contains("this.closeApprovalPreapproved = false;", approvalMethod, StringComparison.Ordinal);
+        Assert.Contains("return true;", approvalMethod, StringComparison.Ordinal);
+        Assert.Contains("new ExitConfirmationWindow()", approvalMethod, StringComparison.Ordinal);
+    }
+
     private sealed class RecordingSessionInhibitor : ISessionInhibitor
     {
         public int AcquireCount { get; private set; }

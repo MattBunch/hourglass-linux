@@ -36,6 +36,7 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
     private readonly HashSet<MainWindow> closingWindows = [];
     private readonly List<WindowRegistration> windows = [];
     private Task pendingSessionSave = Task.CompletedTask;
+    private bool exitCloseInProgress;
     private bool isShuttingDown;
     private WindowRegistration? mostRecentWindow;
 
@@ -396,17 +397,54 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
                 target.ViewModel.RestartCommand.Execute(null);
                 break;
             case StatusIconAction.Exit:
-                this.CloseAllWindows();
+                _ = this.CloseAllWindowsAsync();
                 break;
         }
     }
 
-    private void CloseAllWindows()
+    private async Task CloseAllWindowsAsync()
     {
-        foreach (WindowRegistration registration in this.windows.ToArray())
+        if (this.exitCloseInProgress)
         {
-            new WindowAttentionController(registration.Window).RequestAttention();
-            registration.Window.Close();
+            return;
+        }
+
+        this.exitCloseInProgress = true;
+        try
+        {
+            WindowRegistration[] snapshot = this.windows.ToArray();
+            if (snapshot.Length == 0)
+            {
+                return;
+            }
+
+            if (snapshot.Any(registration => registration.Window.RequiresExitConfirmation))
+            {
+                WindowRegistration owner = this.GetStatusIconTarget() ?? snapshot[0];
+                new WindowAttentionController(owner.Window).RequestAttention();
+
+                var dialog = new ExitConfirmationWindow();
+                bool approved = await dialog.ShowDialog<bool>(owner.Window).ConfigureAwait(true);
+                if (!approved)
+                {
+                    return;
+                }
+            }
+
+            foreach (WindowRegistration registration in snapshot)
+            {
+                if (!this.windows.Contains(registration))
+                {
+                    continue;
+                }
+
+                new WindowAttentionController(registration.Window).RequestAttention();
+                registration.Window.CloseWithPreapprovedExit();
+            }
+        }
+        finally
+        {
+            this.exitCloseInProgress = false;
         }
     }
 

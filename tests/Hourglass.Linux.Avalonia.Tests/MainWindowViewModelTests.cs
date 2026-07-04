@@ -921,7 +921,7 @@ public sealed class MainWindowViewModelTests
         Assert.Equal("True", buttons["Exit"].Attribute("IsDefault")?.Value);
         Assert.Contains(
             document.Descendants(avalonia + "TextBlock"),
-            element => element.Attribute("Text")?.Value == "A timer is still running. Exit Hourglass?");
+            element => element.Attribute("Text")?.Value == "One or more timers are still running or paused. Exit Hourglass?");
     }
 
     [Fact]

@@ -37,6 +37,7 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
     private readonly MainWindowViewModel viewModel;
     private readonly WindowAttentionController? windowAttentionController;
     private int expiryFlashGeneration;
+    private bool closeApprovalPreapproved;
     private bool focusWithinContent;
     private bool isClosed;
     private bool isClosePreparing;
@@ -141,6 +142,14 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
         this.RebuildSavedTimersMenu();
         this.ApplyDesktopProgress();
         this.ApplyStatusIconState();
+    }
+
+    internal bool RequiresExitConfirmation => this.viewModel.ShouldPromptOnExit;
+
+    internal void CloseWithPreapprovedExit()
+    {
+        this.closeApprovalPreapproved = true;
+        this.Close();
     }
 
     private static DefaultMainWindowServices CreateDefaultServices()
@@ -324,6 +333,12 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
 
     private async Task<bool> RequestCloseApprovalAsync()
     {
+        if (this.closeApprovalPreapproved)
+        {
+            this.closeApprovalPreapproved = false;
+            return true;
+        }
+
         if (!this.viewModel.ShouldPromptOnExit)
         {
             return true;
