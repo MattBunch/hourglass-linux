@@ -179,6 +179,11 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
     {
         await registration.ViewModel.LoadSettingsAsync().ConfigureAwait(true);
 
+        if (!this.windows.Contains(registration))
+        {
+            return;
+        }
+
         if (session != null && !registration.ViewModel.RestoreActiveSession(session))
         {
             registration.Window.Close();
@@ -277,14 +282,9 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
         this.CreateWindow();
     }
 
-    private async void ViewModelOpenAllSavedTimersRequested(object? sender, EventArgs e)
+    private void ViewModelOpenAllSavedTimersRequested(object? sender, OpenAllSavedTimersRequestedEventArgs e)
     {
-        SavedTimersDocument savedTimers = await this.LoadDocumentAsync(
-            SavedTimersKey,
-            SavedTimersDocument.Empty,
-            CancellationToken.None).ConfigureAwait(true);
-
-        foreach (SavedTimerDefinition savedTimer in savedTimers.Timers)
+        foreach (SavedTimerDefinition savedTimer in e.SavedTimers.Timers)
         {
             this.CreateWindow(savedTimer: savedTimer);
         }

@@ -107,6 +107,34 @@ public sealed class Milestone6CoordinatorTests
     }
 
     [Fact]
+    public void CoordinatorIgnoresClosedWindowsAndUsesSavedTimerEventSnapshot()
+    {
+        string coordinator = File.ReadAllText(FindRepositoryFile("src/Hourglass.Linux.Avalonia/TimerWindowCoordinator.cs"));
+        int loadWindowStart = coordinator.IndexOf("private async Task LoadWindowAsync", StringComparison.Ordinal);
+        int loadActiveSessionsStart = coordinator.IndexOf("private async Task<ActiveTimerSessionsDocument> LoadActiveSessionsAsync", StringComparison.Ordinal);
+        int openAllStart = coordinator.IndexOf("private void ViewModelOpenAllSavedTimersRequested", StringComparison.Ordinal);
+        int activeSessionChangedStart = coordinator.IndexOf("private void ViewModelActiveSessionChanged", StringComparison.Ordinal);
+
+        Assert.True(loadWindowStart >= 0);
+        Assert.True(loadActiveSessionsStart > loadWindowStart);
+        Assert.True(openAllStart > loadActiveSessionsStart);
+        Assert.True(activeSessionChangedStart > openAllStart);
+        string loadWindowMethod = coordinator[loadWindowStart..loadActiveSessionsStart];
+        string openAllMethod = coordinator[openAllStart..activeSessionChangedStart];
+
+        Assert.Contains("if (!this.windows.Contains(registration))", loadWindowMethod, StringComparison.Ordinal);
+        Assert.True(
+            loadWindowMethod.IndexOf("if (!this.windows.Contains(registration))", StringComparison.Ordinal)
+            < loadWindowMethod.IndexOf("registration.ViewModel.RestoreActiveSession(session)", StringComparison.Ordinal));
+        Assert.True(
+            loadWindowMethod.IndexOf("if (!this.windows.Contains(registration))", StringComparison.Ordinal)
+            < loadWindowMethod.IndexOf("registration.ViewModel.ApplySavedTimer(savedTimer)", StringComparison.Ordinal));
+        Assert.Contains("OpenAllSavedTimersRequestedEventArgs e", openAllMethod, StringComparison.Ordinal);
+        Assert.Contains("foreach (SavedTimerDefinition savedTimer in e.SavedTimers.Timers)", openAllMethod, StringComparison.Ordinal);
+        Assert.DoesNotContain("LoadDocumentAsync", openAllMethod, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void CoordinatorStatusIconUpdatesAreDispatchedToUiThread()
     {
         string coordinator = File.ReadAllText(FindRepositoryFile("src/Hourglass.Linux.Avalonia/TimerWindowCoordinator.cs"));

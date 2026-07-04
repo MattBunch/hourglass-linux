@@ -218,7 +218,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     public event EventHandler? NewTimerRequested;
 
-    public event EventHandler? OpenAllSavedTimersRequested;
+    public event EventHandler<OpenAllSavedTimersRequestedEventArgs>? OpenAllSavedTimersRequested;
 
     public RelayCommand StartCommand { get; }
 
@@ -1015,7 +1015,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     private void RequestOpenAllSavedTimers()
     {
-        PublishSafely(this.OpenAllSavedTimersRequested);
+        PublishOpenAllSavedTimersRequested(this.savedTimers);
     }
 
     private void RemoveSavedTimer(string? id)
@@ -1307,6 +1307,27 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             try
             {
                 handler.Invoke(this, EventArgs.Empty);
+            }
+            catch (Exception)
+            {
+            }
+        }
+    }
+
+    private void PublishOpenAllSavedTimersRequested(SavedTimersDocument savedTimersSnapshot)
+    {
+        EventHandler<OpenAllSavedTimersRequestedEventArgs>? handlers = this.OpenAllSavedTimersRequested;
+        if (handlers == null)
+        {
+            return;
+        }
+
+        var args = new OpenAllSavedTimersRequestedEventArgs(savedTimersSnapshot);
+        foreach (EventHandler<OpenAllSavedTimersRequestedEventArgs> handler in handlers.GetInvocationList().Cast<EventHandler<OpenAllSavedTimersRequestedEventArgs>>())
+        {
+            try
+            {
+                handler.Invoke(this, args);
             }
             catch (Exception)
             {
@@ -1720,4 +1741,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             return Task.CompletedTask;
         }
     }
+}
+
+public sealed class OpenAllSavedTimersRequestedEventArgs(SavedTimersDocument savedTimers) : EventArgs
+{
+    public SavedTimersDocument SavedTimers { get; } = savedTimers ?? throw new ArgumentNullException(nameof(savedTimers));
 }

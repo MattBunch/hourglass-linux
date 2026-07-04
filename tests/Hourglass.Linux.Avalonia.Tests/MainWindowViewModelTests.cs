@@ -2107,6 +2107,32 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
+    public async Task OpenAllSavedTimersPublishesCurrentSavedTimerSnapshot()
+    {
+        var settingsStore = new RecordingSettingsStore();
+        var viewModel = CreateViewModel(new ManualMonotonicClock(), settingsStore: settingsStore);
+        SavedTimersDocument? requestedSavedTimers = null;
+        viewModel.OpenAllSavedTimersRequested += (_, args) => requestedSavedTimers = args.SavedTimers;
+        viewModel.TimerInput = "90 seconds";
+        viewModel.TimerTitle = "Tea";
+
+        viewModel.SaveCurrentTimerCommand.Execute(null);
+        SavedTimerMenuItem savedTimer = Assert.Single(viewModel.SavedTimerMenuItems);
+        viewModel.OpenAllSavedTimersCommand.Execute(null);
+
+        Assert.NotNull(requestedSavedTimers);
+        SavedTimerDefinition requestedTimer = Assert.Single(requestedSavedTimers.Timers);
+        Assert.Equal(savedTimer.Id, requestedTimer.Id);
+
+        viewModel.RemoveSavedTimerCommand.Execute(savedTimer.Id);
+        requestedSavedTimers = null;
+        viewModel.OpenAllSavedTimersCommand.Execute(null);
+
+        Assert.Null(requestedSavedTimers);
+        await viewModel.PendingSettingsSave;
+    }
+
+    [Fact]
     public async Task ActiveSessionPersistsRunningTimerAndRestoresExpiredOnStartup()
     {
         var clock = new ManualMonotonicClock();
