@@ -84,9 +84,11 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
         bool restoredAny = false;
         if (settings.RestoreActiveSessionOnStartup)
         {
+            DateTime wallClockNow = DateTime.Now;
             foreach (ActiveTimerSessionDefinition session in activeSessions.Sessions)
             {
-                if (session.Session != null && this.CreateWindow(session.SessionId, session.Session) != null)
+                if (IsRestorableActiveSession(session.Session, wallClockNow)
+                    && this.CreateWindow(session.SessionId, session.Session) != null)
                 {
                     restoredAny = true;
                 }
@@ -262,6 +264,11 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
         }
     }
 
+    private static bool IsRestorableActiveSession(ActiveTimerSessionDocument? session, DateTime wallClockNow)
+    {
+        return session?.ToTimerInfo(wallClockNow) != null;
+    }
+
     private void ViewModelNewTimerRequested(object? sender, EventArgs e)
     {
         this.CreateWindow();
@@ -288,15 +295,6 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
 
     private void ViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (sender is MainWindowViewModel viewModel)
-        {
-            WindowRegistration? registration = this.windows.FirstOrDefault(item => item.ViewModel == viewModel);
-            if (registration != null)
-            {
-                this.mostRecentWindow = registration;
-            }
-        }
-
         if (e.PropertyName is nameof(MainWindowViewModel.DesktopProgressRequest))
         {
             this.ApplyDesktopProgress();

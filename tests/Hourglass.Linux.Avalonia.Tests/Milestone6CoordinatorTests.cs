@@ -96,6 +96,51 @@ public sealed class Milestone6CoordinatorTests
         Assert.Contains("_ = this.ApplyStatusIconStateAsync();", syncMethod, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void CoordinatorValidatesActiveSessionsBeforeMarkingStartupRestored()
+    {
+        string coordinator = File.ReadAllText(FindRepositoryFile("src/Hourglass.Linux.Avalonia/TimerWindowCoordinator.cs"));
+        int startupStart = coordinator.IndexOf("public async Task StartAsync", StringComparison.Ordinal);
+        int createWindowStart = coordinator.IndexOf("private MainWindow? CreateWindow", StringComparison.Ordinal);
+
+        Assert.True(startupStart >= 0);
+        Assert.True(createWindowStart > startupStart);
+        string startupMethod = coordinator[startupStart..createWindowStart];
+
+        Assert.Contains("DateTime wallClockNow = DateTime.Now;", startupMethod, StringComparison.Ordinal);
+        Assert.Contains("IsRestorableActiveSession(session.Session, wallClockNow)", startupMethod, StringComparison.Ordinal);
+        Assert.Contains("this.CreateWindow(session.SessionId, session.Session)", startupMethod, StringComparison.Ordinal);
+        Assert.DoesNotContain("session.Session != null && this.CreateWindow", startupMethod, StringComparison.Ordinal);
+
+        int validationCall = startupMethod.IndexOf(
+            "IsRestorableActiveSession(session.Session, wallClockNow)",
+            StringComparison.Ordinal);
+        int restoredAssignment = startupMethod.IndexOf("restoredAny = true;", validationCall, StringComparison.Ordinal);
+        Assert.True(restoredAssignment > validationCall);
+    }
+
+    [Fact]
+    public void CoordinatorTrayTargetTracksActivationNotViewModelRefresh()
+    {
+        string coordinator = File.ReadAllText(FindRepositoryFile("src/Hourglass.Linux.Avalonia/TimerWindowCoordinator.cs"));
+        int propertyChangedStart = coordinator.IndexOf(
+            "private void ViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)",
+            StringComparison.Ordinal);
+        int activatedStart = coordinator.IndexOf("private void WindowActivated(object? sender, EventArgs e)", StringComparison.Ordinal);
+        int closedStart = coordinator.IndexOf("private void WindowClosed(object? sender, EventArgs e)", StringComparison.Ordinal);
+
+        Assert.True(propertyChangedStart >= 0);
+        Assert.True(activatedStart > propertyChangedStart);
+        Assert.True(closedStart > activatedStart);
+        string propertyChangedMethod = coordinator[propertyChangedStart..activatedStart];
+        string activatedMethod = coordinator[activatedStart..closedStart];
+
+        Assert.DoesNotContain("this.mostRecentWindow = registration;", propertyChangedMethod, StringComparison.Ordinal);
+        Assert.Contains("this.ApplyDesktopProgress();", propertyChangedMethod, StringComparison.Ordinal);
+        Assert.Contains("this.ApplyStatusIconState();", propertyChangedMethod, StringComparison.Ordinal);
+        Assert.Contains("this.mostRecentWindow = registration;", activatedMethod, StringComparison.Ordinal);
+    }
+
     private sealed class RecordingSessionInhibitor : ISessionInhibitor
     {
         public int AcquireCount { get; private set; }
