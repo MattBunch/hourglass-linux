@@ -74,6 +74,30 @@ public sealed class SavedTimersDocumentTests
     }
 
     [Fact]
+    public void ActiveSessionDocumentRoundTripsOptions()
+    {
+        var options = new SavedTimerOptions(
+            ReverseProgressBar: true,
+            ShowTimeElapsed: true,
+            LoopTimer: true,
+            LoopSound: true,
+            CloseWhenExpired: true,
+            LockInterface: true,
+            DoNotKeepComputerAwake: true,
+            ShutDownWhenExpired: true);
+        var document = new ActiveTimerSessionDocument(
+            timerInput: "10 seconds",
+            options: options);
+
+        string json = JsonSerializer.Serialize(document);
+        ActiveTimerSessionDocument? roundTripped = JsonSerializer.Deserialize<ActiveTimerSessionDocument>(json);
+
+        Assert.NotNull(roundTripped);
+        Assert.True(roundTripped.HasOptions);
+        Assert.Equal(options, roundTripped.Options);
+    }
+
+    [Fact]
     public void ActiveSessionDocumentRestoresPausedTimer()
     {
         var document = new ActiveTimerSessionDocument(
@@ -126,6 +150,8 @@ public sealed class SavedTimersDocumentTests
         ActiveTimerSessionDocument? document = JsonSerializer.Deserialize<ActiveTimerSessionDocument>(json);
 
         Assert.NotNull(document);
+        Assert.Equal(new SavedTimerOptions(), document.Options);
+        Assert.False(document.HasOptions);
         var timerInfo = document.ToTimerInfo(new DateTime(2026, 7, 2, 8, 0, 0));
         Assert.NotNull(timerInfo);
         Assert.Equal(TimerState.Paused, timerInfo.State);

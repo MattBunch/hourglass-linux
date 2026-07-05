@@ -234,16 +234,21 @@ public sealed class Milestone6CoordinatorTests
     public void CoordinatorTrayExitCollectsOneApplicationApprovalBeforeClosingWindows()
     {
         string coordinator = File.ReadAllText(FindRepositoryFile("src/Hourglass.Linux.Avalonia/TimerWindowCoordinator.cs"));
+        int createWindowStart = coordinator.IndexOf("private MainWindow? CreateWindow", StringComparison.Ordinal);
         int exitCaseStart = coordinator.IndexOf("case StatusIconAction.Exit:", StringComparison.Ordinal);
         int closeAllStart = coordinator.IndexOf("private async Task CloseAllWindowsAsync()", StringComparison.Ordinal);
         int targetStart = coordinator.IndexOf("private WindowRegistration? GetStatusIconTarget()", StringComparison.Ordinal);
 
+        Assert.True(createWindowStart >= 0);
         Assert.True(exitCaseStart >= 0);
+        Assert.True(exitCaseStart > createWindowStart);
         Assert.True(closeAllStart > exitCaseStart);
         Assert.True(targetStart > closeAllStart);
+        string createWindowMethod = coordinator[createWindowStart..exitCaseStart];
         string exitCase = coordinator[exitCaseStart..closeAllStart];
         string closeAllMethod = coordinator[closeAllStart..targetStart];
 
+        Assert.Contains("requestApplicationExit: this.CloseAllWindowsAsync", createWindowMethod, StringComparison.Ordinal);
         Assert.Contains("_ = this.CloseAllWindowsAsync();", exitCase, StringComparison.Ordinal);
         Assert.Contains("this.exitCloseInProgress", closeAllMethod, StringComparison.Ordinal);
         Assert.Contains("snapshot.Any(registration => registration.Window.RequiresExitConfirmation)", closeAllMethod, StringComparison.Ordinal);

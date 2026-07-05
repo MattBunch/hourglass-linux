@@ -559,6 +559,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             && timerInfo.State == TimerState.Expired;
 
         this.engine.Restore(timerInfo);
+        if (session.HasOptions)
+        {
+            this.ReplaceSettings(session.Options.ApplyTo(this.settings), save: false);
+        }
+
         TimerPresentationMode presentationMode = timerInfo.State == TimerState.Expired
             ? TimerPresentationMode.Status
             : ToTimerPresentationMode(session.PresentationMode);
@@ -599,7 +604,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             this.TimerTitle ?? string.Empty,
             ToActiveTimerPresentationMode(this.viewState.PresentationMode),
             this.engine.ToTimerInfo(),
-            this.wallClockNow());
+            this.wallClockNow(),
+            SavedTimerOptions.FromSettings(this.settings));
     }
 
     internal bool RestoreActiveSession(ActiveTimerSessionDocument session)

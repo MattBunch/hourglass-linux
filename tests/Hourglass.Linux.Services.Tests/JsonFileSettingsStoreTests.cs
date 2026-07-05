@@ -103,7 +103,13 @@ public sealed class JsonFileSettingsStoreTests : IDisposable
         Assert.Equal("10 seconds", loadedTimer.TimerInput);
         Assert.Equal("Tea", loadedTimer.TimerTitle);
         Assert.NotNull(loadedActiveSession);
-        Assert.Equal(activeSession, loadedActiveSession);
+        Assert.Equal(activeSession.TimerInput, loadedActiveSession.TimerInput);
+        Assert.Equal(activeSession.TimerTitle, loadedActiveSession.TimerTitle);
+        Assert.Equal(activeSession.State, loadedActiveSession.State);
+        Assert.Equal(activeSession.StartTime, loadedActiveSession.StartTime);
+        Assert.Equal(activeSession.EndTime, loadedActiveSession.EndTime);
+        Assert.Equal(activeSession.TotalTimeTicks, loadedActiveSession.TotalTimeTicks);
+        Assert.Equal(new SavedTimerOptions(), loadedActiveSession.Options);
     }
 
     [Fact]

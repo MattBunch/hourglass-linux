@@ -150,7 +150,8 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
             new UnsupportedDesktopProgressService(),
             UnsupportedStatusIconService.Instance,
             loadSettingsOnOpened: false,
-            prepareCoordinatorClose: this.PrepareWindowCloseAsync);
+            prepareCoordinatorClose: this.PrepareWindowCloseAsync,
+            requestApplicationExit: this.CloseAllWindowsAsync);
         var registration = new WindowRegistration(window, viewModel);
 
         this.windows.Add(registration);

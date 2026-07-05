@@ -32,6 +32,7 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
     private readonly IStatusIconService statusIconService;
     private readonly DispatcherTimer validationFeedbackTimer;
     private readonly WindowFullScreenController fullScreenController;
+    private readonly Func<Task> requestApplicationExit;
     private readonly Func<MainWindow, Task> prepareCoordinatorClose;
     private readonly bool loadSettingsOnOpened;
     private readonly MainWindowViewModel viewModel;
@@ -81,7 +82,8 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
         IDesktopProgressService desktopProgressService,
         IStatusIconService statusIconService,
         bool loadSettingsOnOpened = true,
-        Func<MainWindow, Task>? prepareCoordinatorClose = null)
+        Func<MainWindow, Task>? prepareCoordinatorClose = null,
+        Func<Task>? requestApplicationExit = null)
     {
         InitializeComponent();
 
@@ -91,6 +93,7 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
         this.statusIconService = statusIconService ?? throw new ArgumentNullException(nameof(statusIconService));
         this.loadSettingsOnOpened = loadSettingsOnOpened;
         this.prepareCoordinatorClose = prepareCoordinatorClose ?? (_ => Task.CompletedTask);
+        this.requestApplicationExit = requestApplicationExit ?? this.RequestLocalExitAsync;
         this.DataContext = this.viewModel;
         this.windowAttentionController = new WindowAttentionController(this);
         this.fullScreenController = new WindowFullScreenController(this);
@@ -317,12 +320,18 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
 
     private void ExitMenuItemClick(object? sender, RoutedEventArgs e)
     {
-        this.Close();
+        _ = this.requestApplicationExit();
     }
 
     private void FullScreenMenuItemClick(object? sender, RoutedEventArgs e)
     {
         this.ToggleFullScreen();
+    }
+
+    private Task RequestLocalExitAsync()
+    {
+        this.Close();
+        return Task.CompletedTask;
     }
 
     private void ToggleFullScreen()

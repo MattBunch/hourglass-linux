@@ -1006,8 +1006,10 @@ public sealed class MainWindowViewModelTests
         int statusIconExitEnd = codeBehind.IndexOf("break;", statusIconExitStart, StringComparison.Ordinal);
         string statusIconExit = codeBehind[statusIconExitStart..statusIconExitEnd];
 
-        Assert.Contains("this.Close();", exitHandler, StringComparison.Ordinal);
+        Assert.Contains("_ = this.requestApplicationExit();", exitHandler, StringComparison.Ordinal);
         Assert.DoesNotContain("PendingSettingsSave", exitHandler, StringComparison.Ordinal);
+        Assert.Contains("this.requestApplicationExit = requestApplicationExit ?? this.RequestLocalExitAsync;", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("private Task RequestLocalExitAsync()", codeBehind, StringComparison.Ordinal);
         Assert.Contains("this.windowAttentionController?.RequestAttention();", statusIconExit, StringComparison.Ordinal);
         Assert.Contains("this.Close();", statusIconExit, StringComparison.Ordinal);
         Assert.True(
@@ -2322,6 +2324,42 @@ public sealed class MainWindowViewModelTests
 
         Assert.Equal(TimerState.Running, viewModel.State);
         Assert.False(viewModel.IsTimerModificationLocked);
+    }
+
+    [Fact]
+    public async Task ActiveSessionRestoresPerWindowTimerOptions()
+    {
+        DateTime start = new(2026, 7, 2, 8, 0, 0);
+        var settingsStore = new RecordingSettingsStore
+        {
+            LoadedSettings = LinuxAppSettings.Default,
+            LoadedActiveSession = new ActiveTimerSessionDocument(
+                timerInput: "10 seconds",
+                timerStartInput: "10 seconds",
+                timerTitle: "Tea",
+                savedAt: start.AddSeconds(5),
+                state: TimerState.Paused,
+                timeElapsedTicks: TimeSpan.FromSeconds(5).Ticks,
+                timeLeftTicks: TimeSpan.FromSeconds(5).Ticks,
+                totalTimeTicks: TimeSpan.FromSeconds(10).Ticks,
+                options: new SavedTimerOptions(
+                    ReverseProgressBar: true,
+                    ShowTimeElapsed: true,
+                    LoopTimer: true,
+                    DoNotKeepComputerAwake: true))
+        };
+        var viewModel = CreateViewModel(
+            new ManualMonotonicClock(),
+            wallClockNow: () => start.AddSeconds(5),
+            settingsStore: settingsStore);
+
+        await viewModel.LoadSettingsAsync();
+
+        Assert.Equal(TimerState.Paused, viewModel.State);
+        Assert.True(viewModel.ReverseProgressBar);
+        Assert.True(viewModel.ShowTimeElapsed);
+        Assert.True(viewModel.LoopTimer);
+        Assert.True(viewModel.DoNotKeepComputerAwake);
     }
 
     [Fact]
