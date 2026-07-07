@@ -13,6 +13,14 @@ public sealed class LinuxSingleInstanceLockPathTests
     }
 
     [Fact]
+    public void RuntimeDirectoryProducesMatchingSocketPath()
+    {
+        string path = ResolveSocket(("XDG_RUNTIME_DIR", "/run/user/1000"), ("XDG_CACHE_HOME", "/cache"), home: "/home/matt");
+
+        Assert.Equal("/run/user/1000/hourglass-linux/hourglass-linux.sock", path);
+    }
+
+    [Fact]
     public void RelativeRuntimeDirectoryIsIgnored()
     {
         string path = Resolve(("XDG_RUNTIME_DIR", "relative-runtime"), ("XDG_CACHE_HOME", "/cache"), home: "/home/matt");
@@ -73,6 +81,14 @@ public sealed class LinuxSingleInstanceLockPathTests
     private static string Resolve((string Name, string? Value)[] variables, string? home)
     {
         return LinuxSingleInstanceLockPath.Resolve(
+            name => variables.FirstOrDefault(variable => variable.Name == name).Value,
+            () => home);
+    }
+
+    private static string ResolveSocket((string Name, string? Value) first, (string Name, string? Value) second, string? home)
+    {
+        (string Name, string? Value)[] variables = [first, second];
+        return LinuxSingleInstanceLockPath.ResolveSocketPath(
             name => variables.FirstOrDefault(variable => variable.Name == name).Value,
             () => home);
     }

@@ -1,5 +1,6 @@
 namespace Hourglass.Linux.Services.Tests;
 
+using Hourglass.Platform;
 using Hourglass.Linux.Services;
 using Xunit;
 
@@ -170,13 +171,87 @@ public sealed class LinuxFileLockSingleInstanceServiceTests
         Assert.Equal(0, fileSystem.DeleteCount);
     }
 
+    [Fact]
+    public async Task StartRequestListenerRequiresOwnership()
+    {
+        var fileSystem = new RecordingLockFileSystem();
+        using var service = CreateService(fileSystem);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => service.StartRequestListenerAsync((_, _) => Task.CompletedTask));
+    }
+
+    [Fact]
+    public async Task StartRequestListenerDeletesStaleSocketOnlyAfterOwnership()
+    {
+        string tempDirectory = CreateTempDirectory();
+        var fileSystem = new RecordingLockFileSystem { CreateRealDirectories = true };
+        using var service = new LinuxFileLockSingleInstanceService(
+            Path.Combine(tempDirectory, "hourglass-linux.lock"),
+            Path.Combine(tempDirectory, "hourglass-linux.sock"),
+            fileSystem,
+            () => 123,
+            () => new DateTimeOffset(2026, 6, 14, 8, 0, 0, TimeSpan.Zero));
+
+        Assert.True(await service.TryAcquireAsync());
+        await service.StartRequestListenerAsync((_, _) => Task.CompletedTask);
+
+        Assert.Equal(1, fileSystem.DeleteCount);
+        Assert.Equal(Path.Combine(tempDirectory, "hourglass-linux.sock"), fileSystem.DeletedPath);
+    }
+
+    [Fact]
+    public async Task LaunchRequestRoundTripsOverUnixSocket()
+    {
+        string tempDirectory = CreateTempDirectory();
+        var fileSystem = new RecordingLockFileSystem { CreateRealDirectories = true };
+        using var service = new LinuxFileLockSingleInstanceService(
+            Path.Combine(tempDirectory, "hourglass-linux.lock"),
+            Path.Combine(tempDirectory, "hourglass-linux.sock"),
+            fileSystem,
+            () => 123,
+            () => new DateTimeOffset(2026, 6, 14, 8, 0, 0, TimeSpan.Zero));
+        var receivedCompletion = new TaskCompletionSource<SingleInstanceLaunchRequest>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        Assert.True(await service.TryAcquireAsync());
+        await service.StartRequestListenerAsync((request, _) =>
+        {
+            receivedCompletion.TrySetResult(request);
+            return Task.CompletedTask;
+        });
+
+        var sent = new SingleInstanceLaunchRequest(
+            SingleInstanceLaunchRequestKind.StartTimer,
+            ["--title", "Tea", "5 minutes"],
+            "5 minutes",
+            "Tea");
+        await service.SendLaunchRequestAsync(sent);
+
+        Task completed = await Task.WhenAny(receivedCompletion.Task, Task.Delay(TimeSpan.FromSeconds(2)));
+        Assert.Same(receivedCompletion.Task, completed);
+        SingleInstanceLaunchRequest received = await receivedCompletion.Task;
+        Assert.Equal(sent.Kind, received.Kind);
+        Assert.Equal(sent.Arguments, received.Arguments);
+        Assert.Equal(sent.TimerInput, received.TimerInput);
+        Assert.Equal(sent.TimerTitle, received.TimerTitle);
+    }
+
     private static LinuxFileLockSingleInstanceService CreateService(RecordingLockFileSystem fileSystem)
     {
         return new LinuxFileLockSingleInstanceService(
             "/runtime/hourglass-linux/hourglass-linux.lock",
+            "/runtime/hourglass-linux/hourglass-linux.sock",
             fileSystem,
             () => 123,
             () => new DateTimeOffset(2026, 6, 14, 8, 0, 0, TimeSpan.Zero));
+    }
+
+    private static string CreateTempDirectory()
+    {
+        string path = Path.Combine(Path.GetTempPath(), "hourglass-single-instance-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(path);
+        return path;
     }
 
     private sealed class RecordingLockFileSystem : LinuxFileLockSingleInstanceService.ILockFileSystem
@@ -189,9 +264,13 @@ public sealed class LinuxFileLockSingleInstanceServiceTests
 
         public int DeleteCount { get; private set; }
 
+        public string? DeletedPath { get; private set; }
+
         public Exception? CreateDirectoryException { get; init; }
 
         public Exception? OpenException { get; init; }
+
+        public bool CreateRealDirectories { get; init; }
 
         public RecordingLockFileHandle? NextHandle { get; init; }
 
@@ -205,6 +284,20 @@ public sealed class LinuxFileLockSingleInstanceServiceTests
             }
 
             this.CreatedDirectory = path;
+            if (this.CreateRealDirectories)
+            {
+                Directory.CreateDirectory(path);
+            }
+        }
+
+        public void DeleteFileIfExists(string path)
+        {
+            this.DeleteCount++;
+            this.DeletedPath = path;
+            if (this.CreateRealDirectories)
+            {
+                File.Delete(path);
+            }
         }
 
         public LinuxFileLockSingleInstanceService.ILockFileHandle OpenLockFile(string path)

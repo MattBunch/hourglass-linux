@@ -78,7 +78,9 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
         this.statusIconService.ActionRequested += this.StatusIconActionRequested;
     }
 
-    public async Task StartAsync(CancellationToken cancellationToken = default)
+    public async Task StartAsync(
+        SingleInstanceLaunchRequest? initialRequest = null,
+        CancellationToken cancellationToken = default)
     {
         LinuxAppSettings settings = await this.LoadDocumentAsync(SettingsKey, LinuxAppSettings.Default, cancellationToken)
             .ConfigureAwait(true);
@@ -111,10 +113,35 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
             }
         }
 
+        if (initialRequest?.Kind == SingleInstanceLaunchRequestKind.StartTimer)
+        {
+            this.CreateWindow(launchRequest: initialRequest);
+            restoredAny = true;
+        }
+
         if (!restoredAny)
         {
             this.CreateWindow();
         }
+
+        if (initialRequest?.Kind == SingleInstanceLaunchRequestKind.Activate)
+        {
+            this.ActivateMostRelevantWindow();
+        }
+    }
+
+    public Task HandleLaunchRequestAsync(SingleInstanceLaunchRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        if (request.Kind == SingleInstanceLaunchRequestKind.StartTimer)
+        {
+            this.CreateWindow(launchRequest: request);
+            return Task.CompletedTask;
+        }
+
+        this.ActivateMostRelevantWindow();
+        return Task.CompletedTask;
     }
 
     public async ValueTask DisposeAsync()
@@ -129,7 +156,8 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
     private MainWindow? CreateWindow(
         string? sessionId = null,
         ActiveTimerSessionDocument? session = null,
-        SavedTimerDefinition? savedTimer = null)
+        SavedTimerDefinition? savedTimer = null,
+        SingleInstanceLaunchRequest? launchRequest = null)
     {
         var viewModel = new MainWindowViewModel(
             new CountdownEngine(new SystemMonotonicClock()),
@@ -168,7 +196,7 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
             this.lifetime.MainWindow = window;
         }
 
-        _ = this.LoadWindowAsync(registration, session, savedTimer);
+        _ = this.LoadWindowAsync(registration, session, savedTimer, launchRequest);
         window.Show();
         _ = this.QueueSessionSave();
         this.ApplyDesktopProgress();
@@ -179,7 +207,8 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
     private async Task LoadWindowAsync(
         WindowRegistration registration,
         ActiveTimerSessionDocument? session,
-        SavedTimerDefinition? savedTimer)
+        SavedTimerDefinition? savedTimer,
+        SingleInstanceLaunchRequest? launchRequest)
     {
         await registration.ViewModel.LoadSettingsAsync().ConfigureAwait(true);
 
@@ -197,6 +226,14 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
         if (savedTimer != null)
         {
             registration.ViewModel.ApplySavedTimer(savedTimer);
+        }
+
+        if (launchRequest?.Kind == SingleInstanceLaunchRequestKind.StartTimer
+            && !string.IsNullOrWhiteSpace(launchRequest.TimerInput))
+        {
+            registration.ViewModel.ApplyLaunchTimerRequest(
+                launchRequest.TimerInput,
+                launchRequest.TimerTitle);
         }
 
         _ = this.QueueSessionSave();
@@ -376,6 +413,20 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
     private void StatusIconActionRequested(object? sender, StatusIconActionRequestedEventArgs e)
     {
         Dispatcher.UIThread.Post(() => this.HandleStatusIconAction(e.Action));
+    }
+
+    private void ActivateMostRelevantWindow()
+    {
+        WindowRegistration? target = this.GetStatusIconTarget();
+        if (target == null)
+        {
+            target = this.CreateWindow() == null ? null : this.mostRecentWindow;
+        }
+
+        if (target != null)
+        {
+            new WindowAttentionController(target.Window).RequestAttention();
+        }
     }
 
     private void HandleStatusIconAction(StatusIconAction action)

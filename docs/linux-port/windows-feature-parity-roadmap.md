@@ -608,6 +608,8 @@ The Windows version can manage several independent timers. The Linux app current
 
 ## Milestone 7: Single-Instance Handoff and Command-Line Activation
 
+**Status:** Implemented on Linux using the existing per-user file lock for ownership plus a Unix domain socket for local launch handoff. A no-argument secondary launch requests activation of the most relevant timer window. A timer-expression launch creates and starts a new independent timer window in the existing process. Optional `--title` / `-t` support is documented and tested. The broader legacy Windows command-line switch surface remains out of scope for this milestone.
+
 ### 7.1 Existing-Instance Activation
 
 **Priority:** P1  

@@ -1067,6 +1067,25 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         this.QueueActiveSessionSave();
     }
 
+    internal void ApplyLaunchTimerRequest(string timerInput, string? timerTitle)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(timerInput);
+
+        _ = this.StopActiveAudioAsync();
+        this.engine.Stop();
+        this.ReplaceViewState(this.viewState with
+        {
+            TimerInput = timerInput,
+            TimerTitle = timerTitle ?? string.Empty,
+            PresentationMode = TimerPresentationMode.Input,
+            InputBeforeEdit = null,
+            HasValidationError = false
+        });
+        this.RefreshDisplay(TimerViewState.ReadyStatusText, hasValidationError: false);
+        _ = this.ReleaseInhibitionAsync();
+        this.Start();
+    }
+
     private void RequestOpenAllSavedTimers()
     {
         PublishOpenAllSavedTimersRequested(this.savedTimers);
