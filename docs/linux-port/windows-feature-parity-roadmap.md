@@ -548,6 +548,8 @@ The current Linux implementation exposes the startup preferences and restores th
 
 ## Milestone 6: Multi-Window Timer Management
 
+**Status:** Implemented for native Linux timer windows. The Avalonia app now uses an application-level timer-window coordinator, supports multiple independent timer windows, opens saved timers as separate windows, persists active sessions in a versioned multi-session document, and coordinates shared keep-awake, status-icon, and desktop-progress behavior. Command-line handoff remains deferred to Milestone 7, and durable window geometry remains deferred to Milestone 8.
+
 ### 6.1 Multiple Timer Windows
 
 **Priority:** P1  

@@ -32,9 +32,13 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
     private readonly IStatusIconService statusIconService;
     private readonly DispatcherTimer validationFeedbackTimer;
     private readonly WindowFullScreenController fullScreenController;
+    private readonly Func<Task> requestApplicationExit;
+    private readonly Func<MainWindow, Task> prepareCoordinatorClose;
+    private readonly bool loadSettingsOnOpened;
     private readonly MainWindowViewModel viewModel;
     private readonly WindowAttentionController? windowAttentionController;
     private int expiryFlashGeneration;
+    private bool closeApprovalPreapproved;
     private bool focusWithinContent;
     private bool isClosed;
     private bool isClosePreparing;
@@ -76,7 +80,10 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
     internal MainWindow(
         MainWindowViewModel viewModel,
         IDesktopProgressService desktopProgressService,
-        IStatusIconService statusIconService)
+        IStatusIconService statusIconService,
+        bool loadSettingsOnOpened = true,
+        Func<MainWindow, Task>? prepareCoordinatorClose = null,
+        Func<Task>? requestApplicationExit = null)
     {
         InitializeComponent();
 
@@ -84,6 +91,9 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
         this.desktopProgressController = new DesktopProgressController(
             desktopProgressService ?? throw new ArgumentNullException(nameof(desktopProgressService)));
         this.statusIconService = statusIconService ?? throw new ArgumentNullException(nameof(statusIconService));
+        this.loadSettingsOnOpened = loadSettingsOnOpened;
+        this.prepareCoordinatorClose = prepareCoordinatorClose ?? (_ => Task.CompletedTask);
+        this.requestApplicationExit = requestApplicationExit ?? this.RequestLocalExitAsync;
         this.DataContext = this.viewModel;
         this.windowAttentionController = new WindowAttentionController(this);
         this.fullScreenController = new WindowFullScreenController(this);
@@ -135,6 +145,14 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
         this.RebuildSavedTimersMenu();
         this.ApplyDesktopProgress();
         this.ApplyStatusIconState();
+    }
+
+    internal bool RequiresExitConfirmation => this.viewModel.ShouldPromptOnExit;
+
+    internal void CloseWithPreapprovedExit()
+    {
+        this.closeApprovalPreapproved = true;
+        this.Close();
     }
 
     private static DefaultMainWindowServices CreateDefaultServices()
@@ -302,12 +320,18 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
 
     private void ExitMenuItemClick(object? sender, RoutedEventArgs e)
     {
-        this.Close();
+        _ = this.requestApplicationExit();
     }
 
     private void FullScreenMenuItemClick(object? sender, RoutedEventArgs e)
     {
         this.ToggleFullScreen();
+    }
+
+    private Task RequestLocalExitAsync()
+    {
+        this.Close();
+        return Task.CompletedTask;
     }
 
     private void ToggleFullScreen()
@@ -318,6 +342,12 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
 
     private async Task<bool> RequestCloseApprovalAsync()
     {
+        if (this.closeApprovalPreapproved)
+        {
+            this.closeApprovalPreapproved = false;
+            return true;
+        }
+
         if (!this.viewModel.ShouldPromptOnExit)
         {
             return true;
@@ -333,6 +363,31 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
         this.refreshTimer.Stop();
         await this.viewModel.PendingSettingsSave.ConfigureAwait(false);
         await this.desktopProgressController.ClearAsync().ConfigureAwait(false);
+        await this.PrepareCoordinatorCloseOnUiThreadAsync().ConfigureAwait(false);
+    }
+
+    private Task PrepareCoordinatorCloseOnUiThreadAsync()
+    {
+        if (Dispatcher.UIThread.CheckAccess())
+        {
+            return this.prepareCoordinatorClose(this);
+        }
+
+        var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        Dispatcher.UIThread.Post(async () =>
+        {
+            try
+            {
+                await this.prepareCoordinatorClose(this).ConfigureAwait(true);
+                completion.SetResult();
+            }
+            catch (Exception exception)
+            {
+                completion.SetException(exception);
+            }
+        });
+
+        return completion.Task;
     }
 
     private void UpdatePresentationClasses()
@@ -361,7 +416,10 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
     private async void WindowOpened(object? sender, EventArgs e)
     {
         this.UpdateResponsiveLayout();
-        await this.viewModel.LoadSettingsAsync();
+        if (this.loadSettingsOnOpened)
+        {
+            await this.viewModel.LoadSettingsAsync();
+        }
     }
 
     private void WindowClosing(object? sender, WindowClosingEventArgs e)
@@ -632,6 +690,9 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
 
         switch (action)
         {
+            case StatusIconAction.NewTimer:
+                ExecuteCommand(this.viewModel.NewTimerCommand);
+                break;
             case StatusIconAction.ShowWindow:
                 this.windowAttentionController?.RequestAttention();
                 break;

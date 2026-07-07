@@ -74,6 +74,30 @@ public sealed class SavedTimersDocumentTests
     }
 
     [Fact]
+    public void ActiveSessionDocumentRoundTripsOptions()
+    {
+        var options = new SavedTimerOptions(
+            ReverseProgressBar: true,
+            ShowTimeElapsed: true,
+            LoopTimer: true,
+            LoopSound: true,
+            CloseWhenExpired: true,
+            LockInterface: true,
+            DoNotKeepComputerAwake: true,
+            ShutDownWhenExpired: true);
+        var document = new ActiveTimerSessionDocument(
+            timerInput: "10 seconds",
+            options: options);
+
+        string json = JsonSerializer.Serialize(document);
+        ActiveTimerSessionDocument? roundTripped = JsonSerializer.Deserialize<ActiveTimerSessionDocument>(json);
+
+        Assert.NotNull(roundTripped);
+        Assert.True(roundTripped.HasOptions);
+        Assert.Equal(options, roundTripped.Options);
+    }
+
+    [Fact]
     public void ActiveSessionDocumentRestoresPausedTimer()
     {
         var document = new ActiveTimerSessionDocument(
@@ -126,6 +150,8 @@ public sealed class SavedTimersDocumentTests
         ActiveTimerSessionDocument? document = JsonSerializer.Deserialize<ActiveTimerSessionDocument>(json);
 
         Assert.NotNull(document);
+        Assert.Equal(new SavedTimerOptions(), document.Options);
+        Assert.False(document.HasOptions);
         var timerInfo = document.ToTimerInfo(new DateTime(2026, 7, 2, 8, 0, 0));
         Assert.NotNull(timerInfo);
         Assert.Equal(TimerState.Paused, timerInfo.State);
@@ -145,5 +171,83 @@ public sealed class SavedTimersDocumentTests
         TimerInfo? timerInfo = document.ToTimerInfo(new DateTime(2026, 7, 2, 8, 0, 0));
 
         Assert.Null(timerInfo);
+    }
+
+    [Fact]
+    public void ActiveTimerSessionsDocumentFiltersInvalidEntriesAndDuplicateIds()
+    {
+        var first = new ActiveTimerSessionDefinition(
+            "session-1",
+            new ActiveTimerSessionDocument(timerInput: "10 seconds"));
+        var duplicate = new ActiveTimerSessionDefinition(
+            "session-1",
+            new ActiveTimerSessionDocument(timerInput: "20 seconds"));
+        var invalid = new ActiveTimerSessionDefinition("session-2", null);
+
+        var document = new ActiveTimerSessionsDocument(sessions: [first, duplicate, invalid]);
+
+        ActiveTimerSessionDefinition session = Assert.Single(document.Sessions);
+        Assert.Equal("session-1", session.SessionId);
+        Assert.NotNull(session.Session);
+        Assert.Equal("10 seconds", session.Session.TimerInput);
+    }
+
+    [Fact]
+    public void ActiveTimerSessionsDocumentCopiesConstructorInput()
+    {
+        var first = new ActiveTimerSessionDefinition(
+            "session-1",
+            new ActiveTimerSessionDocument(timerInput: "10 seconds"));
+        var replacement = new ActiveTimerSessionDefinition(
+            "session-2",
+            new ActiveTimerSessionDocument(timerInput: "20 seconds"));
+        ActiveTimerSessionDefinition[] sessions = [first];
+        var document = new ActiveTimerSessionsDocument(sessions: sessions);
+
+        sessions[0] = replacement;
+
+        ActiveTimerSessionDefinition session = Assert.Single(document.Sessions);
+        Assert.Equal("session-1", session.SessionId);
+        Assert.NotNull(session.Session);
+        Assert.Equal("10 seconds", session.Session.TimerInput);
+    }
+
+    [Fact]
+    public void ActiveTimerSessionsDocumentReturnsSessionSnapshots()
+    {
+        var first = new ActiveTimerSessionDefinition(
+            "session-1",
+            new ActiveTimerSessionDocument(timerInput: "10 seconds"));
+        var replacement = new ActiveTimerSessionDefinition(
+            "session-2",
+            new ActiveTimerSessionDocument(timerInput: "20 seconds"));
+        var document = new ActiveTimerSessionsDocument(sessions: [first]);
+        ActiveTimerSessionDefinition[] sessions = document.Sessions;
+
+        sessions[0] = replacement;
+
+        ActiveTimerSessionDefinition session = Assert.Single(document.Sessions);
+        Assert.Equal("session-1", session.SessionId);
+        Assert.NotNull(session.Session);
+        Assert.Equal("10 seconds", session.Session.TimerInput);
+    }
+
+    [Fact]
+    public void ActiveTimerSessionsDocumentAddReplaceAndRemovePreservesOtherSessions()
+    {
+        var first = new ActiveTimerSessionDocument(timerInput: "10 seconds");
+        var second = new ActiveTimerSessionDocument(timerInput: "20 seconds");
+        var replacement = new ActiveTimerSessionDocument(timerInput: "30 seconds");
+
+        ActiveTimerSessionsDocument document = ActiveTimerSessionsDocument.Empty
+            .AddOrReplace("first", first)
+            .AddOrReplace("second", second)
+            .AddOrReplace("first", replacement)
+            .Remove("second");
+
+        ActiveTimerSessionDefinition session = Assert.Single(document.Sessions);
+        Assert.Equal("first", session.SessionId);
+        Assert.NotNull(session.Session);
+        Assert.Equal("30 seconds", session.Session.TimerInput);
     }
 }

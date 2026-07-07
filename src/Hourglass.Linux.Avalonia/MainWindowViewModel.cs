@@ -14,14 +14,16 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private const string SessionInhibitionReason = "Hourglass timer is running";
     private const string NotificationBody = "Timer complete";
     private const string SettingsKey = "app";
-    private const string SavedTimersKey = "saved-timers";
     private const string ActiveSessionKey = "active-session";
 
     private readonly IAudioAlertService audioAlertService;
     private readonly CountdownEngine engine;
     private readonly INotificationService notificationService;
+    private readonly ISavedTimersStore savedTimersStore;
     private readonly ISessionInhibitor sessionInhibitor;
     private readonly ISettingsStore settingsStore;
+    private readonly bool persistActiveSessionDirectly;
+    private readonly bool restoreActiveSessionOnLoad;
     private readonly bool statusIconCanRecoverHiddenWindow;
     private readonly bool statusIconSupported;
     private readonly ISystemPowerService systemPowerService;
@@ -116,17 +118,55 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         IAudioAlertService audioAlertService,
         ISystemPowerService systemPowerService,
         bool statusIconSupported = false,
-        bool statusIconCanRecoverHiddenWindow = false)
+        bool statusIconCanRecoverHiddenWindow = false,
+        string? sessionId = null,
+        bool persistActiveSessionDirectly = true,
+        bool restoreActiveSessionOnLoad = true)
+        : this(
+            engine,
+            wallClockNow,
+            notificationService,
+            sessionInhibitor,
+            settingsStore,
+            new DirectSavedTimersStore(settingsStore),
+            audioAlertService,
+            systemPowerService,
+            statusIconSupported,
+            statusIconCanRecoverHiddenWindow,
+            sessionId,
+            persistActiveSessionDirectly,
+            restoreActiveSessionOnLoad)
+    {
+    }
+
+    internal MainWindowViewModel(
+        CountdownEngine engine,
+        Func<DateTime> wallClockNow,
+        INotificationService notificationService,
+        ISessionInhibitor sessionInhibitor,
+        ISettingsStore settingsStore,
+        ISavedTimersStore savedTimersStore,
+        IAudioAlertService audioAlertService,
+        ISystemPowerService systemPowerService,
+        bool statusIconSupported = false,
+        bool statusIconCanRecoverHiddenWindow = false,
+        string? sessionId = null,
+        bool persistActiveSessionDirectly = true,
+        bool restoreActiveSessionOnLoad = true)
     {
         this.engine = engine ?? throw new ArgumentNullException(nameof(engine));
         this.wallClockNow = wallClockNow ?? throw new ArgumentNullException(nameof(wallClockNow));
         this.notificationService = notificationService ?? throw new ArgumentNullException(nameof(notificationService));
         this.sessionInhibitor = sessionInhibitor ?? throw new ArgumentNullException(nameof(sessionInhibitor));
         this.settingsStore = settingsStore ?? throw new ArgumentNullException(nameof(settingsStore));
+        this.savedTimersStore = savedTimersStore ?? throw new ArgumentNullException(nameof(savedTimersStore));
         this.audioAlertService = audioAlertService ?? throw new ArgumentNullException(nameof(audioAlertService));
         this.systemPowerService = systemPowerService ?? throw new ArgumentNullException(nameof(systemPowerService));
         this.statusIconSupported = statusIconSupported;
         this.statusIconCanRecoverHiddenWindow = statusIconCanRecoverHiddenWindow;
+        this.SessionId = string.IsNullOrWhiteSpace(sessionId) ? Guid.NewGuid().ToString("N") : sessionId.Trim();
+        this.persistActiveSessionDirectly = persistActiveSessionDirectly;
+        this.restoreActiveSessionOnLoad = restoreActiveSessionOnLoad;
         this.engine.Expired += this.OnEngineExpired;
 
         this.StartCommand = new RelayCommand(
@@ -164,13 +204,14 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             () => !this.IsTimerModificationLocked && this.systemPowerService.IsShutdownSupported);
         this.ToggleRestoreActiveSessionOnStartupCommand = new RelayCommand(this.ToggleRestoreActiveSessionOnStartup, () => !this.IsTimerModificationLocked);
         this.ToggleOpenSavedTimersOnStartupCommand = new RelayCommand(this.ToggleOpenSavedTimersOnStartup, () => !this.IsTimerModificationLocked);
+        this.NewTimerCommand = new RelayCommand(this.RequestNewTimer, () => !this.IsTimerModificationLocked);
         this.SelectRecentInputCommand = new RelayCommand<string>(this.SelectRecentInput, input => !string.IsNullOrWhiteSpace(input) && !this.IsTimerModificationLocked);
         this.ClearRecentInputsCommand = new RelayCommand(this.ClearRecentInputs, () => this.RecentInputMenuItems.Length > 0 && !this.IsTimerModificationLocked);
         this.SaveCurrentTimerCommand = new RelayCommand(this.SaveCurrentTimer, () => !this.IsTimerModificationLocked && this.CanSaveCurrentTimer);
         this.OpenSavedTimerCommand = new RelayCommand<string>(this.OpenSavedTimer, id => !string.IsNullOrWhiteSpace(id) && !this.IsTimerModificationLocked);
         this.RemoveSavedTimerCommand = new RelayCommand<string>(this.RemoveSavedTimer, id => !string.IsNullOrWhiteSpace(id) && !this.IsTimerModificationLocked);
         this.ClearSavedTimersCommand = new RelayCommand(this.ClearSavedTimers, () => this.SavedTimerMenuItems.Length > 0 && !this.IsTimerModificationLocked);
-        this.OpenAllSavedTimersCommand = new RelayCommand(() => { }, () => false);
+        this.OpenAllSavedTimersCommand = new RelayCommand(this.RequestOpenAllSavedTimers, () => this.SavedTimerMenuItems.Length > 0 && !this.IsTimerModificationLocked);
 
         this.RefreshDisplay();
     }
@@ -204,6 +245,12 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     public event EventHandler? CloseRequested;
 
     public event EventHandler? HideToNotificationAreaRequested;
+
+    public event EventHandler? ActiveSessionChanged;
+
+    public event EventHandler? NewTimerRequested;
+
+    public event EventHandler<OpenAllSavedTimersRequestedEventArgs>? OpenAllSavedTimersRequested;
 
     public RelayCommand StartCommand { get; }
 
@@ -251,6 +298,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     public RelayCommand ToggleOpenSavedTimersOnStartupCommand { get; }
 
+    public RelayCommand NewTimerCommand { get; }
+
     public RelayCommand<string> SelectRecentInputCommand { get; }
 
     public RelayCommand ClearRecentInputsCommand { get; }
@@ -264,6 +313,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     public RelayCommand ClearSavedTimersCommand { get; }
 
     public RelayCommand OpenAllSavedTimersCommand { get; }
+
+    public string SessionId { get; }
 
     public string TimerInput
     {
@@ -423,12 +474,13 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     public async Task LoadSettingsAsync(CancellationToken cancellationToken = default)
     {
         LinuxAppSettings loadedSettings = await this.LoadDocumentAsync(SettingsKey, LinuxAppSettings.Default, cancellationToken);
-        SavedTimersDocument loadedSavedTimers = await this.LoadDocumentAsync(SavedTimersKey, SavedTimersDocument.Empty, cancellationToken);
+        SavedTimersDocument loadedSavedTimers = await this.LoadSavedTimersAsync(cancellationToken);
 
         this.ReplaceSettings(loadedSettings, save: false);
         this.ReplaceSavedTimers(loadedSavedTimers, save: false);
 
-        if (loadedSettings.RestoreActiveSessionOnStartup
+        if (this.restoreActiveSessionOnLoad
+            && loadedSettings.RestoreActiveSessionOnStartup
             && await this.TryRestoreActiveSessionAsync(cancellationToken))
         {
             return;
@@ -458,6 +510,22 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         }
     }
 
+    private async Task<SavedTimersDocument> LoadSavedTimersAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await this.savedTimersStore.LoadAsync(cancellationToken).ConfigureAwait(true);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception)
+        {
+            return SavedTimersDocument.Empty;
+        }
+    }
+
     private async Task<bool> TryRestoreActiveSessionAsync(CancellationToken cancellationToken)
     {
         ActiveTimerSessionDocument? session;
@@ -481,10 +549,21 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             return false;
         }
 
+        this.RestoreTimerInfo(session, timerInfo);
+        return true;
+    }
+
+    private void RestoreTimerInfo(ActiveTimerSessionDocument session, TimerInfo timerInfo)
+    {
         bool expiredWhileClosed = session.State == TimerState.Running
             && timerInfo.State == TimerState.Expired;
 
         this.engine.Restore(timerInfo);
+        if (session.HasOptions)
+        {
+            this.ReplaceSettings(session.Options.ApplyTo(this.settings), save: false);
+        }
+
         TimerPresentationMode presentationMode = timerInfo.State == TimerState.Expired
             ? TimerPresentationMode.Status
             : ToTimerPresentationMode(session.PresentationMode);
@@ -509,8 +588,6 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         {
             _ = this.HandleRestoredExpiredAsync();
         }
-
-        return true;
     }
 
     public void Dispose()
@@ -518,6 +595,31 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         this.engine.Expired -= this.OnEngineExpired;
         _ = this.StopActiveAudioAsync();
         _ = this.ReleaseInhibitionAsync();
+    }
+
+    internal ActiveTimerSessionDocument CreateActiveSessionDocument()
+    {
+        return ActiveTimerSessionDocument.FromTimerInfo(
+            this.TimerInput,
+            this.TimerTitle ?? string.Empty,
+            ToActiveTimerPresentationMode(this.viewState.PresentationMode),
+            this.engine.ToTimerInfo(),
+            this.wallClockNow(),
+            SavedTimerOptions.FromSettings(this.settings));
+    }
+
+    internal bool RestoreActiveSession(ActiveTimerSessionDocument session)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+
+        TimerInfo? timerInfo = session.ToTimerInfo(this.wallClockNow());
+        if (timerInfo == null)
+        {
+            return false;
+        }
+
+        this.RestoreTimerInfo(session, timerInfo);
+        return true;
     }
 
     public void Tick()
@@ -906,6 +1008,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         this.ReplaceSettings(this.settings.ClearRecentTimerInputs(), save: true);
     }
 
+    private void RequestNewTimer()
+    {
+        PublishSafely(this.NewTimerRequested);
+    }
+
     private void SaveCurrentTimer()
     {
         if (!this.CanSaveCurrentTimer)
@@ -937,6 +1044,13 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             return;
         }
 
+        this.ApplySavedTimer(savedTimer);
+    }
+
+    internal void ApplySavedTimer(SavedTimerDefinition savedTimer)
+    {
+        ArgumentNullException.ThrowIfNull(savedTimer);
+
         _ = this.StopActiveAudioAsync();
         this.engine.Stop();
         this.ReplaceSettings(savedTimer.Options.ApplyTo(this.settings), save: true);
@@ -951,6 +1065,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         this.RefreshDisplay(TimerViewState.ReadyStatusText, hasValidationError: false);
         _ = this.ReleaseInhibitionAsync();
         this.QueueActiveSessionSave();
+    }
+
+    private void RequestOpenAllSavedTimers()
+    {
+        PublishOpenAllSavedTimersRequested(this.savedTimers);
     }
 
     private void RemoveSavedTimer(string? id)
@@ -1026,6 +1145,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         this.OpenSavedTimerCommand.RaiseCanExecuteChanged();
         this.RemoveSavedTimerCommand.RaiseCanExecuteChanged();
         this.ClearSavedTimersCommand.RaiseCanExecuteChanged();
+        this.OpenAllSavedTimersCommand.RaiseCanExecuteChanged();
         this.OpenAllSavedTimersCommand.RaiseCanExecuteChanged();
         this.RaiseSettingsCommandCanExecuteChanged();
     }
@@ -1118,7 +1238,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
         if (save)
         {
-            this.QueueSettingsSave(next);
+            this.QueueSettingsSave(previous, next);
             this.QueueActiveSessionSave();
         }
 
@@ -1134,13 +1254,14 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             return;
         }
 
+        SavedTimersDocument previous = this.savedTimers;
         this.savedTimers = next;
         this.OnPropertyChanged(nameof(this.SavedTimerMenuItems));
         this.ClearSavedTimersCommand.RaiseCanExecuteChanged();
 
         if (save)
         {
-            this.QueueSavedTimersSave(next);
+            this.QueueSavedTimersSave(previous, next);
         }
     }
 
@@ -1241,6 +1362,27 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             try
             {
                 handler.Invoke(this, EventArgs.Empty);
+            }
+            catch (Exception)
+            {
+            }
+        }
+    }
+
+    private void PublishOpenAllSavedTimersRequested(SavedTimersDocument savedTimersSnapshot)
+    {
+        EventHandler<OpenAllSavedTimersRequestedEventArgs>? handlers = this.OpenAllSavedTimersRequested;
+        if (handlers == null)
+        {
+            return;
+        }
+
+        var args = new OpenAllSavedTimersRequestedEventArgs(savedTimersSnapshot);
+        foreach (EventHandler<OpenAllSavedTimersRequestedEventArgs> handler in handlers.GetInvocationList().Cast<EventHandler<OpenAllSavedTimersRequestedEventArgs>>())
+        {
+            try
+            {
+                handler.Invoke(this, args);
             }
             catch (Exception)
             {
@@ -1374,30 +1516,58 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         }
     }
 
-    private void QueueSettingsSave(LinuxAppSettings settingsSnapshot)
+    private void QueueSettingsSave(LinuxAppSettings previousSettings, LinuxAppSettings requestedSettings)
     {
-        this.pendingSettingsSave = this.SaveSettingsAfterAsync(this.pendingSettingsSave, settingsSnapshot);
+        this.pendingSettingsSave = this.SaveSettingsAfterAsync(
+            this.pendingSettingsSave,
+            previousSettings,
+            requestedSettings);
     }
 
-    private void QueueSavedTimersSave(SavedTimersDocument savedTimersSnapshot)
+    private void QueueSavedTimersSave(SavedTimersDocument previousSavedTimers, SavedTimersDocument requestedSavedTimers)
     {
-        this.pendingSavedTimersSave = this.SaveDocumentAfterAsync(this.pendingSavedTimersSave, SavedTimersKey, savedTimersSnapshot);
+        this.pendingSavedTimersSave = this.SaveSavedTimersAfterAsync(
+            this.pendingSavedTimersSave,
+            previousSavedTimers,
+            requestedSavedTimers);
     }
 
     private void QueueActiveSessionSave()
     {
-        ActiveTimerSessionDocument session = ActiveTimerSessionDocument.FromTimerInfo(
-            this.TimerInput,
-            this.TimerTitle ?? string.Empty,
-            ToActiveTimerPresentationMode(this.viewState.PresentationMode),
-            this.engine.ToTimerInfo(),
-            this.wallClockNow());
+        ActiveTimerSessionDocument session = this.CreateActiveSessionDocument();
+
+        if (!this.persistActiveSessionDirectly)
+        {
+            PublishSafely(this.ActiveSessionChanged);
+            return;
+        }
+
         this.pendingActiveSessionSave = this.SaveDocumentAfterAsync(this.pendingActiveSessionSave, ActiveSessionKey, session);
     }
 
-    private async Task SaveSettingsAfterAsync(Task previousSave, LinuxAppSettings settingsSnapshot)
+    private async Task SaveSettingsAfterAsync(
+        Task previousSave,
+        LinuxAppSettings previousSettings,
+        LinuxAppSettings requestedSettings)
     {
-        await this.SaveDocumentAfterAsync(previousSave, SettingsKey, settingsSnapshot).ConfigureAwait(false);
+        try
+        {
+            await previousSave.ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+        }
+
+        LinuxAppSettings latestSettings = await this.LoadLatestSettingsForSaveAsync(previousSettings).ConfigureAwait(false);
+        LinuxAppSettings mergedSettings = MergeSettingsChange(previousSettings, requestedSettings, latestSettings);
+
+        try
+        {
+            await this.settingsStore.SaveAsync(SettingsKey, mergedSettings).ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+        }
     }
 
     private async Task SaveDocumentAfterAsync<T>(Task previousSave, string key, T document)
@@ -1417,6 +1587,123 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         catch (Exception)
         {
         }
+    }
+
+    private async Task SaveSavedTimersAfterAsync(
+        Task previousSave,
+        SavedTimersDocument previousSavedTimers,
+        SavedTimersDocument requestedSavedTimers)
+    {
+        try
+        {
+            await previousSave.ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+        }
+
+        try
+        {
+            await this.savedTimersStore.SaveAsync(previousSavedTimers, requestedSavedTimers).ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+        }
+    }
+
+    private async Task<LinuxAppSettings> LoadLatestSettingsForSaveAsync(LinuxAppSettings fallback)
+    {
+        try
+        {
+            return await this.settingsStore.LoadAsync<LinuxAppSettings>(SettingsKey).ConfigureAwait(false)
+                ?? fallback;
+        }
+        catch (Exception)
+        {
+            return fallback;
+        }
+    }
+
+    private static LinuxAppSettings MergeSettingsChange(
+        LinuxAppSettings previous,
+        LinuxAppSettings requested,
+        LinuxAppSettings latest)
+    {
+        string[] recentTimerInputs = MergeRecentTimerInputs(previous, requested, latest);
+        bool loopTimer = SelectChanged(previous.LoopTimer, requested.LoopTimer, latest.LoopTimer);
+        bool loopSound = SelectChanged(previous.LoopSound, requested.LoopSound, latest.LoopSound);
+        bool closeWhenExpired = SelectChanged(previous.CloseWhenExpired, requested.CloseWhenExpired, latest.CloseWhenExpired);
+        if (previous.LoopTimer != requested.LoopTimer
+            || previous.LoopSound != requested.LoopSound
+            || previous.CloseWhenExpired != requested.CloseWhenExpired)
+        {
+            loopTimer = requested.LoopTimer;
+            loopSound = requested.LoopSound;
+            closeWhenExpired = requested.CloseWhenExpired;
+        }
+
+        return new LinuxAppSettings(
+            recentTimerInputs,
+            SelectChanged(previous.NotificationsEnabled, requested.NotificationsEnabled, latest.NotificationsEnabled),
+            SelectChanged(previous.AudioAlertsEnabled, requested.AudioAlertsEnabled, latest.AudioAlertsEnabled),
+            SelectChanged(previous.AlwaysOnTop, requested.AlwaysOnTop, latest.AlwaysOnTop),
+            SelectChanged(previous.PopUpWhenExpired, requested.PopUpWhenExpired, latest.PopUpWhenExpired),
+            SelectChanged(previous.PromptOnExit, requested.PromptOnExit, latest.PromptOnExit),
+            SelectChanged(previous.ReverseProgressBar, requested.ReverseProgressBar, latest.ReverseProgressBar),
+            SelectChanged(previous.ShowTimeElapsed, requested.ShowTimeElapsed, latest.ShowTimeElapsed),
+            loopTimer,
+            loopSound,
+            closeWhenExpired,
+            SelectChanged(previous.LockInterface, requested.LockInterface, latest.LockInterface),
+            SelectChanged(
+                previous.DoNotKeepComputerAwake,
+                requested.DoNotKeepComputerAwake,
+                latest.DoNotKeepComputerAwake),
+            SelectChanged(previous.ShutDownWhenExpired, requested.ShutDownWhenExpired, latest.ShutDownWhenExpired),
+            SelectChanged(
+                previous.ShowProgressInTaskbar,
+                requested.ShowProgressInTaskbar,
+                latest.ShowProgressInTaskbar),
+            SelectChanged(
+                previous.ShowInNotificationArea,
+                requested.ShowInNotificationArea,
+                latest.ShowInNotificationArea),
+            SelectChanged(
+                previous.RestoreActiveSessionOnStartup,
+                requested.RestoreActiveSessionOnStartup,
+                latest.RestoreActiveSessionOnStartup),
+            SelectChanged(
+                previous.OpenSavedTimersOnStartup,
+                requested.OpenSavedTimersOnStartup,
+                latest.OpenSavedTimersOnStartup));
+    }
+
+    private static string[] MergeRecentTimerInputs(
+        LinuxAppSettings previous,
+        LinuxAppSettings requested,
+        LinuxAppSettings latest)
+    {
+        string[] previousInputs = previous.RecentTimerInputs;
+        string[] requestedInputs = requested.RecentTimerInputs;
+        if (previousInputs.SequenceEqual(requestedInputs, StringComparer.Ordinal))
+        {
+            return latest.RecentTimerInputs;
+        }
+
+        if (requestedInputs.Length == 0)
+        {
+            return requestedInputs;
+        }
+
+        return requestedInputs
+            .Concat(latest.RecentTimerInputs)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+    }
+
+    private static bool SelectChanged(bool previous, bool requested, bool latest)
+    {
+        return previous == requested ? latest : requested;
     }
 
     private static ActiveTimerPresentationMode ToActiveTimerPresentationMode(TimerPresentationMode presentationMode)
@@ -1458,6 +1745,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         this.ToggleShutDownWhenExpiredCommand.RaiseCanExecuteChanged();
         this.ToggleRestoreActiveSessionOnStartupCommand.RaiseCanExecuteChanged();
         this.ToggleOpenSavedTimersOnStartupCommand.RaiseCanExecuteChanged();
+        this.NewTimerCommand.RaiseCanExecuteChanged();
     }
 
     private void PublishSettingsChange(bool previous, bool next, string propertyName)
@@ -1533,4 +1821,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             return Task.CompletedTask;
         }
     }
+}
+
+public sealed class OpenAllSavedTimersRequestedEventArgs(SavedTimersDocument savedTimers) : EventArgs
+{
+    public SavedTimersDocument SavedTimers { get; } = savedTimers ?? throw new ArgumentNullException(nameof(savedTimers));
 }

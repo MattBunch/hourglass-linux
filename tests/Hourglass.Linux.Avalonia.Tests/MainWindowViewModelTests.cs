@@ -921,7 +921,7 @@ public sealed class MainWindowViewModelTests
         Assert.Equal("True", buttons["Exit"].Attribute("IsDefault")?.Value);
         Assert.Contains(
             document.Descendants(avalonia + "TextBlock"),
-            element => element.Attribute("Text")?.Value == "A timer is still running. Exit Hourglass?");
+            element => element.Attribute("Text")?.Value == "One or more timers are still running or paused. Exit Hourglass?");
     }
 
     [Fact]
@@ -1006,8 +1006,10 @@ public sealed class MainWindowViewModelTests
         int statusIconExitEnd = codeBehind.IndexOf("break;", statusIconExitStart, StringComparison.Ordinal);
         string statusIconExit = codeBehind[statusIconExitStart..statusIconExitEnd];
 
-        Assert.Contains("this.Close();", exitHandler, StringComparison.Ordinal);
+        Assert.Contains("_ = this.requestApplicationExit();", exitHandler, StringComparison.Ordinal);
         Assert.DoesNotContain("PendingSettingsSave", exitHandler, StringComparison.Ordinal);
+        Assert.Contains("this.requestApplicationExit = requestApplicationExit ?? this.RequestLocalExitAsync;", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("private Task RequestLocalExitAsync()", codeBehind, StringComparison.Ordinal);
         Assert.Contains("this.windowAttentionController?.RequestAttention();", statusIconExit, StringComparison.Ordinal);
         Assert.Contains("this.Close();", statusIconExit, StringComparison.Ordinal);
         Assert.True(
@@ -1020,6 +1022,10 @@ public sealed class MainWindowViewModelTests
         Assert.Contains("LinuxDesktopProgressServiceFactory.CreateDefault()", codeBehind, StringComparison.Ordinal);
         Assert.Contains("this.viewModel.PendingSettingsSave", prepareClose, StringComparison.Ordinal);
         Assert.Contains("this.desktopProgressController.ClearAsync()", prepareClose, StringComparison.Ordinal);
+        Assert.Contains("await this.PrepareCoordinatorCloseOnUiThreadAsync().ConfigureAwait(false);", prepareClose, StringComparison.Ordinal);
+        Assert.Contains("private Task PrepareCoordinatorCloseOnUiThreadAsync()", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("Dispatcher.UIThread.CheckAccess()", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("Dispatcher.UIThread.Post(async () =>", codeBehind, StringComparison.Ordinal);
         Assert.Contains("this.isClosePreparing = true;", prepareClose, StringComparison.Ordinal);
         Assert.Contains("this.refreshTimer.Stop();", prepareClose, StringComparison.Ordinal);
         Assert.True(
@@ -1543,6 +1549,99 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
+    public async Task SettingsSaveMergesRecentInputWithLatestPersistedSettings()
+    {
+        var settingsStore = new RecordingSettingsStore
+        {
+            LoadedSettings = new LinuxAppSettings(showInNotificationArea: false)
+        };
+        var viewModel = CreateViewModel(
+            new ManualMonotonicClock(),
+            settingsStore: settingsStore,
+            statusIconSupported: true);
+
+        await viewModel.LoadSettingsAsync();
+        settingsStore.LoadedSettings = new LinuxAppSettings(
+            ["20 minutes", "12 minutes"],
+            showInNotificationArea: true);
+
+        viewModel.TimerInput = "12 minutes";
+        viewModel.StartCommand.Execute(null);
+        await viewModel.PendingSettingsSave;
+
+        Assert.NotNull(settingsStore.SavedSettings);
+        Assert.True(settingsStore.SavedSettings.ShowInNotificationArea);
+        Assert.Equal(["12 minutes", "20 minutes"], settingsStore.SavedSettings.RecentTimerInputs);
+    }
+
+    [Fact]
+    public async Task SettingsSaveMergesChangedOptionOverLatestPersistedSettings()
+    {
+        var settingsStore = new RecordingSettingsStore
+        {
+            LoadedSettings = LinuxAppSettings.Default
+        };
+        var viewModel = CreateViewModel(new ManualMonotonicClock(), settingsStore: settingsStore);
+
+        await viewModel.LoadSettingsAsync();
+        settingsStore.LoadedSettings = LinuxAppSettings.Default with
+        {
+            ReverseProgressBar = true,
+            ShowInNotificationArea = true
+        };
+
+        viewModel.ToggleNotificationsCommand.Execute(null);
+        await viewModel.PendingSettingsSave;
+
+        Assert.NotNull(settingsStore.SavedSettings);
+        Assert.False(settingsStore.SavedSettings.NotificationsEnabled);
+        Assert.True(settingsStore.SavedSettings.ReverseProgressBar);
+        Assert.True(settingsStore.SavedSettings.ShowInNotificationArea);
+    }
+
+    [Fact]
+    public async Task SettingsSaveAppliesCloseWhenExpiredAsCoherentOptionGroup()
+    {
+        var settingsStore = new RecordingSettingsStore
+        {
+            LoadedSettings = LinuxAppSettings.Default
+        };
+        var viewModel = CreateViewModel(new ManualMonotonicClock(), settingsStore: settingsStore);
+
+        await viewModel.LoadSettingsAsync();
+        settingsStore.LoadedSettings = LinuxAppSettings.Default with { LoopTimer = true };
+
+        viewModel.ToggleCloseWhenExpiredCommand.Execute(null);
+        await viewModel.PendingSettingsSave;
+
+        Assert.NotNull(settingsStore.SavedSettings);
+        Assert.True(settingsStore.SavedSettings.CloseWhenExpired);
+        Assert.False(settingsStore.SavedSettings.LoopTimer);
+        Assert.False(settingsStore.SavedSettings.LoopSound);
+    }
+
+    [Fact]
+    public async Task SettingsSaveAppliesLoopSoundAsCoherentOptionGroup()
+    {
+        var settingsStore = new RecordingSettingsStore
+        {
+            LoadedSettings = LinuxAppSettings.Default
+        };
+        var viewModel = CreateViewModel(new ManualMonotonicClock(), settingsStore: settingsStore);
+
+        await viewModel.LoadSettingsAsync();
+        settingsStore.LoadedSettings = LinuxAppSettings.Default with { CloseWhenExpired = true };
+
+        viewModel.ToggleLoopSoundCommand.Execute(null);
+        await viewModel.PendingSettingsSave;
+
+        Assert.NotNull(settingsStore.SavedSettings);
+        Assert.True(settingsStore.SavedSettings.LoopSound);
+        Assert.False(settingsStore.SavedSettings.CloseWhenExpired);
+        Assert.False(settingsStore.SavedSettings.LoopTimer);
+    }
+
+    [Fact]
     public async Task UnsupportedStatusIconMasksPersistedSettingAndDoesNotSaveToggle()
     {
         var settingsStore = new RecordingSettingsStore
@@ -2010,6 +2109,126 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
+    public async Task OpenAllSavedTimersPublishesCurrentSavedTimerSnapshot()
+    {
+        var settingsStore = new RecordingSettingsStore();
+        var viewModel = CreateViewModel(new ManualMonotonicClock(), settingsStore: settingsStore);
+        SavedTimersDocument? requestedSavedTimers = null;
+        viewModel.OpenAllSavedTimersRequested += (_, args) => requestedSavedTimers = args.SavedTimers;
+        viewModel.TimerInput = "90 seconds";
+        viewModel.TimerTitle = "Tea";
+
+        viewModel.SaveCurrentTimerCommand.Execute(null);
+        SavedTimerMenuItem savedTimer = Assert.Single(viewModel.SavedTimerMenuItems);
+        viewModel.OpenAllSavedTimersCommand.Execute(null);
+
+        Assert.NotNull(requestedSavedTimers);
+        SavedTimerDefinition requestedTimer = Assert.Single(requestedSavedTimers.Timers);
+        Assert.Equal(savedTimer.Id, requestedTimer.Id);
+
+        viewModel.RemoveSavedTimerCommand.Execute(savedTimer.Id);
+        requestedSavedTimers = null;
+        viewModel.OpenAllSavedTimersCommand.Execute(null);
+
+        Assert.Null(requestedSavedTimers);
+        await viewModel.PendingSettingsSave;
+    }
+
+    [Fact]
+    public async Task CoordinatedSavedTimerSavesPreserveAdditionsFromOtherWindows()
+    {
+        var settingsStore = new RecordingSettingsStore();
+        var savedTimersStore = new CoordinatedSavedTimersStore(settingsStore);
+        var firstWindow = CreateViewModel(
+            new ManualMonotonicClock(),
+            settingsStore: settingsStore,
+            savedTimersStore: savedTimersStore);
+        var secondWindow = CreateViewModel(
+            new ManualMonotonicClock(),
+            settingsStore: settingsStore,
+            savedTimersStore: savedTimersStore);
+        await firstWindow.LoadSettingsAsync();
+        await secondWindow.LoadSettingsAsync();
+
+        firstWindow.TimerInput = "10 minutes";
+        firstWindow.TimerTitle = "Tea";
+        firstWindow.SaveCurrentTimerCommand.Execute(null);
+        secondWindow.TimerInput = "20 minutes";
+        secondWindow.TimerTitle = "Coffee";
+        secondWindow.SaveCurrentTimerCommand.Execute(null);
+        await Task.WhenAll(firstWindow.PendingSettingsSave, secondWindow.PendingSettingsSave);
+
+        Assert.NotNull(settingsStore.SavedTimers);
+        Assert.Equal(
+            ["Coffee — 20 minutes", "Tea — 10 minutes"],
+            settingsStore.SavedTimers.Timers.Select(timer => timer.Header).ToArray());
+    }
+
+    [Fact]
+    public async Task CoordinatedSavedTimerRemovePreservesAdditionsFromOtherWindows()
+    {
+        var originalTimer = new SavedTimerDefinition("timer-1", "10 minutes", "Tea");
+        var settingsStore = new RecordingSettingsStore
+        {
+            LoadedSavedTimers = new SavedTimersDocument(timers: [originalTimer])
+        };
+        var savedTimersStore = new CoordinatedSavedTimersStore(settingsStore);
+        var firstWindow = CreateViewModel(
+            new ManualMonotonicClock(),
+            settingsStore: settingsStore,
+            savedTimersStore: savedTimersStore);
+        var secondWindow = CreateViewModel(
+            new ManualMonotonicClock(),
+            settingsStore: settingsStore,
+            savedTimersStore: savedTimersStore);
+        await firstWindow.LoadSettingsAsync();
+        await secondWindow.LoadSettingsAsync();
+
+        firstWindow.TimerInput = "20 minutes";
+        firstWindow.TimerTitle = "Coffee";
+        firstWindow.SaveCurrentTimerCommand.Execute(null);
+        await firstWindow.PendingSettingsSave;
+        secondWindow.RemoveSavedTimerCommand.Execute(originalTimer.Id);
+        await secondWindow.PendingSettingsSave;
+
+        Assert.NotNull(settingsStore.SavedTimers);
+        SavedTimerDefinition remainingTimer = Assert.Single(settingsStore.SavedTimers.Timers);
+        Assert.Equal("Coffee — 20 minutes", remainingTimer.Header);
+    }
+
+    [Fact]
+    public async Task CoordinatedSavedTimerSaveDoesNotRestoreTimerRemovedByOtherWindow()
+    {
+        var originalTimer = new SavedTimerDefinition("timer-1", "10 minutes", "Tea");
+        var settingsStore = new RecordingSettingsStore
+        {
+            LoadedSavedTimers = new SavedTimersDocument(timers: [originalTimer])
+        };
+        var savedTimersStore = new CoordinatedSavedTimersStore(settingsStore);
+        var firstWindow = CreateViewModel(
+            new ManualMonotonicClock(),
+            settingsStore: settingsStore,
+            savedTimersStore: savedTimersStore);
+        var secondWindow = CreateViewModel(
+            new ManualMonotonicClock(),
+            settingsStore: settingsStore,
+            savedTimersStore: savedTimersStore);
+        await firstWindow.LoadSettingsAsync();
+        await secondWindow.LoadSettingsAsync();
+
+        firstWindow.RemoveSavedTimerCommand.Execute(originalTimer.Id);
+        await firstWindow.PendingSettingsSave;
+        secondWindow.TimerInput = "20 minutes";
+        secondWindow.TimerTitle = "Coffee";
+        secondWindow.SaveCurrentTimerCommand.Execute(null);
+        await secondWindow.PendingSettingsSave;
+
+        Assert.NotNull(settingsStore.SavedTimers);
+        SavedTimerDefinition remainingTimer = Assert.Single(settingsStore.SavedTimers.Timers);
+        Assert.Equal("Coffee — 20 minutes", remainingTimer.Header);
+    }
+
+    [Fact]
     public async Task ActiveSessionPersistsRunningTimerAndRestoresExpiredOnStartup()
     {
         var clock = new ManualMonotonicClock();
@@ -2105,6 +2324,42 @@ public sealed class MainWindowViewModelTests
 
         Assert.Equal(TimerState.Running, viewModel.State);
         Assert.False(viewModel.IsTimerModificationLocked);
+    }
+
+    [Fact]
+    public async Task ActiveSessionRestoresPerWindowTimerOptions()
+    {
+        DateTime start = new(2026, 7, 2, 8, 0, 0);
+        var settingsStore = new RecordingSettingsStore
+        {
+            LoadedSettings = LinuxAppSettings.Default,
+            LoadedActiveSession = new ActiveTimerSessionDocument(
+                timerInput: "10 seconds",
+                timerStartInput: "10 seconds",
+                timerTitle: "Tea",
+                savedAt: start.AddSeconds(5),
+                state: TimerState.Paused,
+                timeElapsedTicks: TimeSpan.FromSeconds(5).Ticks,
+                timeLeftTicks: TimeSpan.FromSeconds(5).Ticks,
+                totalTimeTicks: TimeSpan.FromSeconds(10).Ticks,
+                options: new SavedTimerOptions(
+                    ReverseProgressBar: true,
+                    ShowTimeElapsed: true,
+                    LoopTimer: true,
+                    DoNotKeepComputerAwake: true))
+        };
+        var viewModel = CreateViewModel(
+            new ManualMonotonicClock(),
+            wallClockNow: () => start.AddSeconds(5),
+            settingsStore: settingsStore);
+
+        await viewModel.LoadSettingsAsync();
+
+        Assert.Equal(TimerState.Paused, viewModel.State);
+        Assert.True(viewModel.ReverseProgressBar);
+        Assert.True(viewModel.ShowTimeElapsed);
+        Assert.True(viewModel.LoopTimer);
+        Assert.True(viewModel.DoNotKeepComputerAwake);
     }
 
     [Fact]
@@ -2920,17 +3175,21 @@ public sealed class MainWindowViewModelTests
         INotificationService? notificationService = null,
         ISessionInhibitor? sessionInhibitor = null,
         ISettingsStore? settingsStore = null,
+        ISavedTimersStore? savedTimersStore = null,
         IAudioAlertService? audioAlertService = null,
         ISystemPowerService? systemPowerService = null,
         bool statusIconSupported = false,
         bool statusIconCanRecoverHiddenWindow = false)
     {
+        ISettingsStore resolvedSettingsStore = settingsStore ?? new RecordingSettingsStore();
+
         return new MainWindowViewModel(
             new CountdownEngine(clock),
             wallClockNow ?? (() => new DateTime(2026, 6, 8, 10, 0, 0)),
             notificationService ?? new RecordingNotificationService(),
             sessionInhibitor ?? new RecordingSessionInhibitor(),
-            settingsStore ?? new RecordingSettingsStore(),
+            resolvedSettingsStore,
+            savedTimersStore ?? new DirectSavedTimersStore(resolvedSettingsStore),
             audioAlertService ?? new RecordingAudioAlertService(),
             systemPowerService ?? new RecordingSystemPowerService(),
             statusIconSupported,
@@ -3062,7 +3321,7 @@ public sealed class MainWindowViewModelTests
 
     private sealed class RecordingSettingsStore : ISettingsStore
     {
-        public LinuxAppSettings? LoadedSettings { get; init; }
+        public LinuxAppSettings? LoadedSettings { get; set; }
 
         public SavedTimersDocument? LoadedSavedTimers { get; init; }
 
@@ -3087,8 +3346,8 @@ public sealed class MainWindowViewModelTests
 
             object? value = key switch
             {
-                "app" => this.LoadedSettings,
-                "saved-timers" => this.LoadedSavedTimers,
+                "app" => this.SavedSettings ?? this.LoadedSettings,
+                "saved-timers" => this.SavedTimers ?? this.LoadedSavedTimers,
                 "active-session" => this.LoadedActiveSession,
                 _ => null
             };
