@@ -300,7 +300,7 @@ public sealed class LinuxFileLockSingleInstanceService : ISingleInstanceService
         return new SingleInstanceLaunchRequestDto
         {
             Kind = request.Kind,
-            Arguments = request.Arguments,
+            Arguments = request.Arguments.ToArray(),
             TimerInput = request.TimerInput,
             TimerTitle = request.TimerTitle
         };

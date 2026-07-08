@@ -7,6 +7,11 @@ internal static class LinuxCommandLineParser
 {
     public static CommandLineParseResult Parse(string[] args)
     {
+        return Parse(args, DateTime.Now);
+    }
+
+    internal static CommandLineParseResult Parse(string[] args, DateTime wallClockNow)
+    {
         ArgumentNullException.ThrowIfNull(args);
 
         string[] copiedArgs = args.ToArray();
@@ -53,7 +58,10 @@ internal static class LinuxCommandLineParser
 
         string timerInput = string.Join(" ", timerParts).Trim();
         TimerStart? timerStart = TimerStart.FromString(timerInput);
-        if (timerStart == null || !timerStart.IsValid)
+        if (timerStart == null
+            || !timerStart.IsValid
+            || !timerStart.TryGetEndTime(wallClockNow, out DateTime endTime)
+            || endTime < wallClockNow)
         {
             return CommandLineParseResult.Failure($"Invalid timer expression: {timerInput}");
         }

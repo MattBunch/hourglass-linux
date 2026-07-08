@@ -111,11 +111,11 @@ public enum SingleInstanceLaunchRequestKind
 
 public sealed record SingleInstanceLaunchRequest(
     SingleInstanceLaunchRequestKind Kind,
-    string[] Arguments,
+    IReadOnlyList<string>? Arguments,
     string? TimerInput = null,
     string? TimerTitle = null)
 {
-    public string[] Arguments { get; } = Arguments?.ToArray() ?? [];
+    public IReadOnlyList<string> Arguments { get; } = Array.AsReadOnly(Arguments?.ToArray() ?? []);
 
     public string? TimerInput { get; } = TimerInput;
 

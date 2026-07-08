@@ -16,7 +16,7 @@ internal static class Program
             request =>
             {
                 App.InitialLaunchRequest = request;
-                return BuildAvaloniaApp().StartWithClassicDesktopLifetime(request.Arguments);
+                return BuildAvaloniaApp().StartWithClassicDesktopLifetime(request.Arguments.ToArray());
             },
             Console.Error);
     }

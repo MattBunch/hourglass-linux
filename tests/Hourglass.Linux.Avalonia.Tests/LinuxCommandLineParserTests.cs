@@ -58,4 +58,31 @@ public sealed class LinuxCommandLineParserTests
         Assert.Null(result.Request);
         Assert.False(string.IsNullOrWhiteSpace(result.ErrorMessage));
     }
+
+    [Fact]
+    public void PastAbsoluteTimerArgumentFails()
+    {
+        CommandLineParseResult result = LinuxCommandLineParser.Parse(
+            ["January", "1", "2020"],
+            new DateTime(2026, 1, 1, 12, 0, 0));
+
+        Assert.False(result.IsSuccess);
+        Assert.Null(result.Request);
+        Assert.Contains("Invalid timer expression", result.ErrorMessage, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void LaunchRequestArgumentsAreDefensiveReadOnlySnapshot()
+    {
+        string[] args = ["10", "seconds"];
+        var request = new SingleInstanceLaunchRequest(
+            SingleInstanceLaunchRequestKind.StartTimer,
+            args,
+            "10 seconds");
+
+        args[0] = "20";
+
+        Assert.Equal(["10", "seconds"], request.Arguments);
+        Assert.IsNotType<string[]>(request.Arguments);
+    }
 }
