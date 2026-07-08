@@ -2,6 +2,7 @@ namespace Hourglass.Linux.Avalonia.Tests;
 
 using global::Avalonia.Platform;
 using Hourglass.Platform;
+using System.Net.Sockets;
 using Xunit;
 
 public sealed class ProgramTests
@@ -37,29 +38,32 @@ public sealed class ProgramTests
     [Fact]
     public void RunStartsDesktopLifetimeWhenOwnershipIsAcquired()
     {
-        string[] args = ["10 seconds", "--test"];
+        string[] args = ["10", "seconds"];
         var service = new RecordingSingleInstanceService { AcquireResult = true };
-        string[]? capturedArgs = null;
+        SingleInstanceLaunchRequest? capturedRequest = null;
 
         int exitCode = Program.Run(
             args,
             () => service,
-            startArgs =>
+            request =>
             {
                 Assert.False(service.Disposed);
-                capturedArgs = startArgs;
+                capturedRequest = request;
                 return 42;
             },
             TextWriter.Null);
 
         Assert.Equal(42, exitCode);
-        Assert.Same(args, capturedArgs);
+        Assert.NotNull(capturedRequest);
+        Assert.Equal(SingleInstanceLaunchRequestKind.StartTimer, capturedRequest.Kind);
+        Assert.Equal("10 seconds", capturedRequest.TimerInput);
         Assert.Equal(1, service.AcquireCount);
+        Assert.Equal(1, service.ListenCount);
         Assert.True(service.Disposed);
     }
 
     [Fact]
-    public void RunDoesNotStartDesktopLifetimeWhenOwnershipIsNotAcquired()
+    public void RunSendsLaunchRequestWhenOwnershipIsNotAcquired()
     {
         var service = new RecordingSingleInstanceService { AcquireResult = false };
         int startCount = 0;
@@ -76,6 +80,47 @@ public sealed class ProgramTests
 
         Assert.Equal(0, exitCode);
         Assert.Equal(0, startCount);
+        Assert.NotNull(service.SentRequest);
+        Assert.Equal(SingleInstanceLaunchRequestKind.Activate, service.SentRequest.Kind);
+        Assert.True(service.Disposed);
+    }
+
+    [Fact]
+    public void RunReturnsTwoForInvalidCommandLineWithoutAcquiringOwnership()
+    {
+        var service = new RecordingSingleInstanceService { AcquireResult = true };
+        using var errorWriter = new StringWriter();
+
+        int exitCode = Program.Run(
+            ["--title"],
+            () => service,
+            _ => throw new Xunit.Sdk.XunitException("Desktop should not start."),
+            errorWriter);
+
+        Assert.Equal(2, exitCode);
+        Assert.Equal(0, service.AcquireCount);
+        Assert.Contains("--title", errorWriter.ToString());
+        Assert.False(service.Disposed);
+    }
+
+    [Fact]
+    public void RunReturnsOneWhenSecondaryHandoffFails()
+    {
+        var service = new RecordingSingleInstanceService
+        {
+            AcquireResult = false,
+            SendException = new SocketException((int)SocketError.ConnectionRefused)
+        };
+        using var errorWriter = new StringWriter();
+
+        int exitCode = Program.Run(
+            ["10 seconds"],
+            () => service,
+            _ => throw new Xunit.Sdk.XunitException("Desktop should not start."),
+            errorWriter);
+
+        Assert.Equal(1, exitCode);
+        Assert.Contains("running instance", errorWriter.ToString());
         Assert.True(service.Disposed);
     }
 
@@ -101,6 +146,35 @@ public sealed class ProgramTests
     }
 
     [Fact]
+    public void RunStartsDesktopLifetimeWhenListenerStartupFails()
+    {
+        var service = new RecordingSingleInstanceService
+        {
+            AcquireResult = true,
+            ListenException = new IOException("socket path unavailable")
+        };
+        using var errorWriter = new StringWriter();
+        int startCount = 0;
+
+        int exitCode = Program.Run(
+            [],
+            () => service,
+            _ =>
+            {
+                startCount++;
+                return 43;
+            },
+            errorWriter);
+
+        Assert.Equal(43, exitCode);
+        Assert.Equal(1, startCount);
+        Assert.Equal(1, service.ListenCount);
+        Assert.True(service.Disposed);
+        Assert.Contains("handoff listener", errorWriter.ToString());
+        Assert.Contains("socket path unavailable", errorWriter.ToString());
+    }
+
+    [Fact]
     public void RunDisposesServiceWhenDesktopRunnerThrows()
     {
         var service = new RecordingSingleInstanceService { AcquireResult = true };
@@ -120,9 +194,17 @@ public sealed class ProgramTests
 
         public Exception? AcquireException { get; init; }
 
+        public Exception? SendException { get; init; }
+
+        public Exception? ListenException { get; init; }
+
         public int AcquireCount { get; private set; }
 
+        public int ListenCount { get; private set; }
+
         public bool Disposed { get; private set; }
+
+        public SingleInstanceLaunchRequest? SentRequest { get; private set; }
 
         public Task<bool> TryAcquireAsync(CancellationToken cancellationToken = default)
         {
@@ -134,6 +216,32 @@ public sealed class ProgramTests
             }
 
             return Task.FromResult(this.AcquireResult);
+        }
+
+        public Task SendLaunchRequestAsync(
+            SingleInstanceLaunchRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            if (this.SendException != null)
+            {
+                return Task.FromException(this.SendException);
+            }
+
+            this.SentRequest = request;
+            return Task.CompletedTask;
+        }
+
+        public Task StartRequestListenerAsync(
+            Func<SingleInstanceLaunchRequest, CancellationToken, Task> handleRequestAsync,
+            CancellationToken cancellationToken = default)
+        {
+            this.ListenCount++;
+            if (this.ListenException != null)
+            {
+                return Task.FromException(this.ListenException);
+            }
+
+            return Task.CompletedTask;
         }
 
         public void Dispose()

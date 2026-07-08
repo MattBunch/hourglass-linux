@@ -2,12 +2,15 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
+using Hourglass.Platform;
 
 namespace Hourglass.Linux.Avalonia;
 
 public sealed partial class App : Application
 {
     private TimerWindowCoordinator? coordinator;
+
+    internal static SingleInstanceLaunchRequest? InitialLaunchRequest { get; set; }
 
     public override void Initialize()
     {
@@ -21,10 +24,23 @@ public sealed partial class App : Application
             desktop.ShutdownMode = ShutdownMode.OnExplicitShutdown;
             this.coordinator = new TimerWindowCoordinator(desktop);
             desktop.Exit += this.DesktopExit;
-            _ = this.coordinator.StartAsync();
+            SingleInstanceLaunchRequest? initialRequest = InitialLaunchRequest;
+            InitialLaunchRequest = null;
+            _ = this.StartCoordinatorAsync(initialRequest);
         }
 
         base.OnFrameworkInitializationCompleted();
+    }
+
+    private async Task StartCoordinatorAsync(SingleInstanceLaunchRequest? initialRequest)
+    {
+        if (this.coordinator == null)
+        {
+            return;
+        }
+
+        await this.coordinator.StartAsync(initialRequest).ConfigureAwait(true);
+        SingleInstanceLaunchRequestDispatcher.Shared.Register(this.coordinator.HandleLaunchRequestAsync);
     }
 
     private async void DesktopExit(object? sender, ControlledApplicationLifetimeExitEventArgs e)
@@ -36,6 +52,7 @@ public sealed partial class App : Application
 
         if (this.coordinator != null)
         {
+            SingleInstanceLaunchRequestDispatcher.Shared.Unregister(this.coordinator.HandleLaunchRequestAsync);
             await this.coordinator.DisposeAsync();
             this.coordinator = null;
         }

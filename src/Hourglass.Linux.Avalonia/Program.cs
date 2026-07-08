@@ -1,6 +1,7 @@
 using Avalonia;
 using Hourglass.Linux.Services;
 using Hourglass.Platform;
+using System.Net.Sockets;
 
 namespace Hourglass.Linux.Avalonia;
 
@@ -12,14 +13,18 @@ internal static class Program
         return Run(
             args,
             () => new LinuxFileLockSingleInstanceService(),
-            startArgs => BuildAvaloniaApp().StartWithClassicDesktopLifetime(startArgs),
+            request =>
+            {
+                App.InitialLaunchRequest = request;
+                return BuildAvaloniaApp().StartWithClassicDesktopLifetime(request.Arguments.ToArray());
+            },
             Console.Error);
     }
 
     internal static int Run(
         string[] args,
         Func<ISingleInstanceService> singleInstanceServiceFactory,
-        Func<string[], int> startDesktopLifetime,
+        Func<SingleInstanceLaunchRequest, int> startDesktopLifetime,
         TextWriter errorWriter)
     {
         ArgumentNullException.ThrowIfNull(args);
@@ -27,6 +32,14 @@ internal static class Program
         ArgumentNullException.ThrowIfNull(startDesktopLifetime);
         ArgumentNullException.ThrowIfNull(errorWriter);
 
+        CommandLineParseResult parseResult = LinuxCommandLineParser.Parse(args);
+        if (!parseResult.IsSuccess || parseResult.Request == null)
+        {
+            errorWriter.WriteLine(parseResult.ErrorMessage);
+            return 2;
+        }
+
+        SingleInstanceLaunchRequest request = parseResult.Request;
         ISingleInstanceService? singleInstanceService = null;
         bool acquired;
 
@@ -44,13 +57,37 @@ internal static class Program
 
         if (!acquired)
         {
-            singleInstanceService.Dispose();
-            return 0;
+            try
+            {
+                singleInstanceService.SendLaunchRequestAsync(request).GetAwaiter().GetResult();
+                return 0;
+            }
+            catch (Exception exception) when (exception is IOException or SocketException or TimeoutException or OperationCanceledException)
+            {
+                errorWriter.WriteLine($"Hourglass could not contact the running instance: {exception.Message}");
+                return 1;
+            }
+            finally
+            {
+                singleInstanceService.Dispose();
+            }
         }
 
         try
         {
-            return startDesktopLifetime(args);
+            try
+            {
+                singleInstanceService.StartRequestListenerAsync(
+                    (receivedRequest, _) => SingleInstanceLaunchRequestDispatcher.Shared.DispatchAsync(receivedRequest))
+                    .GetAwaiter()
+                    .GetResult();
+            }
+            catch (Exception exception) when (exception is IOException or SocketException or UnauthorizedAccessException)
+            {
+                errorWriter.WriteLine($"Hourglass could not start the single-instance handoff listener: {exception.Message}");
+            }
+
+            return startDesktopLifetime(request);
         }
         finally
         {

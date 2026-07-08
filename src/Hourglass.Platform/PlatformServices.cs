@@ -95,6 +95,31 @@ public interface ISettingsStore
 public interface ISingleInstanceService : IDisposable
 {
     Task<bool> TryAcquireAsync(CancellationToken cancellationToken = default);
+
+    Task SendLaunchRequestAsync(SingleInstanceLaunchRequest request, CancellationToken cancellationToken = default);
+
+    Task StartRequestListenerAsync(
+        Func<SingleInstanceLaunchRequest, CancellationToken, Task> handleRequestAsync,
+        CancellationToken cancellationToken = default);
+}
+
+public enum SingleInstanceLaunchRequestKind
+{
+    Activate,
+    StartTimer
+}
+
+public sealed record SingleInstanceLaunchRequest(
+    SingleInstanceLaunchRequestKind Kind,
+    IReadOnlyList<string>? Arguments,
+    string? TimerInput = null,
+    string? TimerTitle = null)
+{
+    public IReadOnlyList<string> Arguments { get; } = Array.AsReadOnly(Arguments?.ToArray() ?? []);
+
+    public string? TimerInput { get; } = TimerInput;
+
+    public string? TimerTitle { get; } = TimerTitle;
 }
 
 public interface IStartupIntegrationService

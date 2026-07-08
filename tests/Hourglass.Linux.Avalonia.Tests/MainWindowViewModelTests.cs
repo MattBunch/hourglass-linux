@@ -45,6 +45,19 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
+    public void LaunchTimerRequestAppliesTitleAndStartsTimer()
+    {
+        var viewModel = CreateViewModel(new ManualMonotonicClock());
+
+        viewModel.ApplyLaunchTimerRequest("5 minutes", "Tea");
+
+        Assert.Equal(TimerState.Running, viewModel.State);
+        Assert.Equal("5 minutes", viewModel.TimerInput);
+        Assert.Equal("Tea", viewModel.TimerTitle);
+        Assert.Equal("00:05:00", viewModel.RemainingTime);
+    }
+
+    [Fact]
     public void WhitespaceTimerTitlePreservesInputWithoutRepublishingFallbackWindowTitle()
     {
         var viewModel = CreateViewModel(new ManualMonotonicClock());
