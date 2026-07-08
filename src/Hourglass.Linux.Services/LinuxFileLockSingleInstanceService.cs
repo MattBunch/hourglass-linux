@@ -277,8 +277,7 @@ public sealed class LinuxFileLockSingleInstanceService : ISingleInstanceService
                 try
                 {
                     accepted = await listener.AcceptAsync(cancellationToken).ConfigureAwait(false);
-                    await this.HandleAcceptedSocketAsync(accepted, handleRequestAsync, cancellationToken)
-                        .ConfigureAwait(false);
+                    _ = this.HandleAcceptedSocketAsync(accepted, handleRequestAsync, cancellationToken);
                     accepted = null;
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)

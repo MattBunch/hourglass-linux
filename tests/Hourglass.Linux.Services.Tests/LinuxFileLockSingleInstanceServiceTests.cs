@@ -2,6 +2,7 @@ namespace Hourglass.Linux.Services.Tests;
 
 using Hourglass.Platform;
 using Hourglass.Linux.Services;
+using System.Net.Sockets;
 using Xunit;
 
 public sealed class LinuxFileLockSingleInstanceServiceTests
@@ -272,6 +273,43 @@ public sealed class LinuxFileLockSingleInstanceServiceTests
 
         Task completedReceive = await Task.WhenAny(receivedCompletion.Task, Task.Delay(TimeSpan.FromSeconds(2)));
         Assert.Same(receivedCompletion.Task, completedReceive);
+        SingleInstanceLaunchRequest received = await receivedCompletion.Task;
+        Assert.Equal(sent.Kind, received.Kind);
+        Assert.Equal(sent.Arguments, received.Arguments);
+    }
+
+    [Fact]
+    public async Task StalledClientDoesNotBlockLaterLaunchRequests()
+    {
+        string tempDirectory = CreateTempDirectory();
+        string socketPath = Path.Combine(tempDirectory, "hourglass-linux.sock");
+        var fileSystem = new RecordingLockFileSystem { CreateRealDirectories = true };
+        using var service = new LinuxFileLockSingleInstanceService(
+            Path.Combine(tempDirectory, "hourglass-linux.lock"),
+            socketPath,
+            fileSystem,
+            () => 123,
+            () => new DateTimeOffset(2026, 6, 14, 8, 0, 0, TimeSpan.Zero));
+        var receivedCompletion = new TaskCompletionSource<SingleInstanceLaunchRequest>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        Assert.True(await service.TryAcquireAsync());
+        await service.StartRequestListenerAsync((request, _) =>
+        {
+            receivedCompletion.TrySetResult(request);
+            return Task.CompletedTask;
+        });
+
+        using var stalledClient = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
+        await stalledClient.ConnectAsync(new UnixDomainSocketEndPoint(socketPath));
+
+        var sent = new SingleInstanceLaunchRequest(
+            SingleInstanceLaunchRequestKind.Activate,
+            []);
+        await service.SendLaunchRequestAsync(sent);
+
+        Task completed = await Task.WhenAny(receivedCompletion.Task, Task.Delay(TimeSpan.FromSeconds(2)));
+        Assert.Same(receivedCompletion.Task, completed);
         SingleInstanceLaunchRequest received = await receivedCompletion.Task;
         Assert.Equal(sent.Kind, received.Kind);
         Assert.Equal(sent.Arguments, received.Arguments);
