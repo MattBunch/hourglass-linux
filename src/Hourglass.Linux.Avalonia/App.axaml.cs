@@ -26,11 +26,21 @@ public sealed partial class App : Application
             desktop.Exit += this.DesktopExit;
             SingleInstanceLaunchRequest? initialRequest = InitialLaunchRequest;
             InitialLaunchRequest = null;
-            SingleInstanceLaunchRequestDispatcher.Shared.Register(this.coordinator.HandleLaunchRequestAsync);
-            _ = this.coordinator.StartAsync(initialRequest);
+            _ = this.StartCoordinatorAsync(initialRequest);
         }
 
         base.OnFrameworkInitializationCompleted();
+    }
+
+    private async Task StartCoordinatorAsync(SingleInstanceLaunchRequest? initialRequest)
+    {
+        if (this.coordinator == null)
+        {
+            return;
+        }
+
+        await this.coordinator.StartAsync(initialRequest).ConfigureAwait(true);
+        SingleInstanceLaunchRequestDispatcher.Shared.Register(this.coordinator.HandleLaunchRequestAsync);
     }
 
     private async void DesktopExit(object? sender, ControlledApplicationLifetimeExitEventArgs e)

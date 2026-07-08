@@ -11,7 +11,10 @@ public sealed class Milestone7CoordinatorTests
 
         Assert.Contains("internal static SingleInstanceLaunchRequest? InitialLaunchRequest", app, StringComparison.Ordinal);
         Assert.Contains("SingleInstanceLaunchRequestDispatcher.Shared.Register(this.coordinator.HandleLaunchRequestAsync);", app, StringComparison.Ordinal);
-        Assert.Contains("_ = this.coordinator.StartAsync(initialRequest);", app, StringComparison.Ordinal);
+        Assert.Contains("_ = this.StartCoordinatorAsync(initialRequest);", app, StringComparison.Ordinal);
+        Assert.True(
+            app.IndexOf("await this.coordinator.StartAsync(initialRequest)", StringComparison.Ordinal)
+            < app.IndexOf("SingleInstanceLaunchRequestDispatcher.Shared.Register(this.coordinator.HandleLaunchRequestAsync);", StringComparison.Ordinal));
         Assert.Contains("SingleInstanceLaunchRequestDispatcher.Shared.Unregister(this.coordinator.HandleLaunchRequestAsync);", app, StringComparison.Ordinal);
     }
 
