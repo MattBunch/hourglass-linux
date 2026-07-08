@@ -75,10 +75,18 @@ internal static class Program
 
         try
         {
-            singleInstanceService.StartRequestListenerAsync(
-                (receivedRequest, _) => SingleInstanceLaunchRequestDispatcher.Shared.DispatchAsync(receivedRequest))
-                .GetAwaiter()
-                .GetResult();
+            try
+            {
+                singleInstanceService.StartRequestListenerAsync(
+                    (receivedRequest, _) => SingleInstanceLaunchRequestDispatcher.Shared.DispatchAsync(receivedRequest))
+                    .GetAwaiter()
+                    .GetResult();
+            }
+            catch (Exception exception) when (exception is IOException or SocketException or UnauthorizedAccessException)
+            {
+                errorWriter.WriteLine($"Hourglass could not start the single-instance handoff listener: {exception.Message}");
+            }
+
             return startDesktopLifetime(request);
         }
         finally

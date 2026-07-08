@@ -146,6 +146,35 @@ public sealed class ProgramTests
     }
 
     [Fact]
+    public void RunStartsDesktopLifetimeWhenListenerStartupFails()
+    {
+        var service = new RecordingSingleInstanceService
+        {
+            AcquireResult = true,
+            ListenException = new IOException("socket path unavailable")
+        };
+        using var errorWriter = new StringWriter();
+        int startCount = 0;
+
+        int exitCode = Program.Run(
+            [],
+            () => service,
+            _ =>
+            {
+                startCount++;
+                return 43;
+            },
+            errorWriter);
+
+        Assert.Equal(43, exitCode);
+        Assert.Equal(1, startCount);
+        Assert.Equal(1, service.ListenCount);
+        Assert.True(service.Disposed);
+        Assert.Contains("handoff listener", errorWriter.ToString());
+        Assert.Contains("socket path unavailable", errorWriter.ToString());
+    }
+
+    [Fact]
     public void RunDisposesServiceWhenDesktopRunnerThrows()
     {
         var service = new RecordingSingleInstanceService { AcquireResult = true };
@@ -166,6 +195,8 @@ public sealed class ProgramTests
         public Exception? AcquireException { get; init; }
 
         public Exception? SendException { get; init; }
+
+        public Exception? ListenException { get; init; }
 
         public int AcquireCount { get; private set; }
 
@@ -205,6 +236,11 @@ public sealed class ProgramTests
             CancellationToken cancellationToken = default)
         {
             this.ListenCount++;
+            if (this.ListenException != null)
+            {
+                return Task.FromException(this.ListenException);
+            }
+
             return Task.CompletedTask;
         }
 
