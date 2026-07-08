@@ -11,6 +11,15 @@ public sealed class LinuxFileLockSingleInstanceService : ISingleInstanceService
     private const int IpcTimeoutMilliseconds = 2000;
     private const long LockLength = 1;
     private const long LockOffset = 0;
+    private const UnixFileMode PrivateDirectoryMode =
+        UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute;
+    private const UnixFileMode SharedDirectoryMode =
+        UnixFileMode.GroupRead
+        | UnixFileMode.GroupWrite
+        | UnixFileMode.GroupExecute
+        | UnixFileMode.OtherRead
+        | UnixFileMode.OtherWrite
+        | UnixFileMode.OtherExecute;
     private static readonly UTF8Encoding Utf8NoBom = new(encoderShouldEmitUTF8Identifier: false);
 
     private readonly ILockFileSystem fileSystem;
@@ -159,7 +168,7 @@ public sealed class LinuxFileLockSingleInstanceService : ISingleInstanceService
 
             string directory = Path.GetDirectoryName(this.socketPath)
                 ?? throw new InvalidOperationException("Socket path must include a directory.");
-            this.fileSystem.CreateDirectory(directory);
+            this.fileSystem.EnsurePrivateDirectory(directory);
             this.fileSystem.DeleteFileIfExists(this.socketPath);
 
             this.listenerCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -358,6 +367,8 @@ public sealed class LinuxFileLockSingleInstanceService : ISingleInstanceService
     {
         void CreateDirectory(string path);
 
+        void EnsurePrivateDirectory(string path);
+
         void DeleteFileIfExists(string path);
 
         ILockFileHandle OpenLockFile(string path);
@@ -372,11 +383,25 @@ public sealed class LinuxFileLockSingleInstanceService : ISingleInstanceService
         void WriteDiagnostics(string contents);
     }
 
-    private sealed class LockFileSystem : ILockFileSystem
+    internal sealed class LockFileSystem : ILockFileSystem
     {
         public void CreateDirectory(string path)
         {
             Directory.CreateDirectory(path);
+        }
+
+        public void EnsurePrivateDirectory(string path)
+        {
+            Directory.CreateDirectory(path);
+
+#pragma warning disable CA1416
+            File.SetUnixFileMode(path, PrivateDirectoryMode);
+            UnixFileMode mode = File.GetUnixFileMode(path);
+#pragma warning restore CA1416
+            if ((mode & SharedDirectoryMode) != 0)
+            {
+                throw new UnauthorizedAccessException($"Directory '{path}' is not private to the current user.");
+            }
         }
 
         public void DeleteFileIfExists(string path)

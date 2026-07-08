@@ -187,6 +187,63 @@ public sealed class LinuxFileLockSingleInstanceServiceTests
     {
         string tempDirectory = CreateTempDirectory();
         var fileSystem = new RecordingLockFileSystem { CreateRealDirectories = true };
+        string socketPath = Path.Combine(tempDirectory, "hourglass-linux.sock");
+        using var service = new LinuxFileLockSingleInstanceService(
+            Path.Combine(tempDirectory, "hourglass-linux.lock"),
+            socketPath,
+            fileSystem,
+            () => 123,
+            () => new DateTimeOffset(2026, 6, 14, 8, 0, 0, TimeSpan.Zero));
+
+        Assert.True(await service.TryAcquireAsync());
+        await service.StartRequestListenerAsync((_, _) => Task.CompletedTask);
+
+        Assert.Equal(1, fileSystem.EnsurePrivateDirectoryCount);
+        Assert.Equal(tempDirectory, fileSystem.PrivateDirectoryPath);
+        Assert.Equal(1, fileSystem.DeleteCount);
+        Assert.Equal(socketPath, fileSystem.DeletedPath);
+        Assert.True(fileSystem.PrivateDirectoryEnsuredBeforeDelete);
+    }
+
+    [Fact]
+    public async Task StartRequestListenerCreatesPrivateSocketDirectory()
+    {
+        string tempDirectory = CreateTempDirectory();
+        string socketDirectory = Path.Combine(tempDirectory, "ipc");
+        using var service = new LinuxFileLockSingleInstanceService(
+            Path.Combine(tempDirectory, "hourglass-linux.lock"),
+            Path.Combine(socketDirectory, "hourglass-linux.sock"),
+            new LinuxFileLockSingleInstanceService.LockFileSystem(),
+            () => 123,
+            () => new DateTimeOffset(2026, 6, 14, 8, 0, 0, TimeSpan.Zero));
+
+        Assert.True(await service.TryAcquireAsync());
+        await service.StartRequestListenerAsync((_, _) => Task.CompletedTask);
+
+#pragma warning disable CA1416
+        UnixFileMode mode = File.GetUnixFileMode(socketDirectory);
+#pragma warning restore CA1416
+        const UnixFileMode expectedUserMode =
+            UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute;
+        const UnixFileMode sharedMode =
+            UnixFileMode.GroupRead
+            | UnixFileMode.GroupWrite
+            | UnixFileMode.GroupExecute
+            | UnixFileMode.OtherRead
+            | UnixFileMode.OtherWrite
+            | UnixFileMode.OtherExecute;
+        Assert.Equal(expectedUserMode, mode & expectedUserMode);
+        Assert.Equal((UnixFileMode)0, mode & sharedMode);
+    }
+
+    [Fact]
+    public async Task StartRequestListenerDoesNotDeleteStaleSocketWhenPrivateDirectoryFails()
+    {
+        string tempDirectory = CreateTempDirectory();
+        var fileSystem = new RecordingLockFileSystem
+        {
+            EnsurePrivateDirectoryException = new UnauthorizedAccessException("directory is shared")
+        };
         using var service = new LinuxFileLockSingleInstanceService(
             Path.Combine(tempDirectory, "hourglass-linux.lock"),
             Path.Combine(tempDirectory, "hourglass-linux.sock"),
@@ -195,10 +252,12 @@ public sealed class LinuxFileLockSingleInstanceServiceTests
             () => new DateTimeOffset(2026, 6, 14, 8, 0, 0, TimeSpan.Zero));
 
         Assert.True(await service.TryAcquireAsync());
-        await service.StartRequestListenerAsync((_, _) => Task.CompletedTask);
 
-        Assert.Equal(1, fileSystem.DeleteCount);
-        Assert.Equal(Path.Combine(tempDirectory, "hourglass-linux.sock"), fileSystem.DeletedPath);
+        UnauthorizedAccessException exception = await Assert.ThrowsAsync<UnauthorizedAccessException>(
+            () => service.StartRequestListenerAsync((_, _) => Task.CompletedTask));
+
+        Assert.Contains("directory is shared", exception.Message, StringComparison.Ordinal);
+        Assert.Equal(0, fileSystem.DeleteCount);
     }
 
     [Fact]
@@ -340,15 +399,23 @@ public sealed class LinuxFileLockSingleInstanceServiceTests
 
         public int OpenCount { get; private set; }
 
+        public int EnsurePrivateDirectoryCount { get; private set; }
+
         public int DeleteCount { get; private set; }
+
+        public string? PrivateDirectoryPath { get; private set; }
 
         public string? DeletedPath { get; private set; }
 
         public Exception? CreateDirectoryException { get; init; }
 
+        public Exception? EnsurePrivateDirectoryException { get; init; }
+
         public Exception? OpenException { get; init; }
 
         public bool CreateRealDirectories { get; init; }
+
+        public bool PrivateDirectoryEnsuredBeforeDelete { get; private set; }
 
         public RecordingLockFileHandle? NextHandle { get; init; }
 
@@ -368,10 +435,31 @@ public sealed class LinuxFileLockSingleInstanceServiceTests
             }
         }
 
+        public void EnsurePrivateDirectory(string path)
+        {
+            if (this.EnsurePrivateDirectoryException != null)
+            {
+                throw this.EnsurePrivateDirectoryException;
+            }
+
+            this.EnsurePrivateDirectoryCount++;
+            this.PrivateDirectoryPath = path;
+            if (this.CreateRealDirectories)
+            {
+                Directory.CreateDirectory(path);
+#pragma warning disable CA1416
+                File.SetUnixFileMode(
+                    path,
+                    UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+#pragma warning restore CA1416
+            }
+        }
+
         public void DeleteFileIfExists(string path)
         {
             this.DeleteCount++;
             this.DeletedPath = path;
+            this.PrivateDirectoryEnsuredBeforeDelete = this.EnsurePrivateDirectoryCount > 0;
             if (this.CreateRealDirectories)
             {
                 File.Delete(path);
