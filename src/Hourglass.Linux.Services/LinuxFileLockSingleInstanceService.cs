@@ -127,10 +127,7 @@ public sealed class LinuxFileLockSingleInstanceService : ISingleInstanceService
         using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeoutSource.CancelAfter(TimeSpan.FromMilliseconds(IpcTimeoutMilliseconds));
 
-        using var socket = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
-        await socket.ConnectAsync(new UnixDomainSocketEndPoint(this.socketPath), timeoutSource.Token)
-            .ConfigureAwait(false);
-
+        using Socket socket = await this.ConnectWithRetryAsync(timeoutSource.Token).ConfigureAwait(false);
         await using NetworkStream stream = new(socket, ownsSocket: false);
         await using var writer = new StreamWriter(stream, Utf8NoBom, leaveOpen: true);
         string payload = JsonSerializer.Serialize(ToDto(request));
@@ -232,6 +229,39 @@ public sealed class LinuxFileLockSingleInstanceService : ISingleInstanceService
     internal static string CreateDiagnostics(int processId, DateTimeOffset timestamp)
     {
         return $"app={ApplicationId}{Environment.NewLine}pid={processId}{Environment.NewLine}acquiredUtc={timestamp:O}{Environment.NewLine}";
+    }
+
+    private async Task<Socket> ConnectWithRetryAsync(CancellationToken cancellationToken)
+    {
+        var endpoint = new UnixDomainSocketEndPoint(this.socketPath);
+
+        while (true)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var socket = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
+            try
+            {
+                await socket.ConnectAsync(endpoint, cancellationToken).ConfigureAwait(false);
+                return socket;
+            }
+            catch (SocketException exception) when (IsTransientConnectFailure(exception))
+            {
+                socket.Dispose();
+                await Task.Delay(TimeSpan.FromMilliseconds(50), cancellationToken).ConfigureAwait(false);
+            }
+            catch
+            {
+                socket.Dispose();
+                throw;
+            }
+        }
+    }
+
+    private static bool IsTransientConnectFailure(SocketException exception)
+    {
+        return exception.SocketErrorCode == SocketError.ConnectionRefused
+            || exception.SocketErrorCode == SocketError.AddressNotAvailable
+            || exception.NativeErrorCode == 2;
     }
 
     private async Task ListenAsync(

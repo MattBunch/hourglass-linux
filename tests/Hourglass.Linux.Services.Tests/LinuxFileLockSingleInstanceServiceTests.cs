@@ -237,6 +237,46 @@ public sealed class LinuxFileLockSingleInstanceServiceTests
         Assert.Equal(sent.TimerTitle, received.TimerTitle);
     }
 
+    [Fact]
+    public async Task SendLaunchRequestRetriesUntilListenerStarts()
+    {
+        string tempDirectory = CreateTempDirectory();
+        string socketPath = Path.Combine(tempDirectory, "hourglass-linux.sock");
+        var fileSystem = new RecordingLockFileSystem { CreateRealDirectories = true };
+        using var service = new LinuxFileLockSingleInstanceService(
+            Path.Combine(tempDirectory, "hourglass-linux.lock"),
+            socketPath,
+            fileSystem,
+            () => 123,
+            () => new DateTimeOffset(2026, 6, 14, 8, 0, 0, TimeSpan.Zero));
+        var receivedCompletion = new TaskCompletionSource<SingleInstanceLaunchRequest>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        Assert.True(await service.TryAcquireAsync());
+
+        var sent = new SingleInstanceLaunchRequest(
+            SingleInstanceLaunchRequestKind.Activate,
+            []);
+        Task sendTask = service.SendLaunchRequestAsync(sent);
+        await Task.Yield();
+
+        await service.StartRequestListenerAsync((request, _) =>
+        {
+            receivedCompletion.TrySetResult(request);
+            return Task.CompletedTask;
+        });
+
+        Task completedSend = await Task.WhenAny(sendTask, Task.Delay(TimeSpan.FromSeconds(2)));
+        Assert.Same(sendTask, completedSend);
+        await sendTask;
+
+        Task completedReceive = await Task.WhenAny(receivedCompletion.Task, Task.Delay(TimeSpan.FromSeconds(2)));
+        Assert.Same(receivedCompletion.Task, completedReceive);
+        SingleInstanceLaunchRequest received = await receivedCompletion.Task;
+        Assert.Equal(sent.Kind, received.Kind);
+        Assert.Equal(sent.Arguments, received.Arguments);
+    }
+
     private static LinuxFileLockSingleInstanceService CreateService(RecordingLockFileSystem fileSystem)
     {
         return new LinuxFileLockSingleInstanceService(
