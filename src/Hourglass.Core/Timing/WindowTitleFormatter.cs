@@ -8,32 +8,38 @@ public static class WindowTitleFormatter
         WindowTitleMode mode,
         string applicationName,
         string? timerTitle,
-        string timeLeft,
-        string timeElapsed)
+        string? timeLeft,
+        string? timeElapsed)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(applicationName);
-        ArgumentNullException.ThrowIfNull(timeLeft);
-        ArgumentNullException.ThrowIfNull(timeElapsed);
 
-        string resolvedTitle = string.IsNullOrWhiteSpace(timerTitle)
-            ? applicationName
-            : timerTitle;
+        string? resolvedTitle = string.IsNullOrWhiteSpace(timerTitle) ? null : timerTitle;
 
         return mode switch
         {
-            WindowTitleMode.TimeLeft => timeLeft,
-            WindowTitleMode.TimeElapsed => timeElapsed,
-            WindowTitleMode.TimerTitle => resolvedTitle,
-            WindowTitleMode.TimeLeftPlusTimerTitle => Combine(timeLeft, resolvedTitle),
-            WindowTitleMode.TimeElapsedPlusTimerTitle => Combine(timeElapsed, resolvedTitle),
-            WindowTitleMode.TimerTitlePlusTimeLeft => Combine(resolvedTitle, timeLeft),
-            WindowTitleMode.TimerTitlePlusTimeElapsed => Combine(resolvedTitle, timeElapsed),
+            WindowTitleMode.TimeLeft => timeLeft ?? resolvedTitle ?? applicationName,
+            WindowTitleMode.TimeElapsed => timeElapsed ?? resolvedTitle ?? applicationName,
+            WindowTitleMode.TimerTitle => resolvedTitle ?? applicationName,
+            WindowTitleMode.TimeLeftPlusTimerTitle => Combine(timeLeft, resolvedTitle, applicationName),
+            WindowTitleMode.TimeElapsedPlusTimerTitle => Combine(timeElapsed, resolvedTitle, applicationName),
+            WindowTitleMode.TimerTitlePlusTimeLeft => Combine(resolvedTitle, timeLeft, applicationName),
+            WindowTitleMode.TimerTitlePlusTimeElapsed => Combine(resolvedTitle, timeElapsed, applicationName),
             _ => applicationName
         };
     }
 
-    private static string Combine(string first, string second)
+    private static string Combine(string? first, string? second, string fallback)
     {
+        if (string.IsNullOrWhiteSpace(first))
+        {
+            return string.IsNullOrWhiteSpace(second) ? fallback : second;
+        }
+
+        if (string.IsNullOrWhiteSpace(second))
+        {
+            return first;
+        }
+
         return string.Concat(first, " - ", second);
     }
 }

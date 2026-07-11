@@ -365,8 +365,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         this.settings.WindowTitleMode,
         ApplicationTitle,
         this.TimerTitle,
-        TimerViewState.FormatTimerTime(this.engine.Snapshot.TimeLeft ?? TimeSpan.Zero),
-        TimerViewState.FormatTimerTime(this.engine.Snapshot.TimeElapsed ?? TimeSpan.Zero));
+        FormatOptionalTimerTime(this.engine.Snapshot.TimeLeft),
+        FormatOptionalTimerTime(this.engine.Snapshot.TimeElapsed));
 
     public string RemainingTime => this.viewState.RemainingTime;
 
@@ -1813,6 +1813,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private static bool SelectChanged(bool previous, bool requested, bool latest)
     {
         return previous == requested ? latest : requested;
+    }
+
+    private static string? FormatOptionalTimerTime(TimeSpan? time)
+    {
+        return time.HasValue ? TimerViewState.FormatTimerTime(time.Value) : null;
     }
 
     private static T SelectChanged<T>(T previous, T requested, T latest)

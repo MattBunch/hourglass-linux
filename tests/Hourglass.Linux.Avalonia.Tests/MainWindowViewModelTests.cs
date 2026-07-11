@@ -109,6 +109,74 @@ public sealed class MainWindowViewModelTests
         Assert.Contains(nameof(viewModel.WindowTitle), changedProperties);
     }
 
+    [Theory]
+    [InlineData(WindowTitleMode.TimeLeft)]
+    [InlineData(WindowTitleMode.TimeElapsed)]
+    [InlineData(WindowTitleMode.TimeLeftPlusTimerTitle)]
+    [InlineData(WindowTitleMode.TimeElapsedPlusTimerTitle)]
+    [InlineData(WindowTitleMode.TimerTitlePlusTimeLeft)]
+    [InlineData(WindowTitleMode.TimerTitlePlusTimeElapsed)]
+    public async Task StoppedTimeBasedWindowTitleModesUseTimerTitleInsteadOfZero(WindowTitleMode mode)
+    {
+        var viewModel = CreateViewModel(
+            new ManualMonotonicClock(),
+            settingsStore: new RecordingSettingsStore
+            {
+                LoadedSettings = LinuxAppSettings.Default with { WindowTitleMode = mode }
+            });
+
+        await viewModel.LoadSettingsAsync();
+        viewModel.TimerTitle = "Tea";
+
+        Assert.Equal("Tea", viewModel.WindowTitle);
+    }
+
+    [Theory]
+    [InlineData(WindowTitleMode.TimeLeft)]
+    [InlineData(WindowTitleMode.TimeElapsed)]
+    [InlineData(WindowTitleMode.TimeLeftPlusTimerTitle)]
+    [InlineData(WindowTitleMode.TimeElapsedPlusTimerTitle)]
+    [InlineData(WindowTitleMode.TimerTitlePlusTimeLeft)]
+    [InlineData(WindowTitleMode.TimerTitlePlusTimeElapsed)]
+    public async Task StoppedTimeBasedWindowTitleModesUseApplicationTitleWhenTimerTitleIsBlank(WindowTitleMode mode)
+    {
+        var viewModel = CreateViewModel(
+            new ManualMonotonicClock(),
+            settingsStore: new RecordingSettingsStore
+            {
+                LoadedSettings = LinuxAppSettings.Default with { WindowTitleMode = mode }
+            });
+
+        await viewModel.LoadSettingsAsync();
+
+        Assert.Equal("Hourglass", viewModel.WindowTitle);
+    }
+
+    [Theory]
+    [InlineData(WindowTitleMode.TimeLeftPlusTimerTitle, "00:01:30")]
+    [InlineData(WindowTitleMode.TimeElapsedPlusTimerTitle, "00:00:30")]
+    [InlineData(WindowTitleMode.TimerTitlePlusTimeLeft, "00:01:30")]
+    [InlineData(WindowTitleMode.TimerTitlePlusTimeElapsed, "00:00:30")]
+    public async Task RunningCombinedWindowTitleModesOmitBlankTimerTitle(WindowTitleMode mode, string expected)
+    {
+        var clock = new ManualMonotonicClock();
+        var viewModel = CreateViewModel(
+            clock,
+            settingsStore: new RecordingSettingsStore
+            {
+                LoadedSettings = LinuxAppSettings.Default with { WindowTitleMode = mode }
+            });
+
+        await viewModel.LoadSettingsAsync();
+        viewModel.TimerInput = "2 minutes";
+        viewModel.StartCommand.Execute(null);
+
+        clock.Advance(TimeSpan.FromSeconds(30));
+        viewModel.Tick();
+
+        Assert.Equal(expected, viewModel.WindowTitle);
+    }
+
     [Fact]
     public async Task SelectThemePreferenceChangesStateAndSavesSettings()
     {
@@ -143,11 +211,11 @@ public sealed class MainWindowViewModelTests
 
         Assert.Equal(WindowTitleMode.TimerTitlePlusTimeLeft, viewModel.WindowTitleMode);
         Assert.True(viewModel.IsTimerTitlePlusTimeLeftModeSelected);
-        Assert.Equal("Tea - 00:00:00", viewModel.WindowTitle);
+        Assert.Equal("Tea", viewModel.WindowTitle);
         Assert.NotNull(settingsStore.SavedSettings);
         Assert.Equal(WindowTitleMode.TimerTitlePlusTimeLeft, settingsStore.SavedSettings.WindowTitleMode);
         Assert.Contains(nameof(viewModel.WindowTitleMode), changedProperties);
-        Assert.Contains(nameof(viewModel.WindowTitle), changedProperties);
+        Assert.DoesNotContain(nameof(viewModel.WindowTitle), changedProperties);
     }
 
     [Fact]
