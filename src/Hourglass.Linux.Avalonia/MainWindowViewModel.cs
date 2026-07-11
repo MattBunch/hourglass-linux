@@ -33,6 +33,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private Task pendingActiveSessionSave = Task.CompletedTask;
     private Task pendingSavedTimersSave = Task.CompletedTask;
     private Task pendingSettingsSave = Task.CompletedTask;
+    private string publishedWindowTitle = ApplicationTitle;
     private SavedTimersDocument savedTimers = SavedTimersDocument.Empty;
     private LinuxAppSettings settings = LinuxAppSettings.Default;
     private TimerViewState viewState = TimerViewState.Initial;
@@ -204,6 +205,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             () => !this.IsTimerModificationLocked && this.systemPowerService.IsShutdownSupported);
         this.ToggleRestoreActiveSessionOnStartupCommand = new RelayCommand(this.ToggleRestoreActiveSessionOnStartup, () => !this.IsTimerModificationLocked);
         this.ToggleOpenSavedTimersOnStartupCommand = new RelayCommand(this.ToggleOpenSavedTimersOnStartup, () => !this.IsTimerModificationLocked);
+        this.SelectThemePreferenceCommand = new RelayCommand<string>(this.SelectThemePreference, value => !string.IsNullOrWhiteSpace(value) && !this.IsTimerModificationLocked);
+        this.SelectWindowTitleModeCommand = new RelayCommand<string>(this.SelectWindowTitleMode, value => !string.IsNullOrWhiteSpace(value) && !this.IsTimerModificationLocked);
         this.NewTimerCommand = new RelayCommand(this.RequestNewTimer, () => !this.IsTimerModificationLocked);
         this.SelectRecentInputCommand = new RelayCommand<string>(this.SelectRecentInput, input => !string.IsNullOrWhiteSpace(input) && !this.IsTimerModificationLocked);
         this.ClearRecentInputsCommand = new RelayCommand(this.ClearRecentInputs, () => this.RecentInputMenuItems.Length > 0 && !this.IsTimerModificationLocked);
@@ -298,6 +301,10 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     public RelayCommand ToggleOpenSavedTimersOnStartupCommand { get; }
 
+    public RelayCommand<string> SelectThemePreferenceCommand { get; }
+
+    public RelayCommand<string> SelectWindowTitleModeCommand { get; }
+
     public RelayCommand NewTimerCommand { get; }
 
     public RelayCommand<string> SelectRecentInputCommand { get; }
@@ -346,21 +353,20 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
                 return;
             }
 
-            string previousWindowTitle = this.WindowTitle;
             this.TryEnterInputModeFromExpired();
             this.ReplaceViewState(this.viewState with { TimerTitle = nextTitle }, nameof(this.TimerTitle));
-
-            if (previousWindowTitle != this.WindowTitle)
-            {
-                this.OnPropertyChanged(nameof(this.WindowTitle));
-                this.OnPropertyChanged(nameof(this.StatusIconMenuState));
-            }
+            this.PublishWindowTitleIfChanged();
 
             this.QueueActiveSessionSave();
         }
     }
 
-    public string WindowTitle => FormatWindowTitle(this.TimerTitle);
+    public string WindowTitle => WindowTitleFormatter.Format(
+        this.settings.WindowTitleMode,
+        ApplicationTitle,
+        this.TimerTitle,
+        TimerViewState.FormatTimerTime(this.engine.Snapshot.TimeLeft ?? TimeSpan.Zero),
+        TimerViewState.FormatTimerTime(this.engine.Snapshot.TimeElapsed ?? TimeSpan.Zero));
 
     public string RemainingTime => this.viewState.RemainingTime;
 
@@ -433,6 +439,32 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     public bool RestoreActiveSessionOnStartup => this.settings.RestoreActiveSessionOnStartup;
 
     public bool OpenSavedTimersOnStartup => this.settings.OpenSavedTimersOnStartup;
+
+    public LinuxThemePreference ThemePreference => this.settings.ThemePreference;
+
+    public bool IsSystemThemeSelected => this.settings.ThemePreference == LinuxThemePreference.System;
+
+    public bool IsLightThemeSelected => this.settings.ThemePreference == LinuxThemePreference.Light;
+
+    public bool IsDarkThemeSelected => this.settings.ThemePreference == LinuxThemePreference.Dark;
+
+    public WindowTitleMode WindowTitleMode => this.settings.WindowTitleMode;
+
+    public bool IsApplicationNameTitleModeSelected => this.settings.WindowTitleMode == WindowTitleMode.ApplicationName;
+
+    public bool IsTimeLeftTitleModeSelected => this.settings.WindowTitleMode == WindowTitleMode.TimeLeft;
+
+    public bool IsTimeElapsedTitleModeSelected => this.settings.WindowTitleMode == WindowTitleMode.TimeElapsed;
+
+    public bool IsTimerTitleModeSelected => this.settings.WindowTitleMode == WindowTitleMode.TimerTitle;
+
+    public bool IsTimeLeftPlusTimerTitleModeSelected => this.settings.WindowTitleMode == WindowTitleMode.TimeLeftPlusTimerTitle;
+
+    public bool IsTimeElapsedPlusTimerTitleModeSelected => this.settings.WindowTitleMode == WindowTitleMode.TimeElapsedPlusTimerTitle;
+
+    public bool IsTimerTitlePlusTimeLeftModeSelected => this.settings.WindowTitleMode == WindowTitleMode.TimerTitlePlusTimeLeft;
+
+    public bool IsTimerTitlePlusTimeElapsedModeSelected => this.settings.WindowTitleMode == WindowTitleMode.TimerTitlePlusTimeElapsed;
 
     public RecentInputMenuItem[] RecentInputMenuItems =>
         this.settings.RecentTimerInputs.Select(input => new RecentInputMenuItem(input)).ToArray();
@@ -977,6 +1009,26 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             save: true);
     }
 
+    private void SelectThemePreference(string? value)
+    {
+        if (!Enum.TryParse(value, ignoreCase: false, out LinuxThemePreference themePreference))
+        {
+            return;
+        }
+
+        this.ReplaceSettings(this.settings with { ThemePreference = themePreference }, save: true);
+    }
+
+    private void SelectWindowTitleMode(string? value)
+    {
+        if (!Enum.TryParse(value, ignoreCase: false, out WindowTitleMode windowTitleMode))
+        {
+            return;
+        }
+
+        this.ReplaceSettings(this.settings with { WindowTitleMode = windowTitleMode }, save: true);
+    }
+
     private void SelectRecentInput(string? timerInput)
     {
         if (string.IsNullOrWhiteSpace(timerInput))
@@ -1150,6 +1202,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         this.OnPropertyChanged(nameof(this.IsRestartVisible));
         this.OnPropertyChanged(nameof(this.IsCancelVisible));
         this.OnPropertyChanged(nameof(this.StatusIconMenuState));
+        this.PublishWindowTitleIfChanged();
         this.OnPropertyChanged(nameof(this.HasValidationError));
         this.OnPropertyChanged(nameof(this.HasCompletionEmphasis));
         this.OnPropertyChanged(nameof(this.CanSaveCurrentTimer));
@@ -1167,11 +1220,6 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         this.OpenAllSavedTimersCommand.RaiseCanExecuteChanged();
         this.OpenAllSavedTimersCommand.RaiseCanExecuteChanged();
         this.RaiseSettingsCommandCanExecuteChanged();
-    }
-
-    private static string FormatWindowTitle(string? timerTitle)
-    {
-        return string.IsNullOrWhiteSpace(timerTitle) ? ApplicationTitle : timerTitle;
     }
 
     private void ReplaceViewState(TimerViewState next, string? changedPropertyName = null)
@@ -1247,6 +1295,28 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         PublishSettingsChange(previous.RestoreActiveSessionOnStartup, next.RestoreActiveSessionOnStartup, nameof(this.RestoreActiveSessionOnStartup));
         PublishSettingsChange(previous.OpenSavedTimersOnStartup, next.OpenSavedTimersOnStartup, nameof(this.OpenSavedTimersOnStartup));
 
+        if (previous.ThemePreference != next.ThemePreference)
+        {
+            this.OnPropertyChanged(nameof(this.ThemePreference));
+            this.OnPropertyChanged(nameof(this.IsSystemThemeSelected));
+            this.OnPropertyChanged(nameof(this.IsLightThemeSelected));
+            this.OnPropertyChanged(nameof(this.IsDarkThemeSelected));
+        }
+
+        if (previous.WindowTitleMode != next.WindowTitleMode)
+        {
+            this.OnPropertyChanged(nameof(this.WindowTitleMode));
+            this.OnPropertyChanged(nameof(this.IsApplicationNameTitleModeSelected));
+            this.OnPropertyChanged(nameof(this.IsTimeLeftTitleModeSelected));
+            this.OnPropertyChanged(nameof(this.IsTimeElapsedTitleModeSelected));
+            this.OnPropertyChanged(nameof(this.IsTimerTitleModeSelected));
+            this.OnPropertyChanged(nameof(this.IsTimeLeftPlusTimerTitleModeSelected));
+            this.OnPropertyChanged(nameof(this.IsTimeElapsedPlusTimerTitleModeSelected));
+            this.OnPropertyChanged(nameof(this.IsTimerTitlePlusTimeLeftModeSelected));
+            this.OnPropertyChanged(nameof(this.IsTimerTitlePlusTimeElapsedModeSelected));
+            this.PublishWindowTitleIfChanged();
+        }
+
         if (previous.LockInterface != next.LockInterface)
         {
             this.OnPropertyChanged(nameof(this.LockInterface));
@@ -1282,6 +1352,19 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         {
             this.QueueSavedTimersSave(previous, next);
         }
+    }
+
+    private void PublishWindowTitleIfChanged()
+    {
+        string currentWindowTitle = this.WindowTitle;
+        if (StringComparer.Ordinal.Equals(this.publishedWindowTitle, currentWindowTitle))
+        {
+            return;
+        }
+
+        this.publishedWindowTitle = currentWindowTitle;
+        this.OnPropertyChanged(nameof(this.WindowTitle));
+        this.OnPropertyChanged(nameof(this.StatusIconMenuState));
     }
 
     private async void OnEngineExpired(object? sender, EventArgs e)
@@ -1418,7 +1501,12 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
         try
         {
-            string notificationTitle = FormatWindowTitle(this.TimerTitle);
+            string notificationTitle = WindowTitleFormatter.Format(
+                WindowTitleMode.TimerTitle,
+                ApplicationTitle,
+                this.TimerTitle,
+                string.Empty,
+                string.Empty);
             await this.notificationService.ShowTimerExpiredAsync(notificationTitle, NotificationBody).ConfigureAwait(false);
         }
         catch (Exception)
@@ -1694,7 +1782,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             SelectChanged(
                 previous.OpenSavedTimersOnStartup,
                 requested.OpenSavedTimersOnStartup,
-                latest.OpenSavedTimersOnStartup));
+                latest.OpenSavedTimersOnStartup),
+            SelectChanged(previous.ThemePreference, requested.ThemePreference, latest.ThemePreference),
+            SelectChanged(previous.WindowTitleMode, requested.WindowTitleMode, latest.WindowTitleMode));
     }
 
     private static string[] MergeRecentTimerInputs(
@@ -1723,6 +1813,12 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private static bool SelectChanged(bool previous, bool requested, bool latest)
     {
         return previous == requested ? latest : requested;
+    }
+
+    private static T SelectChanged<T>(T previous, T requested, T latest)
+        where T : struct, Enum
+    {
+        return EqualityComparer<T>.Default.Equals(previous, requested) ? latest : requested;
     }
 
     private static ActiveTimerPresentationMode ToActiveTimerPresentationMode(TimerPresentationMode presentationMode)
@@ -1764,6 +1860,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         this.ToggleShutDownWhenExpiredCommand.RaiseCanExecuteChanged();
         this.ToggleRestoreActiveSessionOnStartupCommand.RaiseCanExecuteChanged();
         this.ToggleOpenSavedTimersOnStartupCommand.RaiseCanExecuteChanged();
+        this.SelectThemePreferenceCommand.RaiseCanExecuteChanged();
+        this.SelectWindowTitleModeCommand.RaiseCanExecuteChanged();
         this.NewTimerCommand.RaiseCanExecuteChanged();
     }
 

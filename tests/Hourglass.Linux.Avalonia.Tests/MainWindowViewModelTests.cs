@@ -85,6 +85,72 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
+    public async Task TimeLeftWindowTitleModeUpdatesOnTimerTicks()
+    {
+        var clock = new ManualMonotonicClock();
+        var viewModel = CreateViewModel(
+            clock,
+            settingsStore: new RecordingSettingsStore
+            {
+                LoadedSettings = LinuxAppSettings.Default with { WindowTitleMode = WindowTitleMode.TimeLeft }
+            });
+        var changedProperties = new List<string?>();
+        viewModel.PropertyChanged += (_, args) => changedProperties.Add(args.PropertyName);
+
+        await viewModel.LoadSettingsAsync();
+        viewModel.TimerInput = "2 minutes";
+        viewModel.StartCommand.Execute(null);
+        changedProperties.Clear();
+
+        clock.Advance(TimeSpan.FromSeconds(30));
+        viewModel.Tick();
+
+        Assert.Equal("00:01:30", viewModel.WindowTitle);
+        Assert.Contains(nameof(viewModel.WindowTitle), changedProperties);
+    }
+
+    [Fact]
+    public async Task SelectThemePreferenceChangesStateAndSavesSettings()
+    {
+        var settingsStore = new RecordingSettingsStore();
+        var viewModel = CreateViewModel(new ManualMonotonicClock(), settingsStore: settingsStore);
+        var changedProperties = new List<string?>();
+        viewModel.PropertyChanged += (_, args) => changedProperties.Add(args.PropertyName);
+
+        viewModel.SelectThemePreferenceCommand.Execute(nameof(LinuxThemePreference.Dark));
+        await viewModel.PendingSettingsSave;
+
+        Assert.Equal(LinuxThemePreference.Dark, viewModel.ThemePreference);
+        Assert.True(viewModel.IsDarkThemeSelected);
+        Assert.False(viewModel.IsSystemThemeSelected);
+        Assert.NotNull(settingsStore.SavedSettings);
+        Assert.Equal(LinuxThemePreference.Dark, settingsStore.SavedSettings.ThemePreference);
+        Assert.Contains(nameof(viewModel.ThemePreference), changedProperties);
+        Assert.Contains(nameof(viewModel.IsDarkThemeSelected), changedProperties);
+    }
+
+    [Fact]
+    public async Task SelectWindowTitleModeChangesStateAndSavesSettings()
+    {
+        var settingsStore = new RecordingSettingsStore();
+        var viewModel = CreateViewModel(new ManualMonotonicClock(), settingsStore: settingsStore);
+        viewModel.TimerTitle = "Tea";
+        var changedProperties = new List<string?>();
+        viewModel.PropertyChanged += (_, args) => changedProperties.Add(args.PropertyName);
+
+        viewModel.SelectWindowTitleModeCommand.Execute(nameof(WindowTitleMode.TimerTitlePlusTimeLeft));
+        await viewModel.PendingSettingsSave;
+
+        Assert.Equal(WindowTitleMode.TimerTitlePlusTimeLeft, viewModel.WindowTitleMode);
+        Assert.True(viewModel.IsTimerTitlePlusTimeLeftModeSelected);
+        Assert.Equal("Tea - 00:00:00", viewModel.WindowTitle);
+        Assert.NotNull(settingsStore.SavedSettings);
+        Assert.Equal(WindowTitleMode.TimerTitlePlusTimeLeft, settingsStore.SavedSettings.WindowTitleMode);
+        Assert.Contains(nameof(viewModel.WindowTitleMode), changedProperties);
+        Assert.Contains(nameof(viewModel.WindowTitle), changedProperties);
+    }
+
+    [Fact]
     public void ChangingTimerTitleWhileRunningDoesNotAlterCountdown()
     {
         var clock = new ManualMonotonicClock();
@@ -864,6 +930,54 @@ public sealed class MainWindowViewModelTests
         Assert.Equal("CheckBox", menuItems["Prompt on exit"].Attribute("ToggleType")?.Value);
         Assert.Equal("{Binding PromptOnExit, Mode=OneWay}", menuItems["Prompt on exit"].Attribute("IsChecked")?.Value);
         Assert.Equal("{Binding TogglePromptOnExitCommand}", menuItems["Prompt on exit"].Attribute("Command")?.Value);
+        Dictionary<string, XElement> themeItems = menuItems["Theme"]
+            .Elements(avalonia + "MenuItem")
+            .Where(element => element.Attribute("Header") != null)
+            .ToDictionary(element => element.Attribute("Header")!.Value, StringComparer.Ordinal);
+        Assert.Equal("Radio", themeItems["System"].Attribute("ToggleType")?.Value);
+        Assert.Equal("ThemePreference", themeItems["System"].Attribute("GroupName")?.Value);
+        Assert.Equal("{Binding IsSystemThemeSelected, Mode=OneWay}", themeItems["System"].Attribute("IsChecked")?.Value);
+        Assert.Equal("{Binding SelectThemePreferenceCommand}", themeItems["System"].Attribute("Command")?.Value);
+        Assert.Equal("System", themeItems["System"].Attribute("CommandParameter")?.Value);
+        Assert.Equal("{Binding IsLightThemeSelected, Mode=OneWay}", themeItems["Light"].Attribute("IsChecked")?.Value);
+        Assert.Equal("Light", themeItems["Light"].Attribute("CommandParameter")?.Value);
+        Assert.Equal("{Binding IsDarkThemeSelected, Mode=OneWay}", themeItems["Dark"].Attribute("IsChecked")?.Value);
+        Assert.Equal("Dark", themeItems["Dark"].Attribute("CommandParameter")?.Value);
+        Dictionary<string, XElement> titleItems = menuItems["Window title"]
+            .Elements(avalonia + "MenuItem")
+            .Where(element => element.Attribute("Header") != null)
+            .ToDictionary(element => element.Attribute("Header")!.Value, StringComparer.Ordinal);
+        Assert.Equal("Radio", titleItems["Application name"].Attribute("ToggleType")?.Value);
+        Assert.Equal("WindowTitleMode", titleItems["Application name"].Attribute("GroupName")?.Value);
+        Assert.Equal(
+            "{Binding IsApplicationNameTitleModeSelected, Mode=OneWay}",
+            titleItems["Application name"].Attribute("IsChecked")?.Value);
+        Assert.Equal(
+            "{Binding SelectWindowTitleModeCommand}",
+            titleItems["Application name"].Attribute("Command")?.Value);
+        Assert.Equal("ApplicationName", titleItems["Application name"].Attribute("CommandParameter")?.Value);
+        Assert.Equal("{Binding IsTimeLeftTitleModeSelected, Mode=OneWay}", titleItems["Time left"].Attribute("IsChecked")?.Value);
+        Assert.Equal("TimeLeft", titleItems["Time left"].Attribute("CommandParameter")?.Value);
+        Assert.Equal("{Binding IsTimeElapsedTitleModeSelected, Mode=OneWay}", titleItems["Time elapsed"].Attribute("IsChecked")?.Value);
+        Assert.Equal("TimeElapsed", titleItems["Time elapsed"].Attribute("CommandParameter")?.Value);
+        Assert.Equal("{Binding IsTimerTitleModeSelected, Mode=OneWay}", titleItems["Timer title"].Attribute("IsChecked")?.Value);
+        Assert.Equal("TimerTitle", titleItems["Timer title"].Attribute("CommandParameter")?.Value);
+        Assert.Equal(
+            "{Binding IsTimeLeftPlusTimerTitleModeSelected, Mode=OneWay}",
+            titleItems["Time left plus timer title"].Attribute("IsChecked")?.Value);
+        Assert.Equal("TimeLeftPlusTimerTitle", titleItems["Time left plus timer title"].Attribute("CommandParameter")?.Value);
+        Assert.Equal(
+            "{Binding IsTimeElapsedPlusTimerTitleModeSelected, Mode=OneWay}",
+            titleItems["Time elapsed plus timer title"].Attribute("IsChecked")?.Value);
+        Assert.Equal("TimeElapsedPlusTimerTitle", titleItems["Time elapsed plus timer title"].Attribute("CommandParameter")?.Value);
+        Assert.Equal(
+            "{Binding IsTimerTitlePlusTimeLeftModeSelected, Mode=OneWay}",
+            titleItems["Timer title plus time left"].Attribute("IsChecked")?.Value);
+        Assert.Equal("TimerTitlePlusTimeLeft", titleItems["Timer title plus time left"].Attribute("CommandParameter")?.Value);
+        Assert.Equal(
+            "{Binding IsTimerTitlePlusTimeElapsedModeSelected, Mode=OneWay}",
+            titleItems["Timer title plus time elapsed"].Attribute("IsChecked")?.Value);
+        Assert.Equal("TimerTitlePlusTimeElapsed", titleItems["Timer title plus time elapsed"].Attribute("CommandParameter")?.Value);
         Dictionary<string, XElement> advancedItems = menuItems["Advanced options"]
             .Elements(avalonia + "MenuItem")
             .Where(element => element.Attribute("Header") != null)

@@ -3,9 +3,11 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Platform;
+using Avalonia.Styling;
 using Avalonia.Threading;
 using Hourglass.Linux.Services;
 using Hourglass.Platform;
+using Hourglass.Settings;
 using Hourglass.Timing;
 
 namespace Hourglass.Linux.Avalonia;
@@ -141,6 +143,7 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
         this.viewModel.HideToNotificationAreaRequested += this.HideToNotificationAreaRequested;
         this.statusIconService.ActionRequested += this.StatusIconActionRequested;
         this.UpdatePresentationClasses();
+        this.ApplyThemePreference();
         this.RebuildRecentInputsMenu();
         this.RebuildSavedTimersMenu();
         this.ApplyDesktopProgress();
@@ -534,6 +537,11 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
             this.ApplyStatusIconState();
         }
 
+        if (e.PropertyName is nameof(MainWindowViewModel.ThemePreference))
+        {
+            this.ApplyThemePreference();
+        }
+
         if (e.PropertyName is nameof(MainWindowViewModel.RecentInputMenuItems))
         {
             this.RebuildRecentInputsMenu();
@@ -543,6 +551,24 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
             or nameof(MainWindowViewModel.CanSaveCurrentTimer))
         {
             this.RebuildSavedTimersMenu();
+        }
+    }
+
+    internal static ThemeVariant ToThemeVariant(LinuxThemePreference themePreference)
+    {
+        return themePreference switch
+        {
+            LinuxThemePreference.Light => ThemeVariant.Light,
+            LinuxThemePreference.Dark => ThemeVariant.Dark,
+            _ => ThemeVariant.Default
+        };
+    }
+
+    private void ApplyThemePreference()
+    {
+        if (Application.Current is { } application)
+        {
+            application.RequestedThemeVariant = ToThemeVariant(this.viewModel.ThemePreference);
         }
     }
 

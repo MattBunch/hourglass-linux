@@ -190,6 +190,76 @@
                   ToggleType="CheckBox"
                   IsChecked="{Binding PromptOnExit, Mode=OneWay}"
                   Command="{Binding TogglePromptOnExitCommand}" />
+        <MenuItem Header="Theme">
+          <MenuItem Header="System"
+                    ToggleType="Radio"
+                    GroupName="ThemePreference"
+                    IsChecked="{Binding IsSystemThemeSelected, Mode=OneWay}"
+                    Command="{Binding SelectThemePreferenceCommand}"
+                    CommandParameter="System" />
+          <MenuItem Header="Light"
+                    ToggleType="Radio"
+                    GroupName="ThemePreference"
+                    IsChecked="{Binding IsLightThemeSelected, Mode=OneWay}"
+                    Command="{Binding SelectThemePreferenceCommand}"
+                    CommandParameter="Light" />
+          <MenuItem Header="Dark"
+                    ToggleType="Radio"
+                    GroupName="ThemePreference"
+                    IsChecked="{Binding IsDarkThemeSelected, Mode=OneWay}"
+                    Command="{Binding SelectThemePreferenceCommand}"
+                    CommandParameter="Dark" />
+        </MenuItem>
+        <MenuItem Header="Window title">
+          <MenuItem Header="Application name"
+                    ToggleType="Radio"
+                    GroupName="WindowTitleMode"
+                    IsChecked="{Binding IsApplicationNameTitleModeSelected, Mode=OneWay}"
+                    Command="{Binding SelectWindowTitleModeCommand}"
+                    CommandParameter="ApplicationName" />
+          <MenuItem Header="Time left"
+                    ToggleType="Radio"
+                    GroupName="WindowTitleMode"
+                    IsChecked="{Binding IsTimeLeftTitleModeSelected, Mode=OneWay}"
+                    Command="{Binding SelectWindowTitleModeCommand}"
+                    CommandParameter="TimeLeft" />
+          <MenuItem Header="Time elapsed"
+                    ToggleType="Radio"
+                    GroupName="WindowTitleMode"
+                    IsChecked="{Binding IsTimeElapsedTitleModeSelected, Mode=OneWay}"
+                    Command="{Binding SelectWindowTitleModeCommand}"
+                    CommandParameter="TimeElapsed" />
+          <MenuItem Header="Timer title"
+                    ToggleType="Radio"
+                    GroupName="WindowTitleMode"
+                    IsChecked="{Binding IsTimerTitleModeSelected, Mode=OneWay}"
+                    Command="{Binding SelectWindowTitleModeCommand}"
+                    CommandParameter="TimerTitle" />
+          <MenuItem Header="Time left plus timer title"
+                    ToggleType="Radio"
+                    GroupName="WindowTitleMode"
+                    IsChecked="{Binding IsTimeLeftPlusTimerTitleModeSelected, Mode=OneWay}"
+                    Command="{Binding SelectWindowTitleModeCommand}"
+                    CommandParameter="TimeLeftPlusTimerTitle" />
+          <MenuItem Header="Time elapsed plus timer title"
+                    ToggleType="Radio"
+                    GroupName="WindowTitleMode"
+                    IsChecked="{Binding IsTimeElapsedPlusTimerTitleModeSelected, Mode=OneWay}"
+                    Command="{Binding SelectWindowTitleModeCommand}"
+                    CommandParameter="TimeElapsedPlusTimerTitle" />
+          <MenuItem Header="Timer title plus time left"
+                    ToggleType="Radio"
+                    GroupName="WindowTitleMode"
+                    IsChecked="{Binding IsTimerTitlePlusTimeLeftModeSelected, Mode=OneWay}"
+                    Command="{Binding SelectWindowTitleModeCommand}"
+                    CommandParameter="TimerTitlePlusTimeLeft" />
+          <MenuItem Header="Timer title plus time elapsed"
+                    ToggleType="Radio"
+                    GroupName="WindowTitleMode"
+                    IsChecked="{Binding IsTimerTitlePlusTimeElapsedModeSelected, Mode=OneWay}"
+                    Command="{Binding SelectWindowTitleModeCommand}"
+                    CommandParameter="TimerTitlePlusTimeElapsed" />
+        </MenuItem>
         <MenuItem Header="Advanced options">
           <MenuItem Header="Reverse progress bar"
                     ToggleType="CheckBox"
