@@ -1,4 +1,4 @@
-# Hourglass
+# Hourglass Linux
 
 The simple countdown timer originally for Windows, now on Linux.
 
