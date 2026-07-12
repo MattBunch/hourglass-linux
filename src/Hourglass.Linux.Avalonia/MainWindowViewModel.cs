@@ -1897,6 +1897,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         bool loopTimer = SelectChanged(previous.LoopTimer, requested.LoopTimer, latest.LoopTimer);
         bool loopSound = SelectChanged(previous.LoopSound, requested.LoopSound, latest.LoopSound);
         bool closeWhenExpired = SelectChanged(previous.CloseWhenExpired, requested.CloseWhenExpired, latest.CloseWhenExpired);
+        bool audioAlertsEnabled = SelectChanged(previous.AudioAlertsEnabled, requested.AudioAlertsEnabled, latest.AudioAlertsEnabled);
         string audioAlertSoundId = SelectChanged(previous.AudioAlertSoundId, requested.AudioAlertSoundId, latest.AudioAlertSoundId);
         if (previous.LoopTimer != requested.LoopTimer
             || previous.LoopSound != requested.LoopSound
@@ -1906,13 +1907,14 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             loopTimer = requested.LoopTimer;
             loopSound = requested.LoopSound;
             closeWhenExpired = requested.CloseWhenExpired;
+            audioAlertsEnabled = requested.AudioAlertsEnabled;
             audioAlertSoundId = requested.AudioAlertSoundId;
         }
 
         return new LinuxAppSettings(
             recentTimerInputs,
             SelectChanged(previous.NotificationsEnabled, requested.NotificationsEnabled, latest.NotificationsEnabled),
-            SelectChanged(previous.AudioAlertsEnabled, requested.AudioAlertsEnabled, latest.AudioAlertsEnabled),
+            audioAlertsEnabled,
             SelectChanged(previous.AlwaysOnTop, requested.AlwaysOnTop, latest.AlwaysOnTop),
             SelectChanged(previous.PopUpWhenExpired, requested.PopUpWhenExpired, latest.PopUpWhenExpired),
             SelectChanged(previous.PromptOnExit, requested.PromptOnExit, latest.PromptOnExit),

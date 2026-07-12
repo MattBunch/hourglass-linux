@@ -1952,6 +1952,30 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
+    public async Task SettingsSaveAppliesAudioSoundAsCoherentOptionGroup()
+    {
+        var settingsStore = new RecordingSettingsStore
+        {
+            LoadedSettings = LinuxAppSettings.Default
+        };
+        var viewModel = CreateViewModel(new ManualMonotonicClock(), settingsStore: settingsStore);
+
+        await viewModel.LoadSettingsAsync();
+        settingsStore.LoadedSettings = LinuxAppSettings.Default with
+        {
+            AudioAlertsEnabled = false,
+            AudioAlertSoundId = AudioAlertSoundIds.None
+        };
+
+        viewModel.SelectAudioAlertSoundCommand.Execute(AudioAlertSoundIds.QuietBeep);
+        await viewModel.PendingSettingsSave;
+
+        Assert.NotNull(settingsStore.SavedSettings);
+        Assert.True(settingsStore.SavedSettings.AudioAlertsEnabled);
+        Assert.Equal(AudioAlertSoundIds.QuietBeep, settingsStore.SavedSettings.AudioAlertSoundId);
+    }
+
+    [Fact]
     public async Task UnsupportedStatusIconMasksPersistedSettingAndDoesNotSaveToggle()
     {
         var settingsStore = new RecordingSettingsStore
