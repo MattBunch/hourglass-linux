@@ -973,9 +973,29 @@ public sealed class MainWindowViewModelTests
         Assert.Equal("CheckBox", menuItems["Notifications"].Attribute("ToggleType")?.Value);
         Assert.Equal("{Binding NotificationsEnabled, Mode=OneWay}", menuItems["Notifications"].Attribute("IsChecked")?.Value);
         Assert.Equal("{Binding ToggleNotificationsCommand}", menuItems["Notifications"].Attribute("Command")?.Value);
-        Assert.Equal("CheckBox", menuItems["Sound"].Attribute("ToggleType")?.Value);
-        Assert.Equal("{Binding AudioAlertsEnabled, Mode=OneWay}", menuItems["Sound"].Attribute("IsChecked")?.Value);
-        Assert.Equal("{Binding ToggleAudioAlertsCommand}", menuItems["Sound"].Attribute("Command")?.Value);
+        Dictionary<string, XElement> soundItems = menuItems["Sound"]
+            .Elements(avalonia + "MenuItem")
+            .Where(element => element.Attribute("Header") != null)
+            .ToDictionary(element => element.Attribute("Header")!.Value, StringComparer.Ordinal);
+        Assert.Equal("Radio", soundItems["None"].Attribute("ToggleType")?.Value);
+        Assert.Equal("AudioAlertSound", soundItems["None"].Attribute("GroupName")?.Value);
+        Assert.Equal("{Binding IsNoSoundSelected, Mode=OneWay}", soundItems["None"].Attribute("IsChecked")?.Value);
+        Assert.Equal("{Binding SelectAudioAlertSoundCommand}", soundItems["None"].Attribute("Command")?.Value);
+        Assert.Equal("none", soundItems["None"].Attribute("CommandParameter")?.Value);
+        Assert.Equal("Radio", soundItems["Loud beep"].Attribute("ToggleType")?.Value);
+        Assert.Equal("{Binding IsLoudBeepSoundSelected, Mode=OneWay}", soundItems["Loud beep"].Attribute("IsChecked")?.Value);
+        Assert.Equal("{Binding SelectAudioAlertSoundCommand}", soundItems["Loud beep"].Attribute("Command")?.Value);
+        Assert.Equal("resource:Loud beep", soundItems["Loud beep"].Attribute("CommandParameter")?.Value);
+        Assert.Equal("Radio", soundItems["Normal beep"].Attribute("ToggleType")?.Value);
+        Assert.Equal("{Binding IsNormalBeepSoundSelected, Mode=OneWay}", soundItems["Normal beep"].Attribute("IsChecked")?.Value);
+        Assert.Equal("{Binding SelectAudioAlertSoundCommand}", soundItems["Normal beep"].Attribute("Command")?.Value);
+        Assert.Equal("resource:Normal beep", soundItems["Normal beep"].Attribute("CommandParameter")?.Value);
+        Assert.Equal("Radio", soundItems["Quiet beep"].Attribute("ToggleType")?.Value);
+        Assert.Equal("{Binding IsQuietBeepSoundSelected, Mode=OneWay}", soundItems["Quiet beep"].Attribute("IsChecked")?.Value);
+        Assert.Equal("{Binding SelectAudioAlertSoundCommand}", soundItems["Quiet beep"].Attribute("Command")?.Value);
+        Assert.Equal("resource:Quiet beep", soundItems["Quiet beep"].Attribute("CommandParameter")?.Value);
+        Assert.Equal("{Binding PreviewAudioAlertSoundCommand}", soundItems["Preview selected sound"].Attribute("Command")?.Value);
+        Assert.Equal("{Binding StopAudioAlertPreviewCommand}", soundItems["Stop preview"].Attribute("Command")?.Value);
         Assert.Equal("CheckBox", menuItems["Pop up when expired"].Attribute("ToggleType")?.Value);
         Assert.Equal("{Binding PopUpWhenExpired, Mode=OneWay}", menuItems["Pop up when expired"].Attribute("IsChecked")?.Value);
         Assert.Equal("{Binding TogglePopUpWhenExpiredCommand}", menuItems["Pop up when expired"].Attribute("Command")?.Value);
@@ -1451,6 +1471,30 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
+    public async Task TickTransitionsExpiredTimerPlaysSelectedAudioSound()
+    {
+        var clock = new ManualMonotonicClock();
+        var audioAlertService = new RecordingAudioAlertService();
+        var settingsStore = new RecordingSettingsStore
+        {
+            LoadedSettings = LinuxAppSettings.Default with { AudioAlertSoundId = AudioAlertSoundIds.QuietBeep }
+        };
+        var viewModel = CreateViewModel(
+            clock,
+            settingsStore: settingsStore,
+            audioAlertService: audioAlertService);
+
+        await viewModel.LoadSettingsAsync();
+        viewModel.TimerInput = "1 second";
+        viewModel.StartCommand.Execute(null);
+        clock.Advance(TimeSpan.FromSeconds(2));
+        viewModel.Tick();
+
+        Assert.Equal(1, audioAlertService.CallCount);
+        Assert.Equal(AudioAlertSoundIds.QuietBeep, audioAlertService.SoundId);
+    }
+
+    [Fact]
     public void ExpiryPublishesAttentionAndVisualFeedbackOncePerTimerCycle()
     {
         var clock = new ManualMonotonicClock();
@@ -1681,8 +1725,79 @@ public sealed class MainWindowViewModelTests
         await viewModel.PendingSettingsSave;
 
         Assert.False(viewModel.AudioAlertsEnabled);
+        Assert.True(viewModel.IsNoSoundSelected);
         Assert.NotNull(settingsStore.SavedSettings);
         Assert.False(settingsStore.SavedSettings.AudioAlertsEnabled);
+        Assert.Equal(AudioAlertSoundIds.None, settingsStore.SavedSettings.AudioAlertSoundId);
+    }
+
+    [Fact]
+    public async Task SelectAudioAlertSoundChangesStateAndSavesSettings()
+    {
+        var settingsStore = new RecordingSettingsStore();
+        var viewModel = CreateViewModel(new ManualMonotonicClock(), settingsStore: settingsStore);
+
+        viewModel.SelectAudioAlertSoundCommand.Execute(AudioAlertSoundIds.QuietBeep);
+        await viewModel.PendingSettingsSave;
+
+        Assert.True(viewModel.AudioAlertsEnabled);
+        Assert.True(viewModel.IsQuietBeepSoundSelected);
+        Assert.False(viewModel.IsNormalBeepSoundSelected);
+        Assert.NotNull(settingsStore.SavedSettings);
+        Assert.True(settingsStore.SavedSettings.AudioAlertsEnabled);
+        Assert.Equal(AudioAlertSoundIds.QuietBeep, settingsStore.SavedSettings.AudioAlertSoundId);
+    }
+
+    [Fact]
+    public async Task SelectNoSoundDisablesAudioAlertsAndSavesSettings()
+    {
+        var settingsStore = new RecordingSettingsStore();
+        var viewModel = CreateViewModel(new ManualMonotonicClock(), settingsStore: settingsStore);
+
+        viewModel.SelectAudioAlertSoundCommand.Execute(AudioAlertSoundIds.None);
+        await viewModel.PendingSettingsSave;
+
+        Assert.False(viewModel.AudioAlertsEnabled);
+        Assert.True(viewModel.IsNoSoundSelected);
+        Assert.NotNull(settingsStore.SavedSettings);
+        Assert.False(settingsStore.SavedSettings.AudioAlertsEnabled);
+        Assert.Equal(AudioAlertSoundIds.None, settingsStore.SavedSettings.AudioAlertSoundId);
+    }
+
+    [Fact]
+    public async Task LoadDisabledAudioAlertSettingsShowsNoSoundSelected()
+    {
+        var settingsStore = new RecordingSettingsStore
+        {
+            LoadedSettings = new LinuxAppSettings(audioAlertsEnabled: false)
+        };
+        var viewModel = CreateViewModel(new ManualMonotonicClock(), settingsStore: settingsStore);
+
+        await viewModel.LoadSettingsAsync();
+
+        Assert.False(viewModel.AudioAlertsEnabled);
+        Assert.True(viewModel.IsNoSoundSelected);
+        Assert.False(viewModel.IsNormalBeepSoundSelected);
+    }
+
+    [Fact]
+    public async Task PreviewAudioAlertSoundPlaysSelectedSound()
+    {
+        var audioAlertService = new RecordingAudioAlertService();
+        var settingsStore = new RecordingSettingsStore
+        {
+            LoadedSettings = LinuxAppSettings.Default with { AudioAlertSoundId = AudioAlertSoundIds.LoudBeep }
+        };
+        var viewModel = CreateViewModel(
+            new ManualMonotonicClock(),
+            settingsStore: settingsStore,
+            audioAlertService: audioAlertService);
+
+        await viewModel.LoadSettingsAsync();
+        viewModel.PreviewAudioAlertSoundCommand.Execute(null);
+
+        Assert.Equal(1, audioAlertService.CallCount);
+        Assert.Equal(AudioAlertSoundIds.LoudBeep, audioAlertService.SoundId);
     }
 
     [Fact]
@@ -1834,6 +1949,54 @@ public sealed class MainWindowViewModelTests
         Assert.True(settingsStore.SavedSettings.LoopSound);
         Assert.False(settingsStore.SavedSettings.CloseWhenExpired);
         Assert.False(settingsStore.SavedSettings.LoopTimer);
+    }
+
+    [Fact]
+    public async Task SettingsSaveKeepsLatestAudioSelectionWhenLoopOptionChanges()
+    {
+        var settingsStore = new RecordingSettingsStore
+        {
+            LoadedSettings = LinuxAppSettings.Default
+        };
+        var viewModel = CreateViewModel(new ManualMonotonicClock(), settingsStore: settingsStore);
+
+        await viewModel.LoadSettingsAsync();
+        settingsStore.LoadedSettings = LinuxAppSettings.Default with
+        {
+            AudioAlertSoundId = AudioAlertSoundIds.QuietBeep
+        };
+
+        viewModel.ToggleLoopSoundCommand.Execute(null);
+        await viewModel.PendingSettingsSave;
+
+        Assert.NotNull(settingsStore.SavedSettings);
+        Assert.True(settingsStore.SavedSettings.LoopSound);
+        Assert.True(settingsStore.SavedSettings.AudioAlertsEnabled);
+        Assert.Equal(AudioAlertSoundIds.QuietBeep, settingsStore.SavedSettings.AudioAlertSoundId);
+    }
+
+    [Fact]
+    public async Task SettingsSaveAppliesAudioSoundAsCoherentOptionGroup()
+    {
+        var settingsStore = new RecordingSettingsStore
+        {
+            LoadedSettings = LinuxAppSettings.Default
+        };
+        var viewModel = CreateViewModel(new ManualMonotonicClock(), settingsStore: settingsStore);
+
+        await viewModel.LoadSettingsAsync();
+        settingsStore.LoadedSettings = LinuxAppSettings.Default with
+        {
+            AudioAlertsEnabled = false,
+            AudioAlertSoundId = AudioAlertSoundIds.None
+        };
+
+        viewModel.SelectAudioAlertSoundCommand.Execute(AudioAlertSoundIds.QuietBeep);
+        await viewModel.PendingSettingsSave;
+
+        Assert.NotNull(settingsStore.SavedSettings);
+        Assert.True(settingsStore.SavedSettings.AudioAlertsEnabled);
+        Assert.Equal(AudioAlertSoundIds.QuietBeep, settingsStore.SavedSettings.AudioAlertSoundId);
     }
 
     [Fact]
@@ -3438,6 +3601,13 @@ public sealed class MainWindowViewModelTests
 
     private sealed class RecordingAudioAlertService : IAudioAlertService
     {
+        private readonly HashSet<string> availableSoundIds = new(StringComparer.Ordinal)
+        {
+            AudioAlertSoundIds.LoudBeep,
+            AudioAlertSoundIds.NormalBeep,
+            AudioAlertSoundIds.QuietBeep
+        };
+
         public int CallCount { get; private set; }
 
         public int LoopingCallCount { get; private set; }
@@ -3447,6 +3617,11 @@ public sealed class MainWindowViewModelTests
         public string? SoundId { get; private set; }
 
         public bool ThrowOnPlay { get; init; }
+
+        public bool IsSoundAvailable(string soundId)
+        {
+            return this.availableSoundIds.Contains(soundId);
+        }
 
         public Task<IAsyncDisposable?> PlayAlertAsync(string soundId, CancellationToken cancellationToken = default)
         {

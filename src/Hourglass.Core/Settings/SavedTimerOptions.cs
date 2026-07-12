@@ -13,8 +13,11 @@ public sealed record SavedTimerOptions(
     bool LockInterface = false,
     bool DoNotKeepComputerAwake = false,
     bool ShutDownWhenExpired = false,
-    WindowTitleMode WindowTitleMode = WindowTitleMode.TimerTitle)
+    WindowTitleMode WindowTitleMode = WindowTitleMode.TimerTitle,
+    string? AudioAlertSoundId = null)
 {
+    public string? AudioAlertSoundId { get; init; } = NormalizeOptionalSoundId(AudioAlertSoundId);
+
     public static SavedTimerOptions FromSettings(LinuxAppSettings settings)
     {
         ArgumentNullException.ThrowIfNull(settings);
@@ -28,7 +31,8 @@ public sealed record SavedTimerOptions(
             settings.LockInterface,
             settings.DoNotKeepComputerAwake,
             settings.ShutDownWhenExpired,
-            settings.WindowTitleMode);
+            settings.WindowTitleMode,
+            settings.AudioAlertsEnabled ? settings.AudioAlertSoundId : BuiltInAudioAlertSounds.None);
     }
 
     public LinuxAppSettings ApplyTo(LinuxAppSettings settings)
@@ -45,7 +49,18 @@ public sealed record SavedTimerOptions(
             LockInterface = this.LockInterface,
             DoNotKeepComputerAwake = this.DoNotKeepComputerAwake,
             ShutDownWhenExpired = this.ShutDownWhenExpired,
-            WindowTitleMode = this.WindowTitleMode
+            WindowTitleMode = this.WindowTitleMode,
+            AudioAlertsEnabled = this.AudioAlertSoundId == null
+                ? settings.AudioAlertsEnabled
+                : !BuiltInAudioAlertSounds.IsNone(this.AudioAlertSoundId),
+            AudioAlertSoundId = this.AudioAlertSoundId ?? settings.AudioAlertSoundId
         };
+    }
+
+    private static string? NormalizeOptionalSoundId(string? soundId)
+    {
+        return soundId == null
+            ? null
+            : BuiltInAudioAlertSounds.NormalizeId(soundId);
     }
 }

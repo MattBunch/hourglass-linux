@@ -39,7 +39,8 @@ public sealed class SavedTimersDocumentTests
                 LockInterface: true,
                 DoNotKeepComputerAwake: true,
                 ShutDownWhenExpired: true,
-                WindowTitleMode: WindowTitleMode.TimerTitlePlusTimeLeft));
+                WindowTitleMode: WindowTitleMode.TimerTitlePlusTimeLeft,
+                AudioAlertSoundId: BuiltInAudioAlertSounds.LoudBeep));
         var document = new SavedTimersDocument(timers: [timer]);
 
         string json = JsonSerializer.Serialize(document);
@@ -86,7 +87,8 @@ public sealed class SavedTimersDocumentTests
             LockInterface: true,
             DoNotKeepComputerAwake: true,
             ShutDownWhenExpired: true,
-            WindowTitleMode: WindowTitleMode.TimeElapsedPlusTimerTitle);
+            WindowTitleMode: WindowTitleMode.TimeElapsedPlusTimerTitle,
+            AudioAlertSoundId: BuiltInAudioAlertSounds.QuietBeep);
         var document = new ActiveTimerSessionDocument(
             timerInput: "10 seconds",
             options: options);
@@ -97,6 +99,50 @@ public sealed class SavedTimersDocumentTests
         Assert.NotNull(roundTripped);
         Assert.True(roundTripped.HasOptions);
         Assert.Equal(options, roundTripped.Options);
+    }
+
+    [Fact]
+    public void LegacySavedTimerOptionsPreserveCurrentSoundSelection()
+    {
+        LinuxAppSettings disabledSettings = LinuxAppSettings.Default with
+        {
+            AudioAlertsEnabled = false,
+            AudioAlertSoundId = BuiltInAudioAlertSounds.None
+        };
+        LinuxAppSettings quietSettings = LinuxAppSettings.Default with
+        {
+            AudioAlertSoundId = BuiltInAudioAlertSounds.QuietBeep
+        };
+        var legacyOptions = new SavedTimerOptions(ReverseProgressBar: true);
+
+        LinuxAppSettings appliedToDisabled = legacyOptions.ApplyTo(disabledSettings);
+        LinuxAppSettings appliedToQuiet = legacyOptions.ApplyTo(quietSettings);
+
+        Assert.True(appliedToDisabled.ReverseProgressBar);
+        Assert.False(appliedToDisabled.AudioAlertsEnabled);
+        Assert.Equal(BuiltInAudioAlertSounds.None, appliedToDisabled.AudioAlertSoundId);
+        Assert.True(appliedToQuiet.AudioAlertsEnabled);
+        Assert.Equal(BuiltInAudioAlertSounds.QuietBeep, appliedToQuiet.AudioAlertSoundId);
+    }
+
+    [Fact]
+    public void SavedTimerOptionsApplySoundSelectionCoherently()
+    {
+        LinuxAppSettings disabledSettings = LinuxAppSettings.Default with
+        {
+            AudioAlertsEnabled = false,
+            AudioAlertSoundId = BuiltInAudioAlertSounds.None
+        };
+        var quietOptions = new SavedTimerOptions(AudioAlertSoundId: BuiltInAudioAlertSounds.QuietBeep);
+        var noSoundOptions = new SavedTimerOptions(AudioAlertSoundId: BuiltInAudioAlertSounds.None);
+
+        LinuxAppSettings quietSettings = quietOptions.ApplyTo(disabledSettings);
+        LinuxAppSettings noSoundSettings = noSoundOptions.ApplyTo(LinuxAppSettings.Default);
+
+        Assert.True(quietSettings.AudioAlertsEnabled);
+        Assert.Equal(BuiltInAudioAlertSounds.QuietBeep, quietSettings.AudioAlertSoundId);
+        Assert.False(noSoundSettings.AudioAlertsEnabled);
+        Assert.Equal(BuiltInAudioAlertSounds.None, noSoundSettings.AudioAlertSoundId);
     }
 
     [Fact]
@@ -134,10 +180,12 @@ public sealed class SavedTimersDocumentTests
         SavedTimerDefinition timer = Assert.Single(savedTimers.Timers);
         Assert.True(timer.Options.ReverseProgressBar);
         Assert.Equal(WindowTitleMode.TimerTitle, timer.Options.WindowTitleMode);
+        Assert.Null(timer.Options.AudioAlertSoundId);
         Assert.NotNull(activeSession);
         Assert.True(activeSession.HasOptions);
         Assert.True(activeSession.Options.ShowTimeElapsed);
         Assert.Equal(WindowTitleMode.TimerTitle, activeSession.Options.WindowTitleMode);
+        Assert.Null(activeSession.Options.AudioAlertSoundId);
     }
 
     [Fact]

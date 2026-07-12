@@ -12,7 +12,7 @@ public sealed record LinuxAppSettings
     private readonly string[] recentTimerInputs;
 
     public LinuxAppSettings()
-        : this(null, true, true, false, true, true, false, false, false, false, false, false, false, false, true, false, true, false, LinuxThemePreference.System, WindowTitleMode.TimerTitle)
+        : this(null, true, true, false, true, true, false, false, false, false, false, false, false, false, true, false, true, false, LinuxThemePreference.System, WindowTitleMode.TimerTitle, BuiltInAudioAlertSounds.NormalBeep)
     {
     }
 
@@ -37,11 +37,15 @@ public sealed record LinuxAppSettings
         bool restoreActiveSessionOnStartup = true,
         bool openSavedTimersOnStartup = false,
         LinuxThemePreference themePreference = LinuxThemePreference.System,
-        WindowTitleMode windowTitleMode = WindowTitleMode.TimerTitle)
+        WindowTitleMode windowTitleMode = WindowTitleMode.TimerTitle,
+        string audioAlertSoundId = BuiltInAudioAlertSounds.NormalBeep)
     {
+        string normalizedAudioAlertSoundId = BuiltInAudioAlertSounds.NormalizeId(audioAlertSoundId);
+        bool effectiveAudioAlertsEnabled = audioAlertsEnabled
+            && !StringComparer.Ordinal.Equals(normalizedAudioAlertSoundId, BuiltInAudioAlertSounds.None);
         this.recentTimerInputs = NormalizeRecentTimerInputs(recentTimerInputs, DefaultMaxRecentTimerInputs);
         this.NotificationsEnabled = notificationsEnabled;
-        this.AudioAlertsEnabled = audioAlertsEnabled;
+        this.AudioAlertsEnabled = effectiveAudioAlertsEnabled;
         this.AlwaysOnTop = alwaysOnTop;
         this.PopUpWhenExpired = popUpWhenExpired;
         this.PromptOnExit = promptOnExit;
@@ -59,6 +63,9 @@ public sealed record LinuxAppSettings
         this.OpenSavedTimersOnStartup = openSavedTimersOnStartup;
         this.ThemePreference = themePreference;
         this.WindowTitleMode = windowTitleMode;
+        this.AudioAlertSoundId = effectiveAudioAlertsEnabled
+            ? normalizedAudioAlertSoundId
+            : BuiltInAudioAlertSounds.None;
     }
 
     public static LinuxAppSettings Default { get; } = new();
@@ -103,6 +110,8 @@ public sealed record LinuxAppSettings
 
     public WindowTitleMode WindowTitleMode { get; init; }
 
+    public string AudioAlertSoundId { get; init; }
+
     public LinuxAppSettings AddRecentTimerInput(string timerInput, int maxRecentTimerInputs = DefaultMaxRecentTimerInputs)
     {
         if (maxRecentTimerInputs < 1)
@@ -141,7 +150,8 @@ public sealed record LinuxAppSettings
             this.RestoreActiveSessionOnStartup,
             this.OpenSavedTimersOnStartup,
             this.ThemePreference,
-            this.WindowTitleMode);
+            this.WindowTitleMode,
+            this.AudioAlertSoundId);
     }
 
     public LinuxAppSettings ClearRecentTimerInputs()
@@ -166,7 +176,8 @@ public sealed record LinuxAppSettings
             this.RestoreActiveSessionOnStartup,
             this.OpenSavedTimersOnStartup,
             this.ThemePreference,
-            this.WindowTitleMode);
+            this.WindowTitleMode,
+            this.AudioAlertSoundId);
     }
 
     public string GetInitialTimerInput(string defaultTimerInput)

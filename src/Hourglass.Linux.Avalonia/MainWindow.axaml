@@ -165,10 +165,37 @@
                   ToggleType="CheckBox"
                   IsChecked="{Binding NotificationsEnabled, Mode=OneWay}"
                   Command="{Binding ToggleNotificationsCommand}" />
-        <MenuItem Header="Sound"
-                  ToggleType="CheckBox"
-                  IsChecked="{Binding AudioAlertsEnabled, Mode=OneWay}"
-                  Command="{Binding ToggleAudioAlertsCommand}" />
+        <MenuItem Header="Sound">
+          <MenuItem Header="None"
+                    ToggleType="Radio"
+                    GroupName="AudioAlertSound"
+                    IsChecked="{Binding IsNoSoundSelected, Mode=OneWay}"
+                    Command="{Binding SelectAudioAlertSoundCommand}"
+                    CommandParameter="none" />
+          <MenuItem Header="Loud beep"
+                    ToggleType="Radio"
+                    GroupName="AudioAlertSound"
+                    IsChecked="{Binding IsLoudBeepSoundSelected, Mode=OneWay}"
+                    Command="{Binding SelectAudioAlertSoundCommand}"
+                    CommandParameter="resource:Loud beep" />
+          <MenuItem Header="Normal beep"
+                    ToggleType="Radio"
+                    GroupName="AudioAlertSound"
+                    IsChecked="{Binding IsNormalBeepSoundSelected, Mode=OneWay}"
+                    Command="{Binding SelectAudioAlertSoundCommand}"
+                    CommandParameter="resource:Normal beep" />
+          <MenuItem Header="Quiet beep"
+                    ToggleType="Radio"
+                    GroupName="AudioAlertSound"
+                    IsChecked="{Binding IsQuietBeepSoundSelected, Mode=OneWay}"
+                    Command="{Binding SelectAudioAlertSoundCommand}"
+                    CommandParameter="resource:Quiet beep" />
+          <Separator />
+          <MenuItem Header="Preview selected sound"
+                    Command="{Binding PreviewAudioAlertSoundCommand}" />
+          <MenuItem Header="Stop preview"
+                    Command="{Binding StopAudioAlertPreviewCommand}" />
+        </MenuItem>
         <MenuItem Header="Pop up when expired"
                   ToggleType="CheckBox"
                   IsChecked="{Binding PopUpWhenExpired, Mode=OneWay}"

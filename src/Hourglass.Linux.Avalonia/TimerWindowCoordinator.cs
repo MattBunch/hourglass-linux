@@ -17,11 +17,10 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
     private const string SettingsKey = "app";
     private const string SavedTimersKey = "saved-timers";
 
-    private static readonly string NormalBeepPath = Path.Combine(
+    private static readonly string SoundAssetsDirectory = Path.Combine(
         AppContext.BaseDirectory,
         "Assets",
-        "Sounds",
-        "BeepNormal.wav");
+        "Sounds");
 
     private static readonly Uri StatusIconResourceUri = new("avares://hourglass-linux/Assets/hourglass.png");
 
@@ -47,7 +46,7 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
             lifetime,
             new JsonFileSettingsStore(new XdgSettingsPathService()),
             new NotifySendNotificationService(),
-            new LinuxAudioAlertService(NormalBeepPath),
+            new LinuxAudioAlertService(SoundAssetsDirectory),
             new CoordinatedSessionInhibitor(new SystemdSessionInhibitor()),
             new UnsupportedSystemPowerService(),
             LinuxDesktopProgressServiceFactory.CreateDefault(),

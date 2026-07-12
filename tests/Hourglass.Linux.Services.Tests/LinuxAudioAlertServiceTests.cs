@@ -163,12 +163,48 @@ public sealed class LinuxAudioAlertServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task BuiltInSoundDirectoryMapsSelectedSoundToAssetFile()
+    {
+        string soundPath = this.CreateSoundFile("BeepQuiet.wav");
+        var calls = new List<ProcessStartInfo>();
+        var service = new LinuxAudioAlertService(
+            LinuxAudioAlertService.CreateBuiltInSoundPaths(this.tempDirectory),
+            (startInfo, _) =>
+            {
+                calls.Add(startInfo);
+                return Task.FromResult(0);
+            });
+
+        await service.PlayAlertAsync(AudioAlertSoundIds.QuietBeep);
+
+        ProcessStartInfo call = Assert.Single(calls);
+        Assert.Equal(soundPath, call.ArgumentList.Single());
+    }
+
+    [Fact]
+    public void IsSoundAvailableReportsExistingBuiltInAssets()
+    {
+        string soundPath = this.CreateSoundFile("BeepLoud.wav");
+        var service = new LinuxAudioAlertService(
+            new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                [AudioAlertSoundIds.LoudBeep] = soundPath,
+                [AudioAlertSoundIds.NormalBeep] = Path.Combine(this.tempDirectory, "missing.wav")
+            },
+            (_, _) => Task.FromResult(0));
+
+        Assert.True(service.IsSoundAvailable(AudioAlertSoundIds.LoudBeep));
+        Assert.False(service.IsSoundAvailable(AudioAlertSoundIds.NormalBeep));
+        Assert.False(service.IsSoundAvailable(AudioAlertSoundIds.None));
+    }
+
+    [Fact]
     public async Task UnsupportedSoundIdThrows()
     {
         string soundPath = this.CreateSoundFile();
         var service = new LinuxAudioAlertService(soundPath, (_, _) => Task.FromResult(0));
 
-        await Assert.ThrowsAsync<ArgumentException>(() => service.PlayAlertAsync("resource:Loud beep"));
+        await Assert.ThrowsAsync<ArgumentException>(() => service.PlayAlertAsync("resource:Missing beep"));
     }
 
     [Fact]

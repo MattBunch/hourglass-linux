@@ -29,6 +29,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private readonly ISystemPowerService systemPowerService;
     private readonly Func<DateTime> wallClockNow;
     private IAsyncDisposable? activeAudioPlayback;
+    private CancellationTokenSource? audioPreviewCancellation;
     private IAsyncDisposable? inhibitionLease;
     private Task pendingActiveSessionSave = Task.CompletedTask;
     private Task pendingSavedTimersSave = Task.CompletedTask;
@@ -207,6 +208,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         this.ToggleOpenSavedTimersOnStartupCommand = new RelayCommand(this.ToggleOpenSavedTimersOnStartup, () => !this.IsTimerModificationLocked);
         this.SelectThemePreferenceCommand = new RelayCommand<string>(this.SelectThemePreference, value => !string.IsNullOrWhiteSpace(value) && !this.IsTimerModificationLocked);
         this.SelectWindowTitleModeCommand = new RelayCommand<string>(this.SelectWindowTitleMode, value => !string.IsNullOrWhiteSpace(value) && !this.IsTimerModificationLocked);
+        this.SelectAudioAlertSoundCommand = new RelayCommand<string>(this.SelectAudioAlertSound, value => this.CanSelectAudioAlertSound(value));
+        this.PreviewAudioAlertSoundCommand = new RelayCommand(this.PreviewAudioAlertSound, () => this.CanPreviewAudioAlertSound);
+        this.StopAudioAlertPreviewCommand = new RelayCommand(this.StopAudioAlertPreview, () => this.IsAudioPreviewActive);
         this.NewTimerCommand = new RelayCommand(this.RequestNewTimer, () => !this.IsTimerModificationLocked);
         this.SelectRecentInputCommand = new RelayCommand<string>(this.SelectRecentInput, input => !string.IsNullOrWhiteSpace(input) && !this.IsTimerModificationLocked);
         this.ClearRecentInputsCommand = new RelayCommand(this.ClearRecentInputs, () => this.RecentInputMenuItems.Length > 0 && !this.IsTimerModificationLocked);
@@ -304,6 +308,12 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     public RelayCommand<string> SelectThemePreferenceCommand { get; }
 
     public RelayCommand<string> SelectWindowTitleModeCommand { get; }
+
+    public RelayCommand<string> SelectAudioAlertSoundCommand { get; }
+
+    public RelayCommand PreviewAudioAlertSoundCommand { get; }
+
+    public RelayCommand StopAudioAlertPreviewCommand { get; }
 
     public RelayCommand NewTimerCommand { get; }
 
@@ -403,6 +413,27 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     public bool NotificationsEnabled => this.settings.NotificationsEnabled;
 
     public bool AudioAlertsEnabled => this.settings.AudioAlertsEnabled;
+
+    public string AudioAlertSoundId => this.settings.AudioAlertSoundId;
+
+    public bool IsNoSoundSelected => !this.settings.AudioAlertsEnabled
+        || StringComparer.Ordinal.Equals(this.settings.AudioAlertSoundId, AudioAlertSoundIds.None);
+
+    public bool IsLoudBeepSoundSelected => this.settings.AudioAlertsEnabled
+        && StringComparer.Ordinal.Equals(this.settings.AudioAlertSoundId, AudioAlertSoundIds.LoudBeep);
+
+    public bool IsNormalBeepSoundSelected => this.settings.AudioAlertsEnabled
+        && StringComparer.Ordinal.Equals(this.settings.AudioAlertSoundId, AudioAlertSoundIds.NormalBeep);
+
+    public bool IsQuietBeepSoundSelected => this.settings.AudioAlertsEnabled
+        && StringComparer.Ordinal.Equals(this.settings.AudioAlertSoundId, AudioAlertSoundIds.QuietBeep);
+
+    public bool CanPreviewAudioAlertSound =>
+        !this.IsTimerModificationLocked
+        && !this.IsNoSoundSelected
+        && this.audioAlertService.IsSoundAvailable(this.settings.AudioAlertSoundId);
+
+    public bool IsAudioPreviewActive => this.audioPreviewCancellation != null;
 
     public bool AlwaysOnTop => this.settings.AlwaysOnTop;
 
@@ -626,6 +657,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     {
         this.engine.Expired -= this.OnEngineExpired;
         _ = this.StopActiveAudioAsync();
+        _ = this.StopAudioPreviewAsync();
         _ = this.ReleaseInhibitionAsync();
     }
 
@@ -843,10 +875,18 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         if (this.settings.AudioAlertsEnabled)
         {
             _ = this.StopActiveAudioAsync();
+            _ = this.StopAudioPreviewAsync();
         }
 
+        string nextSoundId = this.settings.AudioAlertsEnabled
+            ? AudioAlertSoundIds.None
+            : BuiltInAudioAlertSounds.Default.Id;
         this.ReplaceSettings(
-            this.settings with { AudioAlertsEnabled = !this.settings.AudioAlertsEnabled },
+            this.settings with
+            {
+                AudioAlertsEnabled = !this.settings.AudioAlertsEnabled,
+                AudioAlertSoundId = nextSoundId
+            },
             save: true);
     }
 
@@ -1027,6 +1067,92 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         }
 
         this.ReplaceSettings(this.settings with { WindowTitleMode = windowTitleMode }, save: true);
+    }
+
+    private void SelectAudioAlertSound(string? value)
+    {
+        if (!this.CanSelectAudioAlertSound(value))
+        {
+            return;
+        }
+
+        string soundId = BuiltInAudioAlertSounds.NormalizeId(value);
+        bool audioAlertsEnabled = !StringComparer.Ordinal.Equals(soundId, AudioAlertSoundIds.None);
+        if (!audioAlertsEnabled)
+        {
+            _ = this.StopActiveAudioAsync();
+            _ = this.StopAudioPreviewAsync();
+        }
+
+        this.ReplaceSettings(
+            this.settings with
+            {
+                AudioAlertsEnabled = audioAlertsEnabled,
+                AudioAlertSoundId = soundId
+            },
+            save: true);
+    }
+
+    private bool CanSelectAudioAlertSound(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value) || this.IsTimerModificationLocked)
+        {
+            return false;
+        }
+
+        if (!BuiltInAudioAlertSounds.TryGet(value, out AudioAlertSoundDefinition? sound))
+        {
+            return false;
+        }
+
+        return sound?.IsNone == true || (sound != null && this.audioAlertService.IsSoundAvailable(sound.Id));
+    }
+
+    private void PreviewAudioAlertSound()
+    {
+        if (!this.CanPreviewAudioAlertSound)
+        {
+            return;
+        }
+
+        _ = this.PreviewAudioAlertSoundAsync();
+    }
+
+    private async Task PreviewAudioAlertSoundAsync()
+    {
+        await this.StopAudioPreviewAsync().ConfigureAwait(false);
+
+        var cancellation = new CancellationTokenSource();
+        this.audioPreviewCancellation = cancellation;
+        this.OnPropertyChanged(nameof(this.IsAudioPreviewActive));
+        this.StopAudioAlertPreviewCommand.RaiseCanExecuteChanged();
+
+        try
+        {
+            await this.audioAlertService.PlayAlertAsync(this.settings.AudioAlertSoundId, cancellation.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+        {
+        }
+        catch (Exception)
+        {
+        }
+        finally
+        {
+            if (ReferenceEquals(this.audioPreviewCancellation, cancellation))
+            {
+                this.audioPreviewCancellation = null;
+                this.OnPropertyChanged(nameof(this.IsAudioPreviewActive));
+                this.StopAudioAlertPreviewCommand.RaiseCanExecuteChanged();
+            }
+
+            cancellation.Dispose();
+        }
+    }
+
+    private void StopAudioAlertPreview()
+    {
+        _ = this.StopAudioPreviewAsync();
     }
 
     private void SelectRecentInput(string? timerInput)
@@ -1254,6 +1380,16 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         if (previous.AudioAlertsEnabled != next.AudioAlertsEnabled)
         {
             this.OnPropertyChanged(nameof(this.AudioAlertsEnabled));
+        }
+
+        if (!StringComparer.Ordinal.Equals(previous.AudioAlertSoundId, next.AudioAlertSoundId))
+        {
+            this.OnPropertyChanged(nameof(this.AudioAlertSoundId));
+            this.OnPropertyChanged(nameof(this.IsNoSoundSelected));
+            this.OnPropertyChanged(nameof(this.IsLoudBeepSoundSelected));
+            this.OnPropertyChanged(nameof(this.IsNormalBeepSoundSelected));
+            this.OnPropertyChanged(nameof(this.IsQuietBeepSoundSelected));
+            this.OnPropertyChanged(nameof(this.CanPreviewAudioAlertSound));
         }
 
         if (previous.AlwaysOnTop != next.AlwaysOnTop)
@@ -1516,7 +1652,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     private async Task PlayTimerExpiredAudioAsync()
     {
-        if (!this.settings.AudioAlertsEnabled)
+        if (!this.settings.AudioAlertsEnabled || this.IsNoSoundSelected)
         {
             await this.StopActiveAudioAsync().ConfigureAwait(false);
             return;
@@ -1526,8 +1662,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         {
             await this.StopActiveAudioAsync().ConfigureAwait(false);
             this.activeAudioPlayback = this.settings.LoopSound
-                ? await this.audioAlertService.PlayAlertLoopingAsync(AudioAlertSoundIds.NormalBeep).ConfigureAwait(false)
-                : await this.audioAlertService.PlayAlertAsync(AudioAlertSoundIds.NormalBeep).ConfigureAwait(false);
+                ? await this.audioAlertService.PlayAlertLoopingAsync(this.settings.AudioAlertSoundId).ConfigureAwait(false)
+                : await this.audioAlertService.PlayAlertAsync(this.settings.AudioAlertSoundId).ConfigureAwait(false);
         }
         catch (Exception)
         {
@@ -1549,6 +1685,27 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             await playback.DisposeAsync().ConfigureAwait(false);
         }
         catch (Exception)
+        {
+        }
+    }
+
+    private async Task StopAudioPreviewAsync()
+    {
+        CancellationTokenSource? cancellation = this.audioPreviewCancellation;
+        if (cancellation == null)
+        {
+            return;
+        }
+
+        this.audioPreviewCancellation = null;
+        this.OnPropertyChanged(nameof(this.IsAudioPreviewActive));
+        this.StopAudioAlertPreviewCommand.RaiseCanExecuteChanged();
+
+        try
+        {
+            await cancellation.CancelAsync().ConfigureAwait(false);
+        }
+        catch (ObjectDisposedException)
         {
         }
     }
@@ -1740,6 +1897,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         bool loopTimer = SelectChanged(previous.LoopTimer, requested.LoopTimer, latest.LoopTimer);
         bool loopSound = SelectChanged(previous.LoopSound, requested.LoopSound, latest.LoopSound);
         bool closeWhenExpired = SelectChanged(previous.CloseWhenExpired, requested.CloseWhenExpired, latest.CloseWhenExpired);
+        bool audioAlertsEnabled = SelectChanged(previous.AudioAlertsEnabled, requested.AudioAlertsEnabled, latest.AudioAlertsEnabled);
+        string audioAlertSoundId = SelectChanged(previous.AudioAlertSoundId, requested.AudioAlertSoundId, latest.AudioAlertSoundId);
         if (previous.LoopTimer != requested.LoopTimer
             || previous.LoopSound != requested.LoopSound
             || previous.CloseWhenExpired != requested.CloseWhenExpired)
@@ -1749,10 +1908,17 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             closeWhenExpired = requested.CloseWhenExpired;
         }
 
+        if (previous.AudioAlertsEnabled != requested.AudioAlertsEnabled
+            || !StringComparer.Ordinal.Equals(previous.AudioAlertSoundId, requested.AudioAlertSoundId))
+        {
+            audioAlertsEnabled = requested.AudioAlertsEnabled;
+            audioAlertSoundId = requested.AudioAlertSoundId;
+        }
+
         return new LinuxAppSettings(
             recentTimerInputs,
             SelectChanged(previous.NotificationsEnabled, requested.NotificationsEnabled, latest.NotificationsEnabled),
-            SelectChanged(previous.AudioAlertsEnabled, requested.AudioAlertsEnabled, latest.AudioAlertsEnabled),
+            audioAlertsEnabled,
             SelectChanged(previous.AlwaysOnTop, requested.AlwaysOnTop, latest.AlwaysOnTop),
             SelectChanged(previous.PopUpWhenExpired, requested.PopUpWhenExpired, latest.PopUpWhenExpired),
             SelectChanged(previous.PromptOnExit, requested.PromptOnExit, latest.PromptOnExit),
@@ -1784,7 +1950,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
                 requested.OpenSavedTimersOnStartup,
                 latest.OpenSavedTimersOnStartup),
             SelectChanged(previous.ThemePreference, requested.ThemePreference, latest.ThemePreference),
-            SelectChanged(previous.WindowTitleMode, requested.WindowTitleMode, latest.WindowTitleMode));
+            SelectChanged(previous.WindowTitleMode, requested.WindowTitleMode, latest.WindowTitleMode),
+            audioAlertSoundId);
     }
 
     private static string[] MergeRecentTimerInputs(
@@ -1813,6 +1980,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private static bool SelectChanged(bool previous, bool requested, bool latest)
     {
         return previous == requested ? latest : requested;
+    }
+
+    private static string SelectChanged(string previous, string requested, string latest)
+    {
+        return StringComparer.Ordinal.Equals(previous, requested) ? latest : requested;
     }
 
     private static string? FormatOptionalTimerTime(TimeSpan? time)
@@ -1867,6 +2039,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         this.ToggleOpenSavedTimersOnStartupCommand.RaiseCanExecuteChanged();
         this.SelectThemePreferenceCommand.RaiseCanExecuteChanged();
         this.SelectWindowTitleModeCommand.RaiseCanExecuteChanged();
+        this.SelectAudioAlertSoundCommand.RaiseCanExecuteChanged();
+        this.PreviewAudioAlertSoundCommand.RaiseCanExecuteChanged();
+        this.StopAudioAlertPreviewCommand.RaiseCanExecuteChanged();
         this.NewTimerCommand.RaiseCanExecuteChanged();
     }
 
@@ -1891,6 +2066,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private sealed class NoOpAudioAlertService : IAudioAlertService
     {
         public static NoOpAudioAlertService Instance { get; } = new();
+
+        public bool IsSoundAvailable(string soundId)
+        {
+            return false;
+        }
 
         public Task<IAsyncDisposable?> PlayAlertAsync(string soundId, CancellationToken cancellationToken = default)
         {
