@@ -1,6 +1,7 @@
 namespace Hourglass.Core.Tests.Settings;
 
 using Hourglass.Settings;
+using Hourglass.Timing;
 using System.Text.Json;
 using Xunit;
 
@@ -29,6 +30,8 @@ public sealed class LinuxAppSettingsTests
         Assert.False(settings.ShowInNotificationArea);
         Assert.True(settings.RestoreActiveSessionOnStartup);
         Assert.False(settings.OpenSavedTimersOnStartup);
+        Assert.Equal(LinuxThemePreference.System, settings.ThemePreference);
+        Assert.Equal(WindowTitleMode.TimerTitle, settings.WindowTitleMode);
         Assert.Empty(settings.RecentTimerInputs);
     }
 
@@ -62,6 +65,8 @@ public sealed class LinuxAppSettingsTests
         Assert.False(updated.ShowInNotificationArea);
         Assert.True(updated.RestoreActiveSessionOnStartup);
         Assert.False(updated.OpenSavedTimersOnStartup);
+        Assert.Equal(LinuxThemePreference.System, updated.ThemePreference);
+        Assert.Equal(WindowTitleMode.TimerTitle, updated.WindowTitleMode);
     }
 
     [Fact]
@@ -85,7 +90,9 @@ public sealed class LinuxAppSettingsTests
             showProgressInTaskbar: false,
             showInNotificationArea: true,
             restoreActiveSessionOnStartup: false,
-            openSavedTimersOnStartup: true);
+            openSavedTimersOnStartup: true,
+            themePreference: LinuxThemePreference.Dark,
+            windowTitleMode: WindowTitleMode.TimeLeftPlusTimerTitle);
 
         Assert.Equal(["15 minutes"], settings.RecentTimerInputs);
         Assert.False(settings.NotificationsEnabled);
@@ -105,6 +112,8 @@ public sealed class LinuxAppSettingsTests
         Assert.True(settings.ShowInNotificationArea);
         Assert.False(settings.RestoreActiveSessionOnStartup);
         Assert.True(settings.OpenSavedTimersOnStartup);
+        Assert.Equal(LinuxThemePreference.Dark, settings.ThemePreference);
+        Assert.Equal(WindowTitleMode.TimeLeftPlusTimerTitle, settings.WindowTitleMode);
     }
 
     [Fact]
@@ -128,7 +137,9 @@ public sealed class LinuxAppSettingsTests
             showProgressInTaskbar: false,
             showInNotificationArea: true,
             restoreActiveSessionOnStartup: false,
-            openSavedTimersOnStartup: true);
+            openSavedTimersOnStartup: true,
+            themePreference: LinuxThemePreference.Light,
+            windowTitleMode: WindowTitleMode.TimeElapsed);
 
         LinuxAppSettings updated = settings.AddRecentTimerInput("2 seconds");
 
@@ -150,12 +161,16 @@ public sealed class LinuxAppSettingsTests
         Assert.True(updated.ShowInNotificationArea);
         Assert.False(updated.RestoreActiveSessionOnStartup);
         Assert.True(updated.OpenSavedTimersOnStartup);
+        Assert.Equal(LinuxThemePreference.Light, updated.ThemePreference);
+        Assert.Equal(WindowTitleMode.TimeElapsed, updated.WindowTitleMode);
 
         LinuxAppSettings cleared = updated.ClearRecentTimerInputs();
 
         Assert.Empty(cleared.RecentTimerInputs);
         Assert.False(cleared.RestoreActiveSessionOnStartup);
         Assert.True(cleared.OpenSavedTimersOnStartup);
+        Assert.Equal(LinuxThemePreference.Light, cleared.ThemePreference);
+        Assert.Equal(WindowTitleMode.TimeElapsed, cleared.WindowTitleMode);
     }
 
     [Fact]
@@ -184,6 +199,8 @@ public sealed class LinuxAppSettingsTests
         Assert.False(settings.ShowInNotificationArea);
         Assert.True(settings.RestoreActiveSessionOnStartup);
         Assert.False(settings.OpenSavedTimersOnStartup);
+        Assert.Equal(LinuxThemePreference.System, settings.ThemePreference);
+        Assert.Equal(WindowTitleMode.TimerTitle, settings.WindowTitleMode);
     }
 
     [Fact]
@@ -207,7 +224,9 @@ public sealed class LinuxAppSettingsTests
             showProgressInTaskbar: false,
             showInNotificationArea: true,
             restoreActiveSessionOnStartup: false,
-            openSavedTimersOnStartup: true);
+            openSavedTimersOnStartup: true,
+            themePreference: LinuxThemePreference.Dark,
+            windowTitleMode: WindowTitleMode.TimerTitlePlusTimeLeft);
 
         string json = JsonSerializer.Serialize(settings);
         LinuxAppSettings? roundTripped = JsonSerializer.Deserialize<LinuxAppSettings>(json);
@@ -231,5 +250,7 @@ public sealed class LinuxAppSettingsTests
         Assert.True(roundTripped.ShowInNotificationArea);
         Assert.False(roundTripped.RestoreActiveSessionOnStartup);
         Assert.True(roundTripped.OpenSavedTimersOnStartup);
+        Assert.Equal(LinuxThemePreference.Dark, roundTripped.ThemePreference);
+        Assert.Equal(WindowTitleMode.TimerTitlePlusTimeLeft, roundTripped.WindowTitleMode);
     }
 }

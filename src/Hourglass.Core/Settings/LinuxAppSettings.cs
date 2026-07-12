@@ -2,6 +2,7 @@
 
 namespace Hourglass.Settings;
 
+using Hourglass.Timing;
 using System.Text.Json.Serialization;
 
 public sealed record LinuxAppSettings
@@ -11,7 +12,7 @@ public sealed record LinuxAppSettings
     private readonly string[] recentTimerInputs;
 
     public LinuxAppSettings()
-        : this(null, true, true, false, true, true, false, false, false, false, false, false, false, false, true, false, true, false)
+        : this(null, true, true, false, true, true, false, false, false, false, false, false, false, false, true, false, true, false, LinuxThemePreference.System, WindowTitleMode.TimerTitle)
     {
     }
 
@@ -34,7 +35,9 @@ public sealed record LinuxAppSettings
         bool showProgressInTaskbar = true,
         bool showInNotificationArea = false,
         bool restoreActiveSessionOnStartup = true,
-        bool openSavedTimersOnStartup = false)
+        bool openSavedTimersOnStartup = false,
+        LinuxThemePreference themePreference = LinuxThemePreference.System,
+        WindowTitleMode windowTitleMode = WindowTitleMode.TimerTitle)
     {
         this.recentTimerInputs = NormalizeRecentTimerInputs(recentTimerInputs, DefaultMaxRecentTimerInputs);
         this.NotificationsEnabled = notificationsEnabled;
@@ -54,6 +57,8 @@ public sealed record LinuxAppSettings
         this.ShowInNotificationArea = showInNotificationArea;
         this.RestoreActiveSessionOnStartup = restoreActiveSessionOnStartup;
         this.OpenSavedTimersOnStartup = openSavedTimersOnStartup;
+        this.ThemePreference = themePreference;
+        this.WindowTitleMode = windowTitleMode;
     }
 
     public static LinuxAppSettings Default { get; } = new();
@@ -94,6 +99,10 @@ public sealed record LinuxAppSettings
 
     public bool OpenSavedTimersOnStartup { get; init; }
 
+    public LinuxThemePreference ThemePreference { get; init; }
+
+    public WindowTitleMode WindowTitleMode { get; init; }
+
     public LinuxAppSettings AddRecentTimerInput(string timerInput, int maxRecentTimerInputs = DefaultMaxRecentTimerInputs)
     {
         if (maxRecentTimerInputs < 1)
@@ -130,7 +139,9 @@ public sealed record LinuxAppSettings
             this.ShowProgressInTaskbar,
             this.ShowInNotificationArea,
             this.RestoreActiveSessionOnStartup,
-            this.OpenSavedTimersOnStartup);
+            this.OpenSavedTimersOnStartup,
+            this.ThemePreference,
+            this.WindowTitleMode);
     }
 
     public LinuxAppSettings ClearRecentTimerInputs()
@@ -153,7 +164,9 @@ public sealed record LinuxAppSettings
             this.ShowProgressInTaskbar,
             this.ShowInNotificationArea,
             this.RestoreActiveSessionOnStartup,
-            this.OpenSavedTimersOnStartup);
+            this.OpenSavedTimersOnStartup,
+            this.ThemePreference,
+            this.WindowTitleMode);
     }
 
     public string GetInitialTimerInput(string defaultTimerInput)
