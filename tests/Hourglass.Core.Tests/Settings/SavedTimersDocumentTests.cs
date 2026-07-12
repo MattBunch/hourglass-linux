@@ -38,7 +38,8 @@ public sealed class SavedTimersDocumentTests
                 CloseWhenExpired: true,
                 LockInterface: true,
                 DoNotKeepComputerAwake: true,
-                ShutDownWhenExpired: true));
+                ShutDownWhenExpired: true,
+                WindowTitleMode: WindowTitleMode.TimerTitlePlusTimeLeft));
         var document = new SavedTimersDocument(timers: [timer]);
 
         string json = JsonSerializer.Serialize(document);
@@ -84,7 +85,8 @@ public sealed class SavedTimersDocumentTests
             CloseWhenExpired: true,
             LockInterface: true,
             DoNotKeepComputerAwake: true,
-            ShutDownWhenExpired: true);
+            ShutDownWhenExpired: true,
+            WindowTitleMode: WindowTitleMode.TimeElapsedPlusTimerTitle);
         var document = new ActiveTimerSessionDocument(
             timerInput: "10 seconds",
             options: options);
@@ -95,6 +97,47 @@ public sealed class SavedTimersDocumentTests
         Assert.NotNull(roundTripped);
         Assert.True(roundTripped.HasOptions);
         Assert.Equal(options, roundTripped.Options);
+    }
+
+    [Fact]
+    public void OlderOptionsJsonUsesDefaultWindowTitleMode()
+    {
+        const string savedTimersJson = """
+            {
+              "Version": 1,
+              "Timers": [
+                {
+                  "Id": "timer-1",
+                  "TimerInput": "10 seconds",
+                  "TimerTitle": "Tea",
+                  "Options": {
+                    "ReverseProgressBar": true
+                  }
+                }
+              ]
+            }
+            """;
+        const string activeSessionJson = """
+            {
+              "Version": 1,
+              "TimerInput": "10 seconds",
+              "Options": {
+                "ShowTimeElapsed": true
+              }
+            }
+            """;
+
+        SavedTimersDocument? savedTimers = JsonSerializer.Deserialize<SavedTimersDocument>(savedTimersJson);
+        ActiveTimerSessionDocument? activeSession = JsonSerializer.Deserialize<ActiveTimerSessionDocument>(activeSessionJson);
+
+        Assert.NotNull(savedTimers);
+        SavedTimerDefinition timer = Assert.Single(savedTimers.Timers);
+        Assert.True(timer.Options.ReverseProgressBar);
+        Assert.Equal(WindowTitleMode.TimerTitle, timer.Options.WindowTitleMode);
+        Assert.NotNull(activeSession);
+        Assert.True(activeSession.HasOptions);
+        Assert.True(activeSession.Options.ShowTimeElapsed);
+        Assert.Equal(WindowTitleMode.TimerTitle, activeSession.Options.WindowTitleMode);
     }
 
     [Fact]

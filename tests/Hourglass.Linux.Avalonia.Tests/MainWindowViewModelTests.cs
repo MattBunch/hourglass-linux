@@ -2275,6 +2275,7 @@ public sealed class MainWindowViewModelTests
         viewModel.TimerInput = "90 seconds";
         viewModel.TimerTitle = "Tea";
         viewModel.ToggleReverseProgressBarCommand.Execute(null);
+        viewModel.SelectWindowTitleModeCommand.Execute(nameof(WindowTitleMode.TimerTitlePlusTimeLeft));
 
         viewModel.SaveCurrentTimerCommand.Execute(null);
         await viewModel.PendingSettingsSave;
@@ -2283,16 +2284,19 @@ public sealed class MainWindowViewModelTests
         SavedTimerDefinition savedTimer = Assert.Single(settingsStore.SavedTimers.Timers);
         Assert.Equal("Tea — 90 seconds", savedTimer.Header);
         Assert.True(savedTimer.Options.ReverseProgressBar);
+        Assert.Equal(WindowTitleMode.TimerTitlePlusTimeLeft, savedTimer.Options.WindowTitleMode);
         Assert.Single(viewModel.SavedTimerMenuItems);
 
         viewModel.TimerInput = "5 minutes";
         viewModel.TimerTitle = "";
+        viewModel.SelectWindowTitleModeCommand.Execute(nameof(WindowTitleMode.TimeElapsed));
         viewModel.OpenSavedTimerCommand.Execute(savedTimer.Id);
         await viewModel.PendingSettingsSave;
 
         Assert.Equal("90 seconds", viewModel.TimerInput);
         Assert.Equal("Tea", viewModel.TimerTitle);
         Assert.True(viewModel.ReverseProgressBar);
+        Assert.Equal(WindowTitleMode.TimerTitlePlusTimeLeft, viewModel.WindowTitleMode);
         Assert.Equal(TimerState.Stopped, viewModel.State);
 
         viewModel.RemoveSavedTimerCommand.Execute(savedTimer.Id);
@@ -2432,6 +2436,7 @@ public sealed class MainWindowViewModelTests
         var viewModel = CreateViewModel(clock, wallClockNow: () => now, settingsStore: settingsStore);
         viewModel.TimerInput = "10 seconds";
         viewModel.TimerTitle = "Tea";
+        viewModel.SelectWindowTitleModeCommand.Execute(nameof(WindowTitleMode.TimeLeftPlusTimerTitle));
 
         viewModel.StartCommand.Execute(null);
         await viewModel.PendingSettingsSave;
@@ -2440,6 +2445,7 @@ public sealed class MainWindowViewModelTests
         Assert.Equal(TimerState.Running, settingsStore.SavedActiveSession.State);
         Assert.Equal("10 seconds", settingsStore.SavedActiveSession.TimerInput);
         Assert.Equal("Tea", settingsStore.SavedActiveSession.TimerTitle);
+        Assert.Equal(WindowTitleMode.TimeLeftPlusTimerTitle, settingsStore.SavedActiveSession.Options.WindowTitleMode);
 
         var restoredNotifications = new RecordingNotificationService();
         var restoredAudio = new RecordingAudioAlertService();
@@ -2541,7 +2547,8 @@ public sealed class MainWindowViewModelTests
                     ReverseProgressBar: true,
                     ShowTimeElapsed: true,
                     LoopTimer: true,
-                    DoNotKeepComputerAwake: true))
+                    DoNotKeepComputerAwake: true,
+                    WindowTitleMode: WindowTitleMode.TimeElapsedPlusTimerTitle))
         };
         var viewModel = CreateViewModel(
             new ManualMonotonicClock(),
@@ -2555,6 +2562,7 @@ public sealed class MainWindowViewModelTests
         Assert.True(viewModel.ShowTimeElapsed);
         Assert.True(viewModel.LoopTimer);
         Assert.True(viewModel.DoNotKeepComputerAwake);
+        Assert.Equal(WindowTitleMode.TimeElapsedPlusTimerTitle, viewModel.WindowTitleMode);
     }
 
     [Fact]

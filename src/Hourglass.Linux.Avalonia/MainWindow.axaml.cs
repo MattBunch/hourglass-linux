@@ -566,10 +566,7 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
 
     private void ApplyThemePreference()
     {
-        if (Application.Current is { } application)
-        {
-            application.RequestedThemeVariant = ToThemeVariant(this.viewModel.ThemePreference);
-        }
+        this.RequestedThemeVariant = ToThemeVariant(this.viewModel.ThemePreference);
     }
 
     private void RebuildRecentInputsMenu()

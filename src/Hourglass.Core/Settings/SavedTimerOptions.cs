@@ -2,6 +2,8 @@
 
 namespace Hourglass.Settings;
 
+using Hourglass.Timing;
+
 public sealed record SavedTimerOptions(
     bool ReverseProgressBar = false,
     bool ShowTimeElapsed = false,
@@ -10,7 +12,8 @@ public sealed record SavedTimerOptions(
     bool CloseWhenExpired = false,
     bool LockInterface = false,
     bool DoNotKeepComputerAwake = false,
-    bool ShutDownWhenExpired = false)
+    bool ShutDownWhenExpired = false,
+    WindowTitleMode WindowTitleMode = WindowTitleMode.TimerTitle)
 {
     public static SavedTimerOptions FromSettings(LinuxAppSettings settings)
     {
@@ -24,7 +27,8 @@ public sealed record SavedTimerOptions(
             settings.CloseWhenExpired,
             settings.LockInterface,
             settings.DoNotKeepComputerAwake,
-            settings.ShutDownWhenExpired);
+            settings.ShutDownWhenExpired,
+            settings.WindowTitleMode);
     }
 
     public LinuxAppSettings ApplyTo(LinuxAppSettings settings)
@@ -40,7 +44,8 @@ public sealed record SavedTimerOptions(
             CloseWhenExpired = this.CloseWhenExpired,
             LockInterface = this.LockInterface,
             DoNotKeepComputerAwake = this.DoNotKeepComputerAwake,
-            ShutDownWhenExpired = this.ShutDownWhenExpired
+            ShutDownWhenExpired = this.ShutDownWhenExpired,
+            WindowTitleMode = this.WindowTitleMode
         };
     }
 }
