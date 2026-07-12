@@ -31,7 +31,8 @@ public sealed record ActiveTimerSessionDocument
         long? timeLeftTicks = null,
         long? timeExpiredTicks = null,
         long? totalTimeTicks = null,
-        SavedTimerOptions? options = null)
+        SavedTimerOptions? options = null,
+        WindowGeometrySnapshot? windowGeometry = null)
     {
         this.Version = version;
         this.TimerInput = timerInput ?? string.Empty;
@@ -47,6 +48,7 @@ public sealed record ActiveTimerSessionDocument
         this.TimeExpiredTicks = timeExpiredTicks;
         this.TotalTimeTicks = totalTimeTicks;
         this.Options = options ?? new SavedTimerOptions();
+        this.WindowGeometry = windowGeometry;
         this.HasOptions = options != null;
     }
 
@@ -78,6 +80,8 @@ public sealed record ActiveTimerSessionDocument
 
     public SavedTimerOptions Options { get; }
 
+    public WindowGeometrySnapshot? WindowGeometry { get; }
+
     [JsonIgnore]
     public bool HasOptions { get; }
 
@@ -87,7 +91,8 @@ public sealed record ActiveTimerSessionDocument
         ActiveTimerPresentationMode presentationMode,
         TimerInfo timerInfo,
         DateTime savedAt,
-        SavedTimerOptions? options = null)
+        SavedTimerOptions? options = null,
+        WindowGeometrySnapshot? windowGeometry = null)
     {
         ArgumentNullException.ThrowIfNull(timerInfo);
 
@@ -105,7 +110,8 @@ public sealed record ActiveTimerSessionDocument
             timerInfo.TimeLeft?.Ticks,
             timerInfo.TimeExpired?.Ticks,
             timerInfo.TotalTime?.Ticks,
-            options);
+            options,
+            windowGeometry);
     }
 
     public TimerInfo? ToTimerInfo(DateTime wallClockNow)

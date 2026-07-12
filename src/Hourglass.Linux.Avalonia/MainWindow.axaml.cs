@@ -12,7 +12,7 @@ using Hourglass.Timing;
 
 namespace Hourglass.Linux.Avalonia;
 
-public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullScreenWindowTarget
+public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullScreenWindowTarget, IWindowGeometryTarget
 {
     private static readonly string SoundAssetsDirectory = Path.Combine(
         AppContext.BaseDirectory,
@@ -33,6 +33,7 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
     private readonly IStatusIconService statusIconService;
     private readonly DispatcherTimer validationFeedbackTimer;
     private readonly WindowFullScreenController fullScreenController;
+    private readonly WindowGeometryController windowGeometryController;
     private readonly Func<Task> requestApplicationExit;
     private readonly Func<MainWindow, Task> prepareCoordinatorClose;
     private readonly bool loadSettingsOnOpened;
@@ -98,6 +99,10 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
         this.DataContext = this.viewModel;
         this.windowAttentionController = new WindowAttentionController(this);
         this.fullScreenController = new WindowFullScreenController(this);
+        this.windowGeometryController = new WindowGeometryController(
+            this,
+            this.NotifyWindowGeometryChanged,
+            this.GetWorkAreas);
         this.closeCoordinator = new WindowCloseCoordinator(
             this.RequestCloseApprovalAsync,
             this.PrepareCloseAsync,
@@ -132,6 +137,7 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
         this.Closing += this.WindowClosing;
         this.Closed += this.WindowClosed;
         this.Opened += this.WindowOpened;
+        this.PositionChanged += this.WindowPositionChanged;
         this.SizeChanged += this.WindowSizeChanged;
         this.AddHandler(KeyDownEvent, this.WindowKeyDown, RoutingStrategies.Tunnel);
         this.viewModel.PropertyChanged += this.ViewModelPropertyChanged;
@@ -150,6 +156,28 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
     }
 
     internal bool RequiresExitConfirmation => this.viewModel.ShouldPromptOnExit;
+
+    internal event EventHandler? WindowGeometryChanged;
+
+    internal WindowGeometrySnapshot? CurrentWindowGeometry => this.windowGeometryController.CurrentGeometry;
+
+    internal void ApplyWindowGeometry(WindowGeometrySnapshot? geometry)
+    {
+        this.windowGeometryController.Apply(geometry);
+        this.UpdateResponsiveLayout();
+    }
+
+    internal WindowGeometrySnapshot CreateCascadedWindowGeometry(WindowGeometrySnapshot previousGeometry)
+    {
+        ArgumentNullException.ThrowIfNull(previousGeometry);
+
+        var currentGeometry = new WindowGeometrySnapshot(
+            this.Position.X,
+            this.Position.Y,
+            this.Width,
+            this.Height);
+        return WindowGeometryValidator.Cascade(currentGeometry, previousGeometry, this.GetWorkAreas());
+    }
 
     internal void CloseWithPreapprovedExit()
     {
@@ -193,6 +221,7 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
         {
             this.windowAttentionController?.RecordWindowState(this.WindowState);
             this.fullScreenController?.RecordWindowState(this.WindowState);
+            this.windowGeometryController?.RecordChange();
 
             if (this.FullScreenMenuItem != null)
             {
@@ -459,9 +488,11 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
         this.Closing -= this.WindowClosing;
         this.Closed -= this.WindowClosed;
         this.Opened -= this.WindowOpened;
+        this.PositionChanged -= this.WindowPositionChanged;
         this.SizeChanged -= this.WindowSizeChanged;
         this.RemoveHandler(KeyDownEvent, this.WindowKeyDown);
         _ = this.statusIconService.DisposeAsync();
+        this.windowGeometryController.Dispose();
         this.viewModel.Dispose();
     }
 
@@ -481,6 +512,12 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
     private void WindowSizeChanged(object? sender, SizeChangedEventArgs e)
     {
         this.UpdateResponsiveLayout();
+        this.windowGeometryController.RecordChange();
+    }
+
+    private void WindowPositionChanged(object? sender, PixelPointEventArgs e)
+    {
+        this.windowGeometryController.RecordChange();
     }
 
     private void WindowKeyDown(object? sender, KeyEventArgs e)
@@ -551,6 +588,19 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
         {
             this.RebuildSavedTimersMenu();
         }
+    }
+
+    private IReadOnlyList<WindowWorkArea> GetWorkAreas()
+    {
+        return this.Screens.All
+            .Select(screen => screen.WorkingArea)
+            .Select(area => new WindowWorkArea(area.X, area.Y, area.Width, area.Height))
+            .ToArray();
+    }
+
+    private void NotifyWindowGeometryChanged()
+    {
+        Dispatcher.UIThread.Post(() => this.WindowGeometryChanged?.Invoke(this, EventArgs.Empty));
     }
 
     internal static ThemeVariant ToThemeVariant(LinuxThemePreference themePreference)
