@@ -1765,6 +1765,22 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
+    public async Task LoadDisabledAudioAlertSettingsShowsNoSoundSelected()
+    {
+        var settingsStore = new RecordingSettingsStore
+        {
+            LoadedSettings = new LinuxAppSettings(audioAlertsEnabled: false)
+        };
+        var viewModel = CreateViewModel(new ManualMonotonicClock(), settingsStore: settingsStore);
+
+        await viewModel.LoadSettingsAsync();
+
+        Assert.False(viewModel.AudioAlertsEnabled);
+        Assert.True(viewModel.IsNoSoundSelected);
+        Assert.False(viewModel.IsNormalBeepSoundSelected);
+    }
+
+    [Fact]
     public async Task PreviewAudioAlertSoundPlaysSelectedSound()
     {
         var audioAlertService = new RecordingAudioAlertService();

@@ -32,7 +32,7 @@ public sealed record SavedTimerOptions(
             settings.DoNotKeepComputerAwake,
             settings.ShutDownWhenExpired,
             settings.WindowTitleMode,
-            settings.AudioAlertSoundId);
+            settings.AudioAlertsEnabled ? settings.AudioAlertSoundId : BuiltInAudioAlertSounds.None);
     }
 
     public LinuxAppSettings ApplyTo(LinuxAppSettings settings)
@@ -50,6 +50,7 @@ public sealed record SavedTimerOptions(
             DoNotKeepComputerAwake = this.DoNotKeepComputerAwake,
             ShutDownWhenExpired = this.ShutDownWhenExpired,
             WindowTitleMode = this.WindowTitleMode,
+            AudioAlertsEnabled = !BuiltInAudioAlertSounds.IsNone(this.AudioAlertSoundId),
             AudioAlertSoundId = this.AudioAlertSoundId
         };
     }

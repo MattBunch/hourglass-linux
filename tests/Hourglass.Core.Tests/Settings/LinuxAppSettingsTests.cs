@@ -117,7 +117,7 @@ public sealed class LinuxAppSettingsTests
         Assert.True(settings.OpenSavedTimersOnStartup);
         Assert.Equal(LinuxThemePreference.Dark, settings.ThemePreference);
         Assert.Equal(WindowTitleMode.TimeLeftPlusTimerTitle, settings.WindowTitleMode);
-        Assert.Equal(BuiltInAudioAlertSounds.QuietBeep, settings.AudioAlertSoundId);
+        Assert.Equal(BuiltInAudioAlertSounds.None, settings.AudioAlertSoundId);
     }
 
     [Fact]
@@ -168,7 +168,7 @@ public sealed class LinuxAppSettingsTests
         Assert.True(updated.OpenSavedTimersOnStartup);
         Assert.Equal(LinuxThemePreference.Light, updated.ThemePreference);
         Assert.Equal(WindowTitleMode.TimeElapsed, updated.WindowTitleMode);
-        Assert.Equal(BuiltInAudioAlertSounds.LoudBeep, updated.AudioAlertSoundId);
+        Assert.Equal(BuiltInAudioAlertSounds.None, updated.AudioAlertSoundId);
 
         LinuxAppSettings cleared = updated.ClearRecentTimerInputs();
 
@@ -177,7 +177,7 @@ public sealed class LinuxAppSettingsTests
         Assert.True(cleared.OpenSavedTimersOnStartup);
         Assert.Equal(LinuxThemePreference.Light, cleared.ThemePreference);
         Assert.Equal(WindowTitleMode.TimeElapsed, cleared.WindowTitleMode);
-        Assert.Equal(BuiltInAudioAlertSounds.LoudBeep, cleared.AudioAlertSoundId);
+        Assert.Equal(BuiltInAudioAlertSounds.None, cleared.AudioAlertSoundId);
     }
 
     [Fact]
@@ -209,6 +209,18 @@ public sealed class LinuxAppSettingsTests
         Assert.Equal(LinuxThemePreference.System, settings.ThemePreference);
         Assert.Equal(WindowTitleMode.TimerTitle, settings.WindowTitleMode);
         Assert.Equal(BuiltInAudioAlertSounds.NormalBeep, settings.AudioAlertSoundId);
+    }
+
+    [Fact]
+    public void OlderJsonWithDisabledAudioAlertsUsesNoSound()
+    {
+        const string json = """{"AudioAlertsEnabled":false}""";
+
+        LinuxAppSettings? settings = JsonSerializer.Deserialize<LinuxAppSettings>(json);
+
+        Assert.NotNull(settings);
+        Assert.False(settings.AudioAlertsEnabled);
+        Assert.Equal(BuiltInAudioAlertSounds.None, settings.AudioAlertSoundId);
     }
 
     [Fact]
@@ -261,6 +273,6 @@ public sealed class LinuxAppSettingsTests
         Assert.True(roundTripped.OpenSavedTimersOnStartup);
         Assert.Equal(LinuxThemePreference.Dark, roundTripped.ThemePreference);
         Assert.Equal(WindowTitleMode.TimerTitlePlusTimeLeft, roundTripped.WindowTitleMode);
-        Assert.Equal(BuiltInAudioAlertSounds.QuietBeep, roundTripped.AudioAlertSoundId);
+        Assert.Equal(BuiltInAudioAlertSounds.None, roundTripped.AudioAlertSoundId);
     }
 }

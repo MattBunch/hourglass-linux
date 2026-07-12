@@ -416,13 +416,17 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     public string AudioAlertSoundId => this.settings.AudioAlertSoundId;
 
-    public bool IsNoSoundSelected => StringComparer.Ordinal.Equals(this.settings.AudioAlertSoundId, AudioAlertSoundIds.None);
+    public bool IsNoSoundSelected => !this.settings.AudioAlertsEnabled
+        || StringComparer.Ordinal.Equals(this.settings.AudioAlertSoundId, AudioAlertSoundIds.None);
 
-    public bool IsLoudBeepSoundSelected => StringComparer.Ordinal.Equals(this.settings.AudioAlertSoundId, AudioAlertSoundIds.LoudBeep);
+    public bool IsLoudBeepSoundSelected => this.settings.AudioAlertsEnabled
+        && StringComparer.Ordinal.Equals(this.settings.AudioAlertSoundId, AudioAlertSoundIds.LoudBeep);
 
-    public bool IsNormalBeepSoundSelected => StringComparer.Ordinal.Equals(this.settings.AudioAlertSoundId, AudioAlertSoundIds.NormalBeep);
+    public bool IsNormalBeepSoundSelected => this.settings.AudioAlertsEnabled
+        && StringComparer.Ordinal.Equals(this.settings.AudioAlertSoundId, AudioAlertSoundIds.NormalBeep);
 
-    public bool IsQuietBeepSoundSelected => StringComparer.Ordinal.Equals(this.settings.AudioAlertSoundId, AudioAlertSoundIds.QuietBeep);
+    public bool IsQuietBeepSoundSelected => this.settings.AudioAlertsEnabled
+        && StringComparer.Ordinal.Equals(this.settings.AudioAlertSoundId, AudioAlertSoundIds.QuietBeep);
 
     public bool CanPreviewAudioAlertSound =>
         !this.IsTimerModificationLocked

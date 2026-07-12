@@ -102,6 +102,26 @@ public sealed class SavedTimersDocumentTests
     }
 
     [Fact]
+    public void SavedTimerOptionsApplySoundSelectionCoherently()
+    {
+        LinuxAppSettings disabledSettings = LinuxAppSettings.Default with
+        {
+            AudioAlertsEnabled = false,
+            AudioAlertSoundId = BuiltInAudioAlertSounds.None
+        };
+        var quietOptions = new SavedTimerOptions(AudioAlertSoundId: BuiltInAudioAlertSounds.QuietBeep);
+        var noSoundOptions = new SavedTimerOptions(AudioAlertSoundId: BuiltInAudioAlertSounds.None);
+
+        LinuxAppSettings quietSettings = quietOptions.ApplyTo(disabledSettings);
+        LinuxAppSettings noSoundSettings = noSoundOptions.ApplyTo(LinuxAppSettings.Default);
+
+        Assert.True(quietSettings.AudioAlertsEnabled);
+        Assert.Equal(BuiltInAudioAlertSounds.QuietBeep, quietSettings.AudioAlertSoundId);
+        Assert.False(noSoundSettings.AudioAlertsEnabled);
+        Assert.Equal(BuiltInAudioAlertSounds.None, noSoundSettings.AudioAlertSoundId);
+    }
+
+    [Fact]
     public void OlderOptionsJsonUsesDefaultWindowTitleMode()
     {
         const string savedTimersJson = """
