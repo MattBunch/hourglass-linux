@@ -39,7 +39,8 @@ public sealed class SavedTimersDocumentTests
                 LockInterface: true,
                 DoNotKeepComputerAwake: true,
                 ShutDownWhenExpired: true,
-                WindowTitleMode: WindowTitleMode.TimerTitlePlusTimeLeft));
+                WindowTitleMode: WindowTitleMode.TimerTitlePlusTimeLeft,
+                AudioAlertSoundId: BuiltInAudioAlertSounds.LoudBeep));
         var document = new SavedTimersDocument(timers: [timer]);
 
         string json = JsonSerializer.Serialize(document);
@@ -86,7 +87,8 @@ public sealed class SavedTimersDocumentTests
             LockInterface: true,
             DoNotKeepComputerAwake: true,
             ShutDownWhenExpired: true,
-            WindowTitleMode: WindowTitleMode.TimeElapsedPlusTimerTitle);
+            WindowTitleMode: WindowTitleMode.TimeElapsedPlusTimerTitle,
+            AudioAlertSoundId: BuiltInAudioAlertSounds.QuietBeep);
         var document = new ActiveTimerSessionDocument(
             timerInput: "10 seconds",
             options: options);
@@ -134,10 +136,12 @@ public sealed class SavedTimersDocumentTests
         SavedTimerDefinition timer = Assert.Single(savedTimers.Timers);
         Assert.True(timer.Options.ReverseProgressBar);
         Assert.Equal(WindowTitleMode.TimerTitle, timer.Options.WindowTitleMode);
+        Assert.Equal(BuiltInAudioAlertSounds.NormalBeep, timer.Options.AudioAlertSoundId);
         Assert.NotNull(activeSession);
         Assert.True(activeSession.HasOptions);
         Assert.True(activeSession.Options.ShowTimeElapsed);
         Assert.Equal(WindowTitleMode.TimerTitle, activeSession.Options.WindowTitleMode);
+        Assert.Equal(BuiltInAudioAlertSounds.NormalBeep, activeSession.Options.AudioAlertSoundId);
     }
 
     [Fact]

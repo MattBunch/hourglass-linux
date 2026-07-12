@@ -13,8 +13,11 @@ public sealed record SavedTimerOptions(
     bool LockInterface = false,
     bool DoNotKeepComputerAwake = false,
     bool ShutDownWhenExpired = false,
-    WindowTitleMode WindowTitleMode = WindowTitleMode.TimerTitle)
+    WindowTitleMode WindowTitleMode = WindowTitleMode.TimerTitle,
+    string AudioAlertSoundId = BuiltInAudioAlertSounds.NormalBeep)
 {
+    public string AudioAlertSoundId { get; init; } = BuiltInAudioAlertSounds.NormalizeId(AudioAlertSoundId);
+
     public static SavedTimerOptions FromSettings(LinuxAppSettings settings)
     {
         ArgumentNullException.ThrowIfNull(settings);
@@ -28,7 +31,8 @@ public sealed record SavedTimerOptions(
             settings.LockInterface,
             settings.DoNotKeepComputerAwake,
             settings.ShutDownWhenExpired,
-            settings.WindowTitleMode);
+            settings.WindowTitleMode,
+            settings.AudioAlertSoundId);
     }
 
     public LinuxAppSettings ApplyTo(LinuxAppSettings settings)
@@ -45,7 +49,8 @@ public sealed record SavedTimerOptions(
             LockInterface = this.LockInterface,
             DoNotKeepComputerAwake = this.DoNotKeepComputerAwake,
             ShutDownWhenExpired = this.ShutDownWhenExpired,
-            WindowTitleMode = this.WindowTitleMode
+            WindowTitleMode = this.WindowTitleMode,
+            AudioAlertSoundId = this.AudioAlertSoundId
         };
     }
 }

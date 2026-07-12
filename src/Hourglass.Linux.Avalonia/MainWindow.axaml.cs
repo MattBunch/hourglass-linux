@@ -14,11 +14,10 @@ namespace Hourglass.Linux.Avalonia;
 
 public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullScreenWindowTarget
 {
-    private static readonly string NormalBeepPath = Path.Combine(
+    private static readonly string SoundAssetsDirectory = Path.Combine(
         AppContext.BaseDirectory,
         "Assets",
-        "Sounds",
-        "BeepNormal.wav");
+        "Sounds");
 
     private static readonly Uri StatusIconResourceUri = new("avares://hourglass-linux/Assets/hourglass.png");
 
@@ -60,7 +59,7 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
                 new NotifySendNotificationService(),
                 new SystemdSessionInhibitor(),
                 new JsonFileSettingsStore(new XdgSettingsPathService()),
-                new LinuxAudioAlertService(NormalBeepPath),
+                new LinuxAudioAlertService(SoundAssetsDirectory),
                 new UnsupportedSystemPowerService(),
                 services.StatusIconService.IsSupported,
                 services.StatusIconService.CanRecoverHiddenWindow),

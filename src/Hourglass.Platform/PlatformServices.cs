@@ -1,3 +1,5 @@
+using Hourglass.Settings;
+
 namespace Hourglass.Platform;
 
 public interface INotificationService
@@ -53,6 +55,8 @@ public interface ISessionInhibitor
 
 public interface IAudioAlertService
 {
+    bool IsSoundAvailable(string soundId);
+
     Task<IAsyncDisposable?> PlayAlertAsync(string soundId, CancellationToken cancellationToken = default);
 
     Task<IAsyncDisposable?> PlayAlertLoopingAsync(string soundId, CancellationToken cancellationToken = default);
@@ -77,7 +81,10 @@ public interface IDesktopProgressService
 
 public static class AudioAlertSoundIds
 {
-    public const string NormalBeep = "resource:Normal beep";
+    public const string None = BuiltInAudioAlertSounds.None;
+    public const string LoudBeep = BuiltInAudioAlertSounds.LoudBeep;
+    public const string NormalBeep = BuiltInAudioAlertSounds.NormalBeep;
+    public const string QuietBeep = BuiltInAudioAlertSounds.QuietBeep;
 }
 
 public interface ISettingsPathService

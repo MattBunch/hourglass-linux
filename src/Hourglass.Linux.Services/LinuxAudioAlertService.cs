@@ -3,6 +3,7 @@ namespace Hourglass.Linux.Services;
 using System.ComponentModel;
 using System.Diagnostics;
 using Hourglass.Platform;
+using Hourglass.Settings;
 
 public sealed class LinuxAudioAlertService : IAudioAlertService
 {
@@ -18,22 +19,40 @@ public sealed class LinuxAudioAlertService : IAudioAlertService
         new(AplayExecutable, QuietArgument)
     ];
 
-    private readonly string normalBeepPath;
+    private readonly IReadOnlyDictionary<string, string> soundPaths;
     private readonly Func<ProcessStartInfo, CancellationToken, Task<int>> runProcessAsync;
 
-    public LinuxAudioAlertService(string normalBeepPath)
-        : this(normalBeepPath, RunProcessAsync)
+    public LinuxAudioAlertService(string soundsDirectory)
+        : this(CreateBuiltInSoundPaths(soundsDirectory), RunProcessAsync)
     {
     }
 
     internal LinuxAudioAlertService(
         string normalBeepPath,
         Func<ProcessStartInfo, CancellationToken, Task<int>> runProcessAsync)
+        : this(
+            new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                [AudioAlertSoundIds.NormalBeep] = normalBeepPath
+            },
+            runProcessAsync)
     {
-        this.normalBeepPath = string.IsNullOrWhiteSpace(normalBeepPath)
-            ? throw new ArgumentException("Sound path must not be empty.", nameof(normalBeepPath))
-            : normalBeepPath;
+    }
+
+    internal LinuxAudioAlertService(
+        IReadOnlyDictionary<string, string> soundPaths,
+        Func<ProcessStartInfo, CancellationToken, Task<int>> runProcessAsync)
+    {
+        this.soundPaths = ValidateSoundPaths(soundPaths);
         this.runProcessAsync = runProcessAsync ?? throw new ArgumentNullException(nameof(runProcessAsync));
+    }
+
+    public bool IsSoundAvailable(string soundId)
+    {
+        ArgumentNullException.ThrowIfNull(soundId);
+
+        return this.TryGetSoundPath(soundId, out string? soundPath)
+            && File.Exists(soundPath);
     }
 
     public async Task<IAsyncDisposable?> PlayAlertAsync(string soundId, CancellationToken cancellationToken = default)
@@ -78,15 +97,35 @@ public sealed class LinuxAudioAlertService : IAudioAlertService
         return startInfo;
     }
 
+    internal static IReadOnlyDictionary<string, string> CreateBuiltInSoundPaths(string soundsDirectory)
+    {
+        if (string.IsNullOrWhiteSpace(soundsDirectory))
+        {
+            throw new ArgumentException("Sound directory must not be empty.", nameof(soundsDirectory));
+        }
+
+        return BuiltInAudioAlertSounds.All
+            .Where(sound => !sound.IsNone && sound.AssetFileName != null)
+            .ToDictionary(
+                sound => sound.Id,
+                sound => Path.Combine(soundsDirectory, sound.AssetFileName!),
+                StringComparer.Ordinal);
+    }
+
     private string? GetSoundPath(string soundId, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(soundId);
         cancellationToken.ThrowIfCancellationRequested();
-        string soundPath = soundId switch
+
+        if (StringComparer.Ordinal.Equals(soundId, AudioAlertSoundIds.None))
         {
-            AudioAlertSoundIds.NormalBeep => this.normalBeepPath,
-            _ => throw new ArgumentException($"Unsupported audio alert sound ID: {soundId}", nameof(soundId))
-        };
+            return null;
+        }
+
+        if (!this.TryGetSoundPath(soundId, out string? soundPath))
+        {
+            throw new ArgumentException($"Unsupported audio alert sound ID: {soundId}", nameof(soundId));
+        }
 
         if (!File.Exists(soundPath))
         {
@@ -94,6 +133,40 @@ public sealed class LinuxAudioAlertService : IAudioAlertService
         }
 
         return soundPath;
+    }
+
+    private bool TryGetSoundPath(string soundId, out string soundPath)
+    {
+        if (StringComparer.Ordinal.Equals(soundId, AudioAlertSoundIds.None))
+        {
+            soundPath = string.Empty;
+            return false;
+        }
+
+        return this.soundPaths.TryGetValue(soundId, out soundPath!);
+    }
+
+    private static IReadOnlyDictionary<string, string> ValidateSoundPaths(IReadOnlyDictionary<string, string> soundPaths)
+    {
+        ArgumentNullException.ThrowIfNull(soundPaths);
+
+        var validated = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (KeyValuePair<string, string> soundPath in soundPaths)
+        {
+            if (string.IsNullOrWhiteSpace(soundPath.Key))
+            {
+                throw new ArgumentException("Sound ID must not be empty.", nameof(soundPaths));
+            }
+
+            if (string.IsNullOrWhiteSpace(soundPath.Value))
+            {
+                throw new ArgumentException("Sound path must not be empty.", nameof(soundPaths));
+            }
+
+            validated[soundPath.Key] = soundPath.Value;
+        }
+
+        return validated;
     }
 
     private async Task<bool> TryPlayOnceAsync(string soundPath, CancellationToken cancellationToken)
