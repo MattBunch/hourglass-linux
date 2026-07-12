@@ -1901,12 +1901,16 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         string audioAlertSoundId = SelectChanged(previous.AudioAlertSoundId, requested.AudioAlertSoundId, latest.AudioAlertSoundId);
         if (previous.LoopTimer != requested.LoopTimer
             || previous.LoopSound != requested.LoopSound
-            || previous.CloseWhenExpired != requested.CloseWhenExpired
-            || !StringComparer.Ordinal.Equals(previous.AudioAlertSoundId, requested.AudioAlertSoundId))
+            || previous.CloseWhenExpired != requested.CloseWhenExpired)
         {
             loopTimer = requested.LoopTimer;
             loopSound = requested.LoopSound;
             closeWhenExpired = requested.CloseWhenExpired;
+        }
+
+        if (previous.AudioAlertsEnabled != requested.AudioAlertsEnabled
+            || !StringComparer.Ordinal.Equals(previous.AudioAlertSoundId, requested.AudioAlertSoundId))
+        {
             audioAlertsEnabled = requested.AudioAlertsEnabled;
             audioAlertSoundId = requested.AudioAlertSoundId;
         }

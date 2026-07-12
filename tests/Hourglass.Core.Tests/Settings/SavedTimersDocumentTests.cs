@@ -102,6 +102,30 @@ public sealed class SavedTimersDocumentTests
     }
 
     [Fact]
+    public void LegacySavedTimerOptionsPreserveCurrentSoundSelection()
+    {
+        LinuxAppSettings disabledSettings = LinuxAppSettings.Default with
+        {
+            AudioAlertsEnabled = false,
+            AudioAlertSoundId = BuiltInAudioAlertSounds.None
+        };
+        LinuxAppSettings quietSettings = LinuxAppSettings.Default with
+        {
+            AudioAlertSoundId = BuiltInAudioAlertSounds.QuietBeep
+        };
+        var legacyOptions = new SavedTimerOptions(ReverseProgressBar: true);
+
+        LinuxAppSettings appliedToDisabled = legacyOptions.ApplyTo(disabledSettings);
+        LinuxAppSettings appliedToQuiet = legacyOptions.ApplyTo(quietSettings);
+
+        Assert.True(appliedToDisabled.ReverseProgressBar);
+        Assert.False(appliedToDisabled.AudioAlertsEnabled);
+        Assert.Equal(BuiltInAudioAlertSounds.None, appliedToDisabled.AudioAlertSoundId);
+        Assert.True(appliedToQuiet.AudioAlertsEnabled);
+        Assert.Equal(BuiltInAudioAlertSounds.QuietBeep, appliedToQuiet.AudioAlertSoundId);
+    }
+
+    [Fact]
     public void SavedTimerOptionsApplySoundSelectionCoherently()
     {
         LinuxAppSettings disabledSettings = LinuxAppSettings.Default with
@@ -156,12 +180,12 @@ public sealed class SavedTimersDocumentTests
         SavedTimerDefinition timer = Assert.Single(savedTimers.Timers);
         Assert.True(timer.Options.ReverseProgressBar);
         Assert.Equal(WindowTitleMode.TimerTitle, timer.Options.WindowTitleMode);
-        Assert.Equal(BuiltInAudioAlertSounds.NormalBeep, timer.Options.AudioAlertSoundId);
+        Assert.Null(timer.Options.AudioAlertSoundId);
         Assert.NotNull(activeSession);
         Assert.True(activeSession.HasOptions);
         Assert.True(activeSession.Options.ShowTimeElapsed);
         Assert.Equal(WindowTitleMode.TimerTitle, activeSession.Options.WindowTitleMode);
-        Assert.Equal(BuiltInAudioAlertSounds.NormalBeep, activeSession.Options.AudioAlertSoundId);
+        Assert.Null(activeSession.Options.AudioAlertSoundId);
     }
 
     [Fact]

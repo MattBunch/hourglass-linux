@@ -14,9 +14,9 @@ public sealed record SavedTimerOptions(
     bool DoNotKeepComputerAwake = false,
     bool ShutDownWhenExpired = false,
     WindowTitleMode WindowTitleMode = WindowTitleMode.TimerTitle,
-    string AudioAlertSoundId = BuiltInAudioAlertSounds.NormalBeep)
+    string? AudioAlertSoundId = null)
 {
-    public string AudioAlertSoundId { get; init; } = BuiltInAudioAlertSounds.NormalizeId(AudioAlertSoundId);
+    public string? AudioAlertSoundId { get; init; } = NormalizeOptionalSoundId(AudioAlertSoundId);
 
     public static SavedTimerOptions FromSettings(LinuxAppSettings settings)
     {
@@ -50,8 +50,17 @@ public sealed record SavedTimerOptions(
             DoNotKeepComputerAwake = this.DoNotKeepComputerAwake,
             ShutDownWhenExpired = this.ShutDownWhenExpired,
             WindowTitleMode = this.WindowTitleMode,
-            AudioAlertsEnabled = !BuiltInAudioAlertSounds.IsNone(this.AudioAlertSoundId),
-            AudioAlertSoundId = this.AudioAlertSoundId
+            AudioAlertsEnabled = this.AudioAlertSoundId == null
+                ? settings.AudioAlertsEnabled
+                : !BuiltInAudioAlertSounds.IsNone(this.AudioAlertSoundId),
+            AudioAlertSoundId = this.AudioAlertSoundId ?? settings.AudioAlertSoundId
         };
+    }
+
+    private static string? NormalizeOptionalSoundId(string? soundId)
+    {
+        return soundId == null
+            ? null
+            : BuiltInAudioAlertSounds.NormalizeId(soundId);
     }
 }
