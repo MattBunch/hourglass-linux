@@ -171,9 +171,10 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
     {
         ArgumentNullException.ThrowIfNull(previousGeometry);
 
+        double renderScaling = WindowGeometryController.NormalizeRenderScaling(this.RenderScaling);
         var currentGeometry = new WindowGeometrySnapshot(
-            this.Position.X,
-            this.Position.Y,
+            this.Position.X / renderScaling,
+            this.Position.Y / renderScaling,
             this.Width,
             this.Height);
         return WindowGeometryValidator.Cascade(currentGeometry, previousGeometry, this.GetWorkAreas());
@@ -593,8 +594,13 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
     private IReadOnlyList<WindowWorkArea> GetWorkAreas()
     {
         return this.Screens.All
-            .Select(screen => screen.WorkingArea)
-            .Select(area => new WindowWorkArea(area.X, area.Y, area.Width, area.Height))
+            .Select(screen =>
+            {
+                PixelRect area = screen.WorkingArea;
+                return WindowGeometryController.ToDeviceIndependentWorkArea(
+                    new WindowWorkArea(area.X, area.Y, area.Width, area.Height),
+                    screen.Scaling);
+            })
             .ToArray();
     }
 

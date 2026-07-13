@@ -29,6 +29,28 @@ public sealed class WindowGeometryControllerTests
     }
 
     [Fact]
+    public void CurrentGeometryCapturesPositionInDeviceIndependentUnits()
+    {
+        var target = new RecordingTarget
+        {
+            Position = new PixelPoint(200, 100),
+            Width = 420,
+            Height = 240,
+            RenderScaling = 2
+        };
+        using var controller = new DisposableGeometryController(target, () => { });
+
+        WindowGeometrySnapshot? geometry = controller.Controller.CurrentGeometry;
+
+        Assert.NotNull(geometry);
+        Assert.Equal(100, geometry.X);
+        Assert.Equal(50, geometry.Y);
+        Assert.Equal(420, geometry.Width);
+        Assert.Equal(240, geometry.Height);
+        Assert.Equal(WindowGeometryState.Normal, geometry.State);
+    }
+
+    [Fact]
     public void MinimizedStateKeepsLastNormalGeometry()
     {
         var target = new RecordingTarget
@@ -121,6 +143,23 @@ public sealed class WindowGeometryControllerTests
     }
 
     [Fact]
+    public void ApplyRestoresPositionInPhysicalPixels()
+    {
+        var target = new RecordingTarget
+        {
+            RenderScaling = 2
+        };
+        using var controller = new DisposableGeometryController(target, () => { });
+
+        controller.Controller.Apply(new WindowGeometrySnapshot(25, 35, 500, 300));
+
+        Assert.Equal(new PixelPoint(50, 70), target.Position);
+        Assert.Equal(500, target.Width);
+        Assert.Equal(300, target.Height);
+        Assert.Equal(WindowState.Normal, target.WindowState);
+    }
+
+    [Fact]
     public void RecordChangeDebouncesNotifications()
     {
         int count = 0;
@@ -192,6 +231,29 @@ public sealed class WindowGeometryControllerTests
         Assert.Equal(geometry, validated);
     }
 
+    [Fact]
+    public void WorkAreaConversionUsesDeviceIndependentUnits()
+    {
+        WindowWorkArea converted = WindowGeometryController.ToDeviceIndependentWorkArea(
+            new WindowWorkArea(100, 50, 3840, 2160),
+            renderScaling: 2);
+
+        Assert.Equal(50, converted.X);
+        Assert.Equal(25, converted.Y);
+        Assert.Equal(1920, converted.Width);
+        Assert.Equal(1080, converted.Height);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    [InlineData(double.NaN)]
+    [InlineData(double.PositiveInfinity)]
+    public void InvalidRenderScalingFallsBackToOne(double renderScaling)
+    {
+        Assert.Equal(1, WindowGeometryController.NormalizeRenderScaling(renderScaling));
+    }
+
     private sealed class DisposableGeometryController : IDisposable
     {
         public DisposableGeometryController(
@@ -221,6 +283,8 @@ public sealed class WindowGeometryControllerTests
         public double Width { get; set; } = 350;
 
         public double Height { get; set; } = 150;
+
+        public double RenderScaling { get; set; } = 1;
 
         public WindowState WindowState { get; set; }
     }
