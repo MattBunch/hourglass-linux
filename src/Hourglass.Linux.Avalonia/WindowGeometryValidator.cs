@@ -111,8 +111,26 @@ internal static class WindowGeometryValidator
         WindowGeometrySnapshot geometry,
         WindowWorkArea workArea)
     {
-        double x = Math.Clamp(geometry.X, workArea.X, workArea.Right - geometry.Width);
-        double y = Math.Clamp(geometry.Y, workArea.Y, workArea.Bottom - geometry.Height);
-        return new WindowGeometrySnapshot(x, y, geometry.Width, geometry.Height, geometry.State);
+        WindowGeometrySnapshot fittedGeometry = ClampSizeToWorkArea(geometry, workArea);
+        double x = Math.Clamp(fittedGeometry.X, workArea.X, workArea.Right - fittedGeometry.Width);
+        double y = Math.Clamp(fittedGeometry.Y, workArea.Y, workArea.Bottom - fittedGeometry.Height);
+        return new WindowGeometrySnapshot(
+            x,
+            y,
+            fittedGeometry.Width,
+            fittedGeometry.Height,
+            fittedGeometry.State);
+    }
+
+    private static WindowGeometrySnapshot ClampSizeToWorkArea(
+        WindowGeometrySnapshot geometry,
+        WindowWorkArea workArea)
+    {
+        return new WindowGeometrySnapshot(
+            geometry.X,
+            geometry.Y,
+            Math.Clamp(geometry.Width, WindowGeometrySnapshot.MinimumWidth, workArea.Width),
+            Math.Clamp(geometry.Height, WindowGeometrySnapshot.MinimumHeight, workArea.Height),
+            geometry.State);
     }
 }

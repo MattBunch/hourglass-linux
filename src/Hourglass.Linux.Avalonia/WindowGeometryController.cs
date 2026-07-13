@@ -15,6 +15,11 @@ internal interface IWindowGeometryTarget
     WindowState WindowState { get; set; }
 }
 
+internal interface IWindowGeometryDebounceTimer : IDisposable
+{
+    void Schedule(TimeSpan delay, Action callback);
+}
+
 internal sealed class WindowGeometryController
 {
     private static readonly TimeSpan SaveDelay = TimeSpan.FromMilliseconds(500);
@@ -22,7 +27,7 @@ internal sealed class WindowGeometryController
     private readonly IWindowGeometryTarget target;
     private readonly Action geometryChanged;
     private readonly Func<IReadOnlyList<WindowWorkArea>> getWorkAreas;
-    private readonly Timer saveTimer;
+    private readonly IWindowGeometryDebounceTimer saveTimer;
     private WindowGeometrySnapshot? lastNormalGeometry;
     private WindowGeometryState lastRestorableState = WindowGeometryState.Normal;
     private bool applyingGeometry;
@@ -31,12 +36,13 @@ internal sealed class WindowGeometryController
     public WindowGeometryController(
         IWindowGeometryTarget target,
         Action geometryChanged,
-        Func<IReadOnlyList<WindowWorkArea>> getWorkAreas)
+        Func<IReadOnlyList<WindowWorkArea>> getWorkAreas,
+        IWindowGeometryDebounceTimer? saveTimer = null)
     {
         this.target = target ?? throw new ArgumentNullException(nameof(target));
         this.geometryChanged = geometryChanged ?? throw new ArgumentNullException(nameof(geometryChanged));
         this.getWorkAreas = getWorkAreas ?? throw new ArgumentNullException(nameof(getWorkAreas));
-        this.saveTimer = new Timer(this.PublishPendingChange, null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+        this.saveTimer = saveTimer ?? new ThreadingWindowGeometryDebounceTimer();
     }
 
     public WindowGeometrySnapshot? CurrentGeometry
@@ -90,7 +96,7 @@ internal sealed class WindowGeometryController
             return;
         }
 
-        this.saveTimer.Change(SaveDelay, Timeout.InfiniteTimeSpan);
+        this.saveTimer.Schedule(SaveDelay, this.PublishPendingChange);
     }
 
     public void Dispose()
@@ -137,11 +143,38 @@ internal sealed class WindowGeometryController
         return this.lastNormalGeometry with { State = this.lastRestorableState };
     }
 
-    private void PublishPendingChange(object? state)
+    private void PublishPendingChange()
     {
         if (!this.disposed)
         {
             this.geometryChanged();
+        }
+    }
+
+    private sealed class ThreadingWindowGeometryDebounceTimer : IWindowGeometryDebounceTimer
+    {
+        private readonly Timer timer;
+        private Action? callback;
+
+        public ThreadingWindowGeometryDebounceTimer()
+        {
+            this.timer = new Timer(this.PublishPendingChange, null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+        }
+
+        public void Schedule(TimeSpan delay, Action callback)
+        {
+            this.callback = callback ?? throw new ArgumentNullException(nameof(callback));
+            this.timer.Change(delay, Timeout.InfiniteTimeSpan);
+        }
+
+        public void Dispose()
+        {
+            this.timer.Dispose();
+        }
+
+        private void PublishPendingChange(object? state)
+        {
+            this.callback?.Invoke();
         }
     }
 }

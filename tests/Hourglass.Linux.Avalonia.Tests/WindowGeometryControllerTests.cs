@@ -123,8 +123,8 @@ public sealed class WindowGeometryControllerTests
     [Fact]
     public void RecordChangeDebouncesNotifications()
     {
-        using var changed = new ManualResetEventSlim();
         int count = 0;
+        var debounceTimer = new FakeDebounceTimer();
         var target = new RecordingTarget
         {
             Position = new PixelPoint(10, 10),
@@ -134,8 +134,7 @@ public sealed class WindowGeometryControllerTests
         using var controller = new DisposableGeometryController(target, () =>
         {
             Interlocked.Increment(ref count);
-            changed.Set();
-        });
+        }, debounceTimer);
         _ = controller.Controller.CurrentGeometry;
 
         target.Width = 430;
@@ -143,8 +142,8 @@ public sealed class WindowGeometryControllerTests
         target.Width = 440;
         controller.Controller.RecordChange();
 
-        Assert.True(changed.Wait(TimeSpan.FromSeconds(2)));
-        Thread.Sleep(100);
+        Assert.NotNull(debounceTimer.PendingCallback);
+        debounceTimer.Trigger();
         Assert.Equal(1, Volatile.Read(ref count));
     }
 
@@ -164,6 +163,24 @@ public sealed class WindowGeometryControllerTests
     }
 
     [Fact]
+    public void ValidatorFitsOversizedOffscreenGeometryToSelectedWorkArea()
+    {
+        var geometry = new WindowGeometrySnapshot(6400, 5000, 2500, 2500);
+
+        WindowGeometrySnapshot validated = WindowGeometryValidator.Validate(
+            geometry,
+            [
+                new WindowWorkArea(0, 0, 3000, 400),
+                new WindowWorkArea(5000, 0, 800, 3000)
+            ]);
+
+        Assert.Equal(5000, validated.X);
+        Assert.Equal(500, validated.Y);
+        Assert.Equal(800, validated.Width);
+        Assert.Equal(2500, validated.Height);
+    }
+
+    [Fact]
     public void ValidatorLeavesIntersectingGeometryInPlace()
     {
         var geometry = new WindowGeometrySnapshot(1800, 900, 500, 300);
@@ -177,12 +194,16 @@ public sealed class WindowGeometryControllerTests
 
     private sealed class DisposableGeometryController : IDisposable
     {
-        public DisposableGeometryController(RecordingTarget target, Action changed)
+        public DisposableGeometryController(
+            RecordingTarget target,
+            Action changed,
+            IWindowGeometryDebounceTimer? debounceTimer = null)
         {
             this.Controller = new WindowGeometryController(
                 target,
                 changed,
-                () => [new WindowWorkArea(0, 0, 1920, 1080)]);
+                () => [new WindowWorkArea(0, 0, 1920, 1080)],
+                debounceTimer);
         }
 
         public WindowGeometryController Controller { get; }
@@ -202,5 +223,27 @@ public sealed class WindowGeometryControllerTests
         public double Height { get; set; } = 150;
 
         public WindowState WindowState { get; set; }
+    }
+
+    private sealed class FakeDebounceTimer : IWindowGeometryDebounceTimer
+    {
+        public Action? PendingCallback { get; private set; }
+
+        public void Schedule(TimeSpan delay, Action callback)
+        {
+            Assert.Equal(TimeSpan.FromMilliseconds(500), delay);
+            this.PendingCallback = callback;
+        }
+
+        public void Trigger()
+        {
+            Action? callback = this.PendingCallback;
+            this.PendingCallback = null;
+            callback?.Invoke();
+        }
+
+        public void Dispose()
+        {
+        }
     }
 }
