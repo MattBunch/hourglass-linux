@@ -102,6 +102,48 @@ public sealed class SavedTimersDocumentTests
     }
 
     [Fact]
+    public void ActiveSessionDocumentRoundTripsWindowGeometry()
+    {
+        var geometry = new WindowGeometrySnapshot(10, 20, 420, 240, WindowGeometryState.Maximized);
+        var document = new ActiveTimerSessionDocument(
+            timerInput: "10 seconds",
+            windowGeometry: geometry);
+
+        string json = JsonSerializer.Serialize(document);
+        ActiveTimerSessionDocument? roundTripped = JsonSerializer.Deserialize<ActiveTimerSessionDocument>(json);
+
+        Assert.NotNull(roundTripped);
+        Assert.Equal(geometry, roundTripped.WindowGeometry);
+    }
+
+    [Fact]
+    public void OlderActiveSessionJsonWithoutWindowGeometryStillLoads()
+    {
+        const string json = """{"TimerInput":"10 seconds"}""";
+
+        ActiveTimerSessionDocument? document = JsonSerializer.Deserialize<ActiveTimerSessionDocument>(json);
+
+        Assert.NotNull(document);
+        Assert.Null(document.WindowGeometry);
+        Assert.Equal("10 seconds", document.TimerInput);
+    }
+
+    [Fact]
+    public void WindowGeometrySnapshotNormalizesInvalidValues()
+    {
+        var geometry = new WindowGeometrySnapshot(
+            double.NaN,
+            double.PositiveInfinity,
+            -1,
+            double.NegativeInfinity);
+
+        Assert.Equal(0, geometry.X);
+        Assert.Equal(0, geometry.Y);
+        Assert.Equal(WindowGeometrySnapshot.MinimumWidth, geometry.Width);
+        Assert.Equal(WindowGeometrySnapshot.MinimumHeight, geometry.Height);
+    }
+
+    [Fact]
     public void LegacySavedTimerOptionsPreserveCurrentSoundSelection()
     {
         LinuxAppSettings disabledSettings = LinuxAppSettings.Default with

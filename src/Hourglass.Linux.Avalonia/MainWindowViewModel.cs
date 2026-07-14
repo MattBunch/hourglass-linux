@@ -661,7 +661,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         _ = this.ReleaseInhibitionAsync();
     }
 
-    internal ActiveTimerSessionDocument CreateActiveSessionDocument()
+    internal ActiveTimerSessionDocument CreateActiveSessionDocument(WindowGeometrySnapshot? windowGeometry = null)
     {
         return ActiveTimerSessionDocument.FromTimerInfo(
             this.TimerInput,
@@ -669,7 +669,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             ToActiveTimerPresentationMode(this.viewState.PresentationMode),
             this.engine.ToTimerInfo(),
             this.wallClockNow(),
-            SavedTimerOptions.FromSettings(this.settings));
+            SavedTimerOptions.FromSettings(this.settings),
+            windowGeometry);
     }
 
     internal bool RestoreActiveSession(ActiveTimerSessionDocument session)

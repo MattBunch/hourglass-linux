@@ -185,6 +185,7 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
         this.mostRecentWindow = registration;
         window.Activated += this.WindowActivated;
         window.Closed += this.WindowClosed;
+        window.WindowGeometryChanged += this.WindowGeometryChanged;
         viewModel.PropertyChanged += this.ViewModelPropertyChanged;
         viewModel.ActiveSessionChanged += this.ViewModelActiveSessionChanged;
         viewModel.NewTimerRequested += this.ViewModelNewTimerRequested;
@@ -195,6 +196,7 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
             this.lifetime.MainWindow = window;
         }
 
+        this.ApplyInitialGeometry(window, session?.WindowGeometry);
         _ = this.LoadWindowAsync(registration, session, savedTimer, launchRequest);
         window.Show();
         _ = this.QueueSessionSave();
@@ -238,6 +240,28 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
         _ = this.QueueSessionSave();
         this.ApplyDesktopProgress();
         this.ApplyStatusIconState();
+    }
+
+    private void ApplyInitialGeometry(MainWindow window, WindowGeometrySnapshot? restoredGeometry)
+    {
+        if (restoredGeometry != null)
+        {
+            window.ApplyWindowGeometry(restoredGeometry);
+            return;
+        }
+
+        WindowGeometrySnapshot? previousGeometry = this.mostRecentWindow?.Window == window
+            ? this.windows
+                .Where(registration => registration.Window != window)
+                .LastOrDefault()
+                ?.Window.CurrentWindowGeometry
+            : this.mostRecentWindow?.Window.CurrentWindowGeometry;
+        if (previousGeometry == null)
+        {
+            return;
+        }
+
+        window.ApplyWindowGeometry(window.CreateCascadedWindowGeometry(previousGeometry));
     }
 
     private async Task<ActiveTimerSessionsDocument> LoadActiveSessionsAsync(CancellationToken cancellationToken)
@@ -336,6 +360,11 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
         this.ApplyStatusIconState();
     }
 
+    private void WindowGeometryChanged(object? sender, EventArgs e)
+    {
+        _ = this.QueueSessionSave();
+    }
+
     private void ViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName is nameof(MainWindowViewModel.ShowInNotificationArea)
@@ -386,6 +415,7 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
 
         window.Activated -= this.WindowActivated;
         window.Closed -= this.WindowClosed;
+        window.WindowGeometryChanged -= this.WindowGeometryChanged;
         registration.ViewModel.PropertyChanged -= this.ViewModelPropertyChanged;
         registration.ViewModel.ActiveSessionChanged -= this.ViewModelActiveSessionChanged;
         registration.ViewModel.NewTimerRequested -= this.ViewModelNewTimerRequested;
@@ -534,7 +564,7 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
             .Where(window => !this.closingWindows.Contains(window.Window))
             .Select(window => new ActiveTimerSessionDefinition(
                 window.ViewModel.SessionId,
-                window.ViewModel.CreateActiveSessionDocument()))
+                window.ViewModel.CreateActiveSessionDocument(window.Window.CurrentWindowGeometry)))
             .ToArray();
         return new ActiveTimerSessionsDocument(sessions: sessions);
     }
