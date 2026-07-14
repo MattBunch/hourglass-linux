@@ -12,8 +12,6 @@ internal interface IWindowGeometryTarget
 
     double Height { get; set; }
 
-    double RenderScaling { get; }
-
     WindowState WindowState { get; set; }
 }
 
@@ -68,10 +66,9 @@ internal sealed class WindowGeometryController
         this.applyingGeometry = true;
         try
         {
-            double renderScaling = NormalizeRenderScaling(this.target.RenderScaling);
             this.target.Position = new PixelPoint(
-                (int)Math.Round(validated.X * renderScaling),
-                (int)Math.Round(validated.Y * renderScaling));
+                (int)Math.Round(validated.X),
+                (int)Math.Round(validated.Y));
             this.target.Width = validated.Width;
             this.target.Height = validated.Height;
             this.target.WindowState = validated.State == WindowGeometryState.Maximized
@@ -130,30 +127,12 @@ internal sealed class WindowGeometryController
         }
 
         this.lastRestorableState = WindowGeometryState.Normal;
-        double renderScaling = NormalizeRenderScaling(this.target.RenderScaling);
         this.lastNormalGeometry = new WindowGeometrySnapshot(
-            this.target.Position.X / renderScaling,
-            this.target.Position.Y / renderScaling,
+            this.target.Position.X,
+            this.target.Position.Y,
             this.target.Width,
             this.target.Height,
             WindowGeometryState.Normal);
-    }
-
-    internal static double NormalizeRenderScaling(double renderScaling)
-    {
-        return double.IsFinite(renderScaling) && renderScaling > 0
-            ? renderScaling
-            : 1.0;
-    }
-
-    internal static WindowWorkArea ToDeviceIndependentWorkArea(WindowWorkArea workArea, double renderScaling)
-    {
-        double normalizedScaling = NormalizeRenderScaling(renderScaling);
-        return new WindowWorkArea(
-            workArea.X / normalizedScaling,
-            workArea.Y / normalizedScaling,
-            workArea.Width / normalizedScaling,
-            workArea.Height / normalizedScaling);
     }
 
     private WindowGeometrySnapshot? GetSnapshot()
