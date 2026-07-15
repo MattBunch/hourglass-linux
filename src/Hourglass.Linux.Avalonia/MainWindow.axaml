@@ -134,7 +134,7 @@
       <Setter Property="Foreground" Value="{DynamicResource AccentFillColorDefaultBrush}" />
     </Style>
 
-    <Style Selector="Grid.custom-theme">
+    <Style Selector="Grid.custom-theme Grid.progressTrack">
       <Setter Property="Background" Value="{DynamicResource TimerWindowBackgroundBrush}" />
     </Style>
 

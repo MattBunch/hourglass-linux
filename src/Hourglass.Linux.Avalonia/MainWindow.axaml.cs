@@ -590,7 +590,8 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
         }
 
         if (e.PropertyName is nameof(MainWindowViewModel.CustomThemeMenuItems)
-            or nameof(MainWindowViewModel.CanExportCustomTheme))
+            or nameof(MainWindowViewModel.CanExportCustomTheme)
+            or nameof(MainWindowViewModel.CanModifyCustomThemes))
         {
             this.RebuildThemeMenu();
         }
@@ -730,7 +731,9 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
             themeItem.Items.Add(new MenuItem
             {
                 Header = "Edit",
-                Command = new RelayCommand(() => _ = this.EditCustomThemeAsync(theme.Id))
+                Command = new RelayCommand(
+                    () => _ = this.EditCustomThemeAsync(theme.Id),
+                    () => this.viewModel.CanModifyCustomThemes)
             });
             themeItem.Items.Add(new MenuItem
             {
@@ -746,7 +749,9 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
             themeItem.Items.Add(new MenuItem
             {
                 Header = "Delete",
-                Command = new RelayCommand(() => _ = this.DeleteCustomThemeAsync(theme.Id))
+                Command = new RelayCommand(
+                    () => _ = this.DeleteCustomThemeAsync(theme.Id),
+                    () => this.viewModel.CanModifyCustomThemes)
             });
             this.ThemeMenuItem.Items.Add(themeItem);
         }
@@ -755,20 +760,29 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
         this.ThemeMenuItem.Items.Add(new MenuItem
         {
             Header = "New custom theme",
-            Command = new RelayCommand(() => _ = this.CreateCustomThemeAsync())
+            Command = new RelayCommand(
+                () => _ = this.CreateCustomThemeAsync(),
+                () => this.viewModel.CanModifyCustomThemes)
         });
         this.ThemeMenuItem.Items.Add(new MenuItem
         {
             Header = "Import custom theme",
-            Command = new RelayCommand(() => _ = this.ImportCustomThemeAsync())
+            Command = new RelayCommand(
+                () => _ = this.ImportCustomThemeAsync(),
+                () => this.viewModel.CanModifyCustomThemes)
         });
     }
 
     private async Task CreateCustomThemeAsync()
     {
+        if (!this.viewModel.CanModifyCustomThemes)
+        {
+            return;
+        }
+
         var dialog = new CustomThemeEditorWindow();
         CustomThemeDefinition? theme = await dialog.ShowDialog<CustomThemeDefinition?>(this).ConfigureAwait(true);
-        if (theme != null)
+        if (theme != null && this.viewModel.CanModifyCustomThemes)
         {
             this.viewModel.SaveCustomTheme(theme, select: true);
         }
@@ -776,6 +790,11 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
 
     private async Task EditCustomThemeAsync(string themeId)
     {
+        if (!this.viewModel.CanModifyCustomThemes)
+        {
+            return;
+        }
+
         CustomThemeDefinition? theme = this.viewModel.FindCustomTheme(themeId);
         if (theme == null)
         {
@@ -784,7 +803,7 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
 
         var dialog = new CustomThemeEditorWindow(theme);
         CustomThemeDefinition? editedTheme = await dialog.ShowDialog<CustomThemeDefinition?>(this).ConfigureAwait(true);
-        if (editedTheme != null)
+        if (editedTheme != null && this.viewModel.CanModifyCustomThemes)
         {
             this.viewModel.SaveCustomTheme(editedTheme, select: StringComparer.Ordinal.Equals(this.viewModel.CustomThemeId, editedTheme.Id));
         }
@@ -792,6 +811,11 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
 
     private async Task DeleteCustomThemeAsync(string themeId)
     {
+        if (!this.viewModel.CanModifyCustomThemes)
+        {
+            return;
+        }
+
         CustomThemeDefinition? theme = this.viewModel.FindCustomTheme(themeId);
         if (theme == null)
         {
@@ -800,7 +824,7 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
 
         var dialog = new CustomThemeDeleteWindow(theme.Name);
         bool delete = await dialog.ShowDialog<bool>(this).ConfigureAwait(true);
-        if (delete)
+        if (delete && this.viewModel.CanModifyCustomThemes)
         {
             this.viewModel.DeleteCustomThemeCommand.Execute(theme.Id);
         }
@@ -808,6 +832,11 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
 
     private async Task ImportCustomThemeAsync()
     {
+        if (!this.viewModel.CanModifyCustomThemes)
+        {
+            return;
+        }
+
         TopLevel? topLevel = GetTopLevel(this);
         if (topLevel == null)
         {
@@ -850,7 +879,7 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
             return;
         }
 
-        if (theme is { IsValid: true })
+        if (theme is { IsValid: true } && this.viewModel.CanModifyCustomThemes)
         {
             this.viewModel.SaveCustomTheme(theme, select: true);
         }

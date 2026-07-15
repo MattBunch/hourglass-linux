@@ -538,6 +538,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     public bool IsTimerModificationLocked =>
         this.settings.LockInterface && (this.engine.State is TimerState.Running or TimerState.Paused);
 
+    public bool CanModifyCustomThemes => !this.IsTimerModificationLocked;
+
     public bool ShouldPromptOnExit =>
         this.settings.PromptOnExit && (this.engine.State is TimerState.Running or TimerState.Paused);
 
@@ -1116,6 +1118,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     {
         ArgumentNullException.ThrowIfNull(theme);
 
+        if (!this.CanModifyCustomThemes)
+        {
+            return;
+        }
+
         if (!theme.IsValid)
         {
             return;
@@ -1146,6 +1153,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     private void DeleteCustomTheme(string? id)
     {
+        if (!this.CanModifyCustomThemes)
+        {
+            return;
+        }
+
         CustomThemeDefinition? theme = this.customThemes.Find(id);
         if (theme == null)
         {
@@ -1421,6 +1433,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         this.OnPropertyChanged(nameof(this.State));
         this.OnPropertyChanged(nameof(this.ShouldPromptOnExit));
         this.OnPropertyChanged(nameof(this.IsTimerModificationLocked));
+        this.OnPropertyChanged(nameof(this.CanModifyCustomThemes));
         this.OnPropertyChanged(nameof(this.ProgressPercent));
         this.OnPropertyChanged(nameof(this.DesktopProgressRequest));
         this.OnPropertyChanged(nameof(this.IsTimerInputVisible));
@@ -1584,6 +1597,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         {
             this.OnPropertyChanged(nameof(this.LockInterface));
             this.OnPropertyChanged(nameof(this.IsTimerModificationLocked));
+            this.OnPropertyChanged(nameof(this.CanModifyCustomThemes));
             this.OnPropertyChanged(nameof(this.CanHideToNotificationArea));
             this.OnPropertyChanged(nameof(this.StatusIconMenuState));
         }

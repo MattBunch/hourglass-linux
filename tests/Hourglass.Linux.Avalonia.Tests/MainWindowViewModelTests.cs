@@ -307,6 +307,36 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
+    public async Task LockInterfaceBlocksCustomThemeMutation()
+    {
+        var existingTheme = new CustomThemeDefinition("theme-1", "Evening");
+        var addedTheme = new CustomThemeDefinition("theme-2", "Morning");
+        var settingsStore = new RecordingSettingsStore
+        {
+            LoadedCustomThemes = new CustomThemesDocument(themes: [existingTheme])
+        };
+        var viewModel = CreateViewModel(new ManualMonotonicClock(), settingsStore: settingsStore);
+
+        await viewModel.LoadSettingsAsync();
+        viewModel.ToggleLockInterfaceCommand.Execute(null);
+        viewModel.TimerInput = "2 minutes";
+        viewModel.StartCommand.Execute(null);
+
+        Assert.True(viewModel.IsTimerModificationLocked);
+        Assert.False(viewModel.CanModifyCustomThemes);
+        Assert.False(viewModel.DuplicateCustomThemeCommand.CanExecute(existingTheme.Id));
+        Assert.False(viewModel.DeleteCustomThemeCommand.CanExecute(existingTheme.Id));
+
+        viewModel.SaveCustomTheme(addedTheme, select: true);
+        viewModel.DeleteCustomThemeCommand.Execute(existingTheme.Id);
+        await viewModel.PendingSettingsSave;
+
+        Assert.Null(settingsStore.SavedCustomThemes);
+        Assert.Null(viewModel.FindCustomTheme(addedTheme.Id));
+        Assert.Equal(existingTheme, viewModel.FindCustomTheme(existingTheme.Id));
+    }
+
+    [Fact]
     public async Task MissingCustomThemeSelectionFallsBackToSystem()
     {
         var settingsStore = new RecordingSettingsStore
@@ -816,10 +846,25 @@ public sealed class MainWindowViewModelTests
         AssertStyleSetter(stylesBySelector["TextBox.titleInput"], "CaretBrush", "{DynamicResource TextControlForeground}");
         AssertStyleSetter(stylesBySelector["Button.textCommand"], "Foreground", "{DynamicResource TextControlForeground}");
         AssertStyleSetter(stylesBySelector["Button.textCommand:pointerover"], "Foreground", "{DynamicResource AccentFillColorDefaultBrush}");
+        AssertStyleSetter(stylesBySelector["Grid.custom-theme Grid.progressTrack"], "Background", "{DynamicResource TimerWindowBackgroundBrush}");
         AssertStyleSetter(stylesBySelector["Grid.custom-theme TextBox.timerInput"], "Foreground", "{DynamicResource TimerPrimaryTextBrush}");
         AssertStyleSetter(stylesBySelector["Grid.custom-theme TextBox.titleInput"], "Foreground", "{DynamicResource TimerSecondaryTextBrush}");
         AssertStyleSetter(stylesBySelector["Grid.custom-theme Button.textCommand"], "Foreground", "{DynamicResource TimerCommandTextBrush}");
         AssertStyleSetter(stylesBySelector["Grid.custom-theme Button.textCommand:pointerover"], "Foreground", "{DynamicResource TimerAccentBrush}");
+    }
+
+    [Fact]
+    public void CustomThemeDialogCommandsHonorInterfaceLock()
+    {
+        string codeBehind = File.ReadAllText(FindRepositoryFile("src/Hourglass.Linux.Avalonia/MainWindow.axaml.cs"));
+
+        Assert.Contains("nameof(MainWindowViewModel.CanModifyCustomThemes)", codeBehind);
+        Assert.Contains("() => this.viewModel.CanModifyCustomThemes", codeBehind);
+        Assert.Contains("if (!this.viewModel.CanModifyCustomThemes)", codeBehind);
+        Assert.Contains("theme != null && this.viewModel.CanModifyCustomThemes", codeBehind);
+        Assert.Contains("editedTheme != null && this.viewModel.CanModifyCustomThemes", codeBehind);
+        Assert.Contains("delete && this.viewModel.CanModifyCustomThemes", codeBehind);
+        Assert.Contains("theme is { IsValid: true } && this.viewModel.CanModifyCustomThemes", codeBehind);
     }
 
     [Fact]
