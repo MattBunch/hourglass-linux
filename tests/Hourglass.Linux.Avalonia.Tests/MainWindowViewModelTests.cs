@@ -240,6 +240,73 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
+    public async Task SavingCustomThemePreservesThemesAddedByAnotherWindow()
+    {
+        var previousTheme = new CustomThemeDefinition("theme-1", "Evening");
+        var localTheme = new CustomThemeDefinition("theme-2", "Morning");
+        var externalTheme = new CustomThemeDefinition("theme-3", "Noon");
+        var settingsStore = new RecordingSettingsStore
+        {
+            LoadedCustomThemes = new CustomThemesDocument(themes: [previousTheme])
+        };
+        var viewModel = CreateViewModel(new ManualMonotonicClock(), settingsStore: settingsStore);
+
+        await viewModel.LoadSettingsAsync();
+        settingsStore.LatestCustomThemes = new CustomThemesDocument(themes: [previousTheme, externalTheme]);
+        viewModel.SaveCustomTheme(localTheme, select: false);
+        await viewModel.PendingSettingsSave;
+
+        Assert.NotNull(settingsStore.SavedCustomThemes);
+        Assert.Equal(
+            ["theme-1", "theme-2", "theme-3"],
+            settingsStore.SavedCustomThemes.Themes.Select(theme => theme.Id).Order());
+    }
+
+    [Fact]
+    public async Task SavingCustomThemeDeletePreservesThemesAddedByAnotherWindow()
+    {
+        var deletedTheme = new CustomThemeDefinition("theme-1", "Evening");
+        var externalTheme = new CustomThemeDefinition("theme-2", "Noon");
+        var settingsStore = new RecordingSettingsStore
+        {
+            LoadedCustomThemes = new CustomThemesDocument(themes: [deletedTheme])
+        };
+        var viewModel = CreateViewModel(new ManualMonotonicClock(), settingsStore: settingsStore);
+
+        await viewModel.LoadSettingsAsync();
+        settingsStore.LatestCustomThemes = new CustomThemesDocument(themes: [deletedTheme, externalTheme]);
+        viewModel.DeleteCustomThemeCommand.Execute(deletedTheme.Id);
+        await viewModel.PendingSettingsSave;
+
+        Assert.NotNull(settingsStore.SavedCustomThemes);
+        CustomThemeDefinition savedTheme = Assert.Single(settingsStore.SavedCustomThemes.Themes);
+        Assert.Equal(externalTheme, savedTheme);
+    }
+
+    [Fact]
+    public async Task SavingCustomThemeEditWinsForSameThemeAndPreservesOtherLatestThemes()
+    {
+        var originalTheme = new CustomThemeDefinition("theme-1", "Evening");
+        var editedTheme = new CustomThemeDefinition("theme-1", "Evening updated");
+        var externalTheme = new CustomThemeDefinition("theme-2", "Noon");
+        var settingsStore = new RecordingSettingsStore
+        {
+            LoadedCustomThemes = new CustomThemesDocument(themes: [originalTheme])
+        };
+        var viewModel = CreateViewModel(new ManualMonotonicClock(), settingsStore: settingsStore);
+
+        await viewModel.LoadSettingsAsync();
+        settingsStore.LatestCustomThemes = new CustomThemesDocument(themes: [originalTheme, externalTheme]);
+        viewModel.SaveCustomTheme(editedTheme, select: false);
+        await viewModel.PendingSettingsSave;
+
+        Assert.NotNull(settingsStore.SavedCustomThemes);
+        Assert.Equal(
+            ["Evening updated", "Noon"],
+            settingsStore.SavedCustomThemes.Themes.Select(theme => theme.Name).Order());
+    }
+
+    [Fact]
     public async Task MissingCustomThemeSelectionFallsBackToSystem()
     {
         var settingsStore = new RecordingSettingsStore
@@ -733,6 +800,29 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
+    public void MainWindowStylesKeepBuiltInThemeForegroundsAndScopeCustomThemeBrushes()
+    {
+        XNamespace avalonia = "https://github.com/avaloniaui";
+        XDocument document = XDocument.Load(FindRepositoryFile("src/Hourglass.Linux.Avalonia/MainWindow.axaml"));
+        XElement styles = Assert.IsType<XElement>(document.Root?.Element(avalonia + "Window.Styles"));
+        Dictionary<string, XElement> stylesBySelector = styles
+            .Elements(avalonia + "Style")
+            .Where(element => element.Attribute("Selector") != null)
+            .ToDictionary(element => element.Attribute("Selector")!.Value, StringComparer.Ordinal);
+
+        AssertStyleSetter(stylesBySelector["TextBox.timerInput"], "Foreground", "{DynamicResource TextControlForeground}");
+        AssertStyleSetter(stylesBySelector["TextBox.timerInput"], "CaretBrush", "{DynamicResource TextControlForeground}");
+        AssertStyleSetter(stylesBySelector["TextBox.titleInput"], "Foreground", "{DynamicResource TextControlForeground}");
+        AssertStyleSetter(stylesBySelector["TextBox.titleInput"], "CaretBrush", "{DynamicResource TextControlForeground}");
+        AssertStyleSetter(stylesBySelector["Button.textCommand"], "Foreground", "{DynamicResource TextControlForeground}");
+        AssertStyleSetter(stylesBySelector["Button.textCommand:pointerover"], "Foreground", "{DynamicResource AccentFillColorDefaultBrush}");
+        AssertStyleSetter(stylesBySelector["Grid.custom-theme TextBox.timerInput"], "Foreground", "{DynamicResource TimerPrimaryTextBrush}");
+        AssertStyleSetter(stylesBySelector["Grid.custom-theme TextBox.titleInput"], "Foreground", "{DynamicResource TimerSecondaryTextBrush}");
+        AssertStyleSetter(stylesBySelector["Grid.custom-theme Button.textCommand"], "Foreground", "{DynamicResource TimerCommandTextBrush}");
+        AssertStyleSetter(stylesBySelector["Grid.custom-theme Button.textCommand:pointerover"], "Foreground", "{DynamicResource TimerAccentBrush}");
+    }
+
+    [Fact]
     public void PrimaryAndTitleTextUseResponsiveControlsWithSafeLimits()
     {
         XNamespace avalonia = "https://github.com/avaloniaui";
@@ -1025,7 +1115,7 @@ public sealed class MainWindowViewModelTests
             .ToDictionary(element => element.Attribute("Header")!.Value, StringComparer.Ordinal);
 
         Assert.Equal("{Binding AlwaysOnTop}", window.Attribute("Topmost")?.Value);
-        Assert.Equal("{DynamicResource TimerWindowBackgroundBrush}", rootGrid.Attribute("Background")?.Value);
+        Assert.Equal("Transparent", rootGrid.Attribute("Background")?.Value);
         Assert.Equal("{Binding StartCommand}", menuItems["Start"].Attribute("Command")?.Value);
         Assert.Equal("{Binding PauseResumeCommand}", menuItems["{Binding PauseResumeText}"].Attribute("Command")?.Value);
         Assert.Equal("{Binding ResetCommand}", menuItems["Stop"].Attribute("Command")?.Value);
@@ -3514,7 +3604,7 @@ public sealed class MainWindowViewModelTests
         Assert.Equal("True", progressLayer.Attribute("ClipToBounds")?.Value);
         Assert.Equal("False", progressLayer.Attribute("IsHitTestVisible")?.Value);
         Assert.Equal("Left", progressIndicator.Attribute("HorizontalAlignment")?.Value);
-        Assert.Equal("{StaticResource TimerProgressFillBrush}", progressIndicator.Attribute("Background")?.Value);
+        Assert.Equal("{DynamicResource TimerProgressFillBrush}", progressIndicator.Attribute("Background")?.Value);
         Assert.Equal("#3665B3", fillBrush.Attribute("Color")?.Value);
         Assert.Equal("0.45", fillBrush.Attribute("Opacity")?.Value);
         Assert.Contains(innerGrid, progressLayer.ElementsAfterSelf());
@@ -3533,6 +3623,16 @@ public sealed class MainWindowViewModelTests
         return Assert.Single(
             document.Descendants(elementName),
             element => element.Attribute(xamlNamespace + "Name")?.Value == name);
+    }
+
+    private static void AssertStyleSetter(XElement style, string property, string value)
+    {
+        XNamespace avalonia = "https://github.com/avaloniaui";
+        XElement setter = Assert.Single(
+            style.Elements(avalonia + "Setter"),
+            element => element.Attribute("Property")?.Value == property);
+
+        Assert.Equal(value, setter.Attribute("Value")?.Value);
     }
 
     private static string FindRepositoryFile(string relativePath)
@@ -3756,6 +3856,8 @@ public sealed class MainWindowViewModelTests
 
         public CustomThemesDocument? LoadedCustomThemes { get; init; }
 
+        public CustomThemesDocument? LatestCustomThemes { get; set; }
+
         public ActiveTimerSessionDocument? LoadedActiveSession { get; init; }
 
         public LinuxAppSettings? SavedSettings { get; private set; }
@@ -3781,7 +3883,7 @@ public sealed class MainWindowViewModelTests
             {
                 "app" => this.SavedSettings ?? this.LoadedSettings,
                 "saved-timers" => this.SavedTimers ?? this.LoadedSavedTimers,
-                "custom-themes" => this.SavedCustomThemes ?? this.LoadedCustomThemes,
+                "custom-themes" => this.LatestCustomThemes ?? this.SavedCustomThemes ?? this.LoadedCustomThemes,
                 "active-session" => this.LoadedActiveSession,
                 _ => null
             };

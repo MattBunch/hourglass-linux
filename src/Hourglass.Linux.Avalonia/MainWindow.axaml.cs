@@ -646,6 +646,7 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
             return;
         }
 
+        this.RootGrid.Classes.Set("custom-theme", true);
         CustomThemeColors colors = customTheme.Colors;
         this.SetBrushResource("TimerWindowBackgroundBrush", colors.Background);
         this.SetBrushResource("TimerPrimaryTextBrush", colors.PrimaryText);
@@ -660,6 +661,7 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
 
     private void SetDefaultThemeResources()
     {
+        this.RootGrid.Classes.Set("custom-theme", false);
         this.SetBrushResource("TimerWindowBackgroundBrush", "Transparent");
         this.SetBrushResource("TimerPrimaryTextBrush", CustomThemeColors.DefaultPrimaryText);
         this.SetBrushResource("TimerSecondaryTextBrush", CustomThemeColors.DefaultSecondaryText);

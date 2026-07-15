@@ -46,8 +46,8 @@
       <Setter Property="HorizontalContentAlignment" Value="Center" />
       <Setter Property="VerticalContentAlignment" Value="Center" />
       <Setter Property="FontFamily" Value="Segoe UI Light, Inter, Noto Sans, sans-serif" />
-      <Setter Property="Foreground" Value="{DynamicResource TimerPrimaryTextBrush}" />
-      <Setter Property="CaretBrush" Value="{DynamicResource TimerPrimaryTextBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource TextControlForeground}" />
+      <Setter Property="CaretBrush" Value="{DynamicResource TextControlForeground}" />
     </Style>
 
     <Style Selector="TextBox.titleInput">
@@ -59,19 +59,19 @@
       <Setter Property="HorizontalContentAlignment" Value="Center" />
       <Setter Property="VerticalContentAlignment" Value="Center" />
       <Setter Property="FontFamily" Value="Segoe UI, Inter, Noto Sans, sans-serif" />
-      <Setter Property="Foreground" Value="{DynamicResource TimerSecondaryTextBrush}" />
-      <Setter Property="CaretBrush" Value="{DynamicResource TimerSecondaryTextBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource TextControlForeground}" />
+      <Setter Property="CaretBrush" Value="{DynamicResource TextControlForeground}" />
       <Setter Property="Opacity" Value="0.72" />
     </Style>
 
     <Style Selector="TextBox.titleInput:focus">
-      <Setter Property="BorderBrush" Value="{DynamicResource TimerAccentBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource AccentFillColorDefaultBrush}" />
       <Setter Property="BorderThickness" Value="0 0 0 1" />
       <Setter Property="Opacity" Value="1" />
     </Style>
 
     <Style Selector="TextBox.timerInput:focus">
-      <Setter Property="BorderBrush" Value="{DynamicResource TimerAccentBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource AccentFillColorDefaultBrush}" />
       <Setter Property="BorderThickness" Value="0 0 0 1" />
     </Style>
 
@@ -91,17 +91,17 @@
     </Style>
 
     <Style Selector="Grid.timer-expired Border#CompletionEmphasisBorder">
-      <Setter Property="BorderBrush" Value="{DynamicResource TimerCompletionBorderBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource AccentFillColorDefaultBrush}" />
       <Setter Property="BorderThickness" Value="2" />
     </Style>
 
     <Style Selector="Grid.timer-locked Border#CompletionEmphasisBorder">
-      <Setter Property="BorderBrush" Value="{DynamicResource TimerLockedBorderBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource SystemControlForegroundBaseMediumLowBrush}" />
       <Setter Property="BorderThickness" Value="1" />
     </Style>
 
     <Style Selector="Border#ExpiryFlashLayer">
-      <Setter Property="Background" Value="{DynamicResource TimerAccentBrush}" />
+      <Setter Property="Background" Value="{DynamicResource AccentFillColorDefaultBrush}" />
       <Setter Property="Opacity" Value="0" />
       <Setter Property="Transitions">
         <Transitions>
@@ -126,11 +126,57 @@
       <Setter Property="MinHeight" Value="0" />
       <Setter Property="FontFamily" Value="Segoe UI, Inter, Noto Sans, sans-serif" />
       <Setter Property="FontSize" Value="12" />
-      <Setter Property="Foreground" Value="{DynamicResource TimerCommandTextBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource TextControlForeground}" />
       <Setter Property="Cursor" Value="Hand" />
     </Style>
 
     <Style Selector="Button.textCommand:pointerover">
+      <Setter Property="Foreground" Value="{DynamicResource AccentFillColorDefaultBrush}" />
+    </Style>
+
+    <Style Selector="Grid.custom-theme">
+      <Setter Property="Background" Value="{DynamicResource TimerWindowBackgroundBrush}" />
+    </Style>
+
+    <Style Selector="Grid.custom-theme TextBox.timerInput">
+      <Setter Property="Foreground" Value="{DynamicResource TimerPrimaryTextBrush}" />
+      <Setter Property="CaretBrush" Value="{DynamicResource TimerPrimaryTextBrush}" />
+    </Style>
+
+    <Style Selector="Grid.custom-theme TextBox.titleInput">
+      <Setter Property="Foreground" Value="{DynamicResource TimerSecondaryTextBrush}" />
+      <Setter Property="CaretBrush" Value="{DynamicResource TimerSecondaryTextBrush}" />
+    </Style>
+
+    <Style Selector="Grid.custom-theme TextBox.titleInput:focus">
+      <Setter Property="BorderBrush" Value="{DynamicResource TimerAccentBrush}" />
+    </Style>
+
+    <Style Selector="Grid.custom-theme TextBox.timerInput:focus">
+      <Setter Property="BorderBrush" Value="{DynamicResource TimerAccentBrush}" />
+    </Style>
+
+    <Style Selector="Grid.custom-theme TextBox.timerInput.validation-feedback">
+      <Setter Property="Background" Value="{DynamicResource TimerValidationFlashBrush}" />
+    </Style>
+
+    <Style Selector="Grid.custom-theme.timer-expired Border#CompletionEmphasisBorder">
+      <Setter Property="BorderBrush" Value="{DynamicResource TimerCompletionBorderBrush}" />
+    </Style>
+
+    <Style Selector="Grid.custom-theme.timer-locked Border#CompletionEmphasisBorder">
+      <Setter Property="BorderBrush" Value="{DynamicResource TimerLockedBorderBrush}" />
+    </Style>
+
+    <Style Selector="Grid.custom-theme Border#ExpiryFlashLayer">
+      <Setter Property="Background" Value="{DynamicResource TimerAccentBrush}" />
+    </Style>
+
+    <Style Selector="Grid.custom-theme Button.textCommand">
+      <Setter Property="Foreground" Value="{DynamicResource TimerCommandTextBrush}" />
+    </Style>
+
+    <Style Selector="Grid.custom-theme Button.textCommand:pointerover">
       <Setter Property="Foreground" Value="{DynamicResource TimerAccentBrush}" />
     </Style>
 
@@ -155,7 +201,7 @@
   </Window.Styles>
 
   <Grid x:Name="RootGrid"
-        Background="{DynamicResource TimerWindowBackgroundBrush}"
+        Background="Transparent"
         Classes="content-active">
     <Grid.ContextMenu>
       <ContextMenu>
@@ -353,7 +399,7 @@
           IsHitTestVisible="False">
       <Border x:Name="ProgressIndicator"
               HorizontalAlignment="Left"
-              Background="{StaticResource TimerProgressFillBrush}">
+              Background="{DynamicResource TimerProgressFillBrush}">
         <Border.Width>
           <MultiBinding Converter="{StaticResource ProgressWidthConverter}">
             <Binding Path="ProgressPercent" />

@@ -1606,6 +1606,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             return;
         }
 
+        CustomThemesDocument previous = this.customThemes;
         this.customThemes = next;
         this.OnPropertyChanged(nameof(this.CustomThemeMenuItems));
         this.OnPropertyChanged(nameof(this.CurrentCustomTheme));
@@ -1623,7 +1624,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
         if (save)
         {
-            this.QueueCustomThemesSave(this.customThemes);
+            this.QueueCustomThemesSave(previous, this.customThemes);
         }
     }
 
@@ -1953,12 +1954,12 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             requestedSavedTimers);
     }
 
-    private void QueueCustomThemesSave(CustomThemesDocument document)
+    private void QueueCustomThemesSave(CustomThemesDocument previousCustomThemes, CustomThemesDocument requestedCustomThemes)
     {
-        this.pendingCustomThemesSave = this.SaveDocumentAfterAsync(
+        this.pendingCustomThemesSave = this.SaveCustomThemesAfterAsync(
             this.pendingCustomThemesSave,
-            CustomThemesKey,
-            document);
+            previousCustomThemes,
+            requestedCustomThemes);
     }
 
     private void QueueActiveSessionSave()
@@ -2040,11 +2041,52 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         }
     }
 
+    private async Task SaveCustomThemesAfterAsync(
+        Task previousSave,
+        CustomThemesDocument previousCustomThemes,
+        CustomThemesDocument requestedCustomThemes)
+    {
+        try
+        {
+            await previousSave.ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+        }
+
+        CustomThemesDocument latestCustomThemes = await this.LoadLatestCustomThemesForSaveAsync(previousCustomThemes).ConfigureAwait(false);
+        CustomThemesDocument mergedCustomThemes = MergeCustomThemesChange(
+            previousCustomThemes,
+            requestedCustomThemes,
+            latestCustomThemes);
+
+        try
+        {
+            await this.settingsStore.SaveAsync(CustomThemesKey, mergedCustomThemes).ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+        }
+    }
+
     private async Task<LinuxAppSettings> LoadLatestSettingsForSaveAsync(LinuxAppSettings fallback)
     {
         try
         {
             return await this.settingsStore.LoadAsync<LinuxAppSettings>(SettingsKey).ConfigureAwait(false)
+                ?? fallback;
+        }
+        catch (Exception)
+        {
+            return fallback;
+        }
+    }
+
+    private async Task<CustomThemesDocument> LoadLatestCustomThemesForSaveAsync(CustomThemesDocument fallback)
+    {
+        try
+        {
+            return await this.settingsStore.LoadAsync<CustomThemesDocument>(CustomThemesKey).ConfigureAwait(false)
                 ?? fallback;
         }
         catch (Exception)
@@ -2118,6 +2160,38 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             SelectChanged(previous.WindowTitleMode, requested.WindowTitleMode, latest.WindowTitleMode),
             audioAlertSoundId,
             SelectChangedNullableString(previous.CustomThemeId, requested.CustomThemeId, latest.CustomThemeId));
+    }
+
+    private static CustomThemesDocument MergeCustomThemesChange(
+        CustomThemesDocument previous,
+        CustomThemesDocument requested,
+        CustomThemesDocument latest)
+    {
+        CustomThemeDefinition[] previousThemes = previous.Themes;
+        CustomThemeDefinition[] requestedThemes = requested.Themes;
+        CustomThemeDefinition[] latestThemes = latest.Themes;
+
+        var previousIds = previousThemes
+            .Select(theme => theme.Id)
+            .ToHashSet(StringComparer.Ordinal);
+        var requestedById = requestedThemes
+            .ToDictionary(theme => theme.Id, StringComparer.Ordinal);
+        var latestIds = latestThemes
+            .Select(theme => theme.Id)
+            .ToHashSet(StringComparer.Ordinal);
+
+        IEnumerable<CustomThemeDefinition> mergedLatest = latestThemes
+            .Select(theme => requestedById.TryGetValue(theme.Id, out CustomThemeDefinition? requestedTheme)
+                ? requestedTheme
+                : previousIds.Contains(theme.Id)
+                    ? null
+                    : theme)
+            .OfType<CustomThemeDefinition>();
+
+        IEnumerable<CustomThemeDefinition> requestedAdditions = requestedThemes
+            .Where(theme => !latestIds.Contains(theme.Id) && !previousIds.Contains(theme.Id));
+
+        return new CustomThemesDocument(themes: requestedAdditions.Concat(mergedLatest).ToArray());
     }
 
     private static LinuxAppSettings NormalizeThemeSelection(LinuxAppSettings settings, CustomThemesDocument customThemes)
