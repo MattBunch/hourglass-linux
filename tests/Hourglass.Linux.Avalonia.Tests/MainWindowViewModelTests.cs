@@ -198,6 +198,68 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
+    public async Task CustomThemesLoadSelectAndSaveSeparatelyFromSettings()
+    {
+        var theme = new CustomThemeDefinition("theme-1", "Evening", LinuxThemePreference.Dark);
+        var settingsStore = new RecordingSettingsStore
+        {
+            LoadedCustomThemes = new CustomThemesDocument(themes: [theme])
+        };
+        var viewModel = CreateViewModel(new ManualMonotonicClock(), settingsStore: settingsStore);
+        await viewModel.LoadSettingsAsync();
+
+        CustomThemeMenuItem menuItem = Assert.Single(viewModel.CustomThemeMenuItems);
+        Assert.Equal("Evening", menuItem.Name);
+
+        viewModel.SelectCustomThemeCommand.Execute(theme.Id);
+        await viewModel.PendingSettingsSave;
+
+        Assert.Equal(LinuxThemePreference.Custom, viewModel.ThemePreference);
+        Assert.Equal(theme.Id, viewModel.CustomThemeId);
+        Assert.Equal(theme, viewModel.CurrentCustomTheme);
+        Assert.NotNull(settingsStore.SavedSettings);
+        Assert.Equal(LinuxThemePreference.Custom, settingsStore.SavedSettings.ThemePreference);
+        Assert.Equal(theme.Id, settingsStore.SavedSettings.CustomThemeId);
+    }
+
+    [Fact]
+    public async Task SavingCustomThemePersistsThemeDocumentAndSelectsTheme()
+    {
+        var settingsStore = new RecordingSettingsStore();
+        var viewModel = CreateViewModel(new ManualMonotonicClock(), settingsStore: settingsStore);
+        var theme = new CustomThemeDefinition("theme-1", "Evening");
+
+        viewModel.SaveCustomTheme(theme, select: true);
+        await viewModel.PendingSettingsSave;
+
+        Assert.NotNull(settingsStore.SavedCustomThemes);
+        Assert.Equal(theme, Assert.Single(settingsStore.SavedCustomThemes.Themes));
+        Assert.NotNull(settingsStore.SavedSettings);
+        Assert.Equal(LinuxThemePreference.Custom, settingsStore.SavedSettings.ThemePreference);
+        Assert.Equal(theme.Id, settingsStore.SavedSettings.CustomThemeId);
+    }
+
+    [Fact]
+    public async Task MissingCustomThemeSelectionFallsBackToSystem()
+    {
+        var settingsStore = new RecordingSettingsStore
+        {
+            LoadedSettings = LinuxAppSettings.Default with
+            {
+                ThemePreference = LinuxThemePreference.Custom,
+                CustomThemeId = "missing"
+            }
+        };
+        var viewModel = CreateViewModel(new ManualMonotonicClock(), settingsStore: settingsStore);
+
+        await viewModel.LoadSettingsAsync();
+
+        Assert.Equal(LinuxThemePreference.System, viewModel.ThemePreference);
+        Assert.Null(viewModel.CustomThemeId);
+        Assert.Null(viewModel.CurrentCustomTheme);
+    }
+
+    [Fact]
     public async Task SelectWindowTitleModeChangesStateAndSavesSettings()
     {
         var settingsStore = new RecordingSettingsStore();
@@ -963,7 +1025,7 @@ public sealed class MainWindowViewModelTests
             .ToDictionary(element => element.Attribute("Header")!.Value, StringComparer.Ordinal);
 
         Assert.Equal("{Binding AlwaysOnTop}", window.Attribute("Topmost")?.Value);
-        Assert.Equal("Transparent", rootGrid.Attribute("Background")?.Value);
+        Assert.Equal("{DynamicResource TimerWindowBackgroundBrush}", rootGrid.Attribute("Background")?.Value);
         Assert.Equal("{Binding StartCommand}", menuItems["Start"].Attribute("Command")?.Value);
         Assert.Equal("{Binding PauseResumeCommand}", menuItems["{Binding PauseResumeText}"].Attribute("Command")?.Value);
         Assert.Equal("{Binding ResetCommand}", menuItems["Stop"].Attribute("Command")?.Value);
@@ -1018,19 +1080,8 @@ public sealed class MainWindowViewModelTests
         Assert.Equal("CheckBox", menuItems["Prompt on exit"].Attribute("ToggleType")?.Value);
         Assert.Equal("{Binding PromptOnExit, Mode=OneWay}", menuItems["Prompt on exit"].Attribute("IsChecked")?.Value);
         Assert.Equal("{Binding TogglePromptOnExitCommand}", menuItems["Prompt on exit"].Attribute("Command")?.Value);
-        Dictionary<string, XElement> themeItems = menuItems["Theme"]
-            .Elements(avalonia + "MenuItem")
-            .Where(element => element.Attribute("Header") != null)
-            .ToDictionary(element => element.Attribute("Header")!.Value, StringComparer.Ordinal);
-        Assert.Equal("Radio", themeItems["System"].Attribute("ToggleType")?.Value);
-        Assert.Equal("ThemePreference", themeItems["System"].Attribute("GroupName")?.Value);
-        Assert.Equal("{Binding IsSystemThemeSelected, Mode=OneWay}", themeItems["System"].Attribute("IsChecked")?.Value);
-        Assert.Equal("{Binding SelectThemePreferenceCommand}", themeItems["System"].Attribute("Command")?.Value);
-        Assert.Equal("System", themeItems["System"].Attribute("CommandParameter")?.Value);
-        Assert.Equal("{Binding IsLightThemeSelected, Mode=OneWay}", themeItems["Light"].Attribute("IsChecked")?.Value);
-        Assert.Equal("Light", themeItems["Light"].Attribute("CommandParameter")?.Value);
-        Assert.Equal("{Binding IsDarkThemeSelected, Mode=OneWay}", themeItems["Dark"].Attribute("IsChecked")?.Value);
-        Assert.Equal("Dark", themeItems["Dark"].Attribute("CommandParameter")?.Value);
+        Assert.Equal("ThemeMenuItem", menuItems["Theme"].Attribute(xaml + "Name")?.Value);
+        Assert.Empty(menuItems["Theme"].Elements(avalonia + "MenuItem"));
         Dictionary<string, XElement> titleItems = menuItems["Window title"]
             .Elements(avalonia + "MenuItem")
             .Where(element => element.Attribute("Header") != null)
@@ -3703,11 +3754,15 @@ public sealed class MainWindowViewModelTests
 
         public SavedTimersDocument? LoadedSavedTimers { get; init; }
 
+        public CustomThemesDocument? LoadedCustomThemes { get; init; }
+
         public ActiveTimerSessionDocument? LoadedActiveSession { get; init; }
 
         public LinuxAppSettings? SavedSettings { get; private set; }
 
         public SavedTimersDocument? SavedTimers { get; private set; }
+
+        public CustomThemesDocument? SavedCustomThemes { get; private set; }
 
         public ActiveTimerSessionDocument? SavedActiveSession { get; private set; }
 
@@ -3726,6 +3781,7 @@ public sealed class MainWindowViewModelTests
             {
                 "app" => this.SavedSettings ?? this.LoadedSettings,
                 "saved-timers" => this.SavedTimers ?? this.LoadedSavedTimers,
+                "custom-themes" => this.SavedCustomThemes ?? this.LoadedCustomThemes,
                 "active-session" => this.LoadedActiveSession,
                 _ => null
             };
@@ -3747,6 +3803,9 @@ public sealed class MainWindowViewModelTests
                     break;
                 case "saved-timers":
                     this.SavedTimers = Assert.IsType<SavedTimersDocument>(value);
+                    break;
+                case "custom-themes":
+                    this.SavedCustomThemes = Assert.IsType<CustomThemesDocument>(value);
                     break;
                 case "active-session":
                     this.SavedActiveSession = Assert.IsType<ActiveTimerSessionDocument>(value);

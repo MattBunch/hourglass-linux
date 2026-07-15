@@ -12,12 +12,25 @@
         MinHeight="150">
   <Window.Resources>
     <local:ProgressWidthConverter x:Key="ProgressWidthConverter" />
+    <SolidColorBrush x:Key="TimerWindowBackgroundBrush"
+                     Color="Transparent" />
+    <SolidColorBrush x:Key="TimerPrimaryTextBrush"
+                     Color="#FF1F1F1F" />
+    <SolidColorBrush x:Key="TimerSecondaryTextBrush"
+                     Color="#B31F1F1F" />
+    <SolidColorBrush x:Key="TimerCommandTextBrush"
+                     Color="#FF1F1F1F" />
+    <SolidColorBrush x:Key="TimerAccentBrush"
+                     Color="#FF3665B3" />
+    <SolidColorBrush x:Key="TimerValidationFlashBrush"
+                     Color="#29D13438" />
+    <SolidColorBrush x:Key="TimerCompletionBorderBrush"
+                     Color="#FF3665B3" />
+    <SolidColorBrush x:Key="TimerLockedBorderBrush"
+                     Color="#661F1F1F" />
     <SolidColorBrush x:Key="TimerProgressFillBrush"
                      Color="#3665B3"
                      Opacity="0.45" />
-    <SolidColorBrush x:Key="ValidationFlashBrush"
-                     Color="#D13438"
-                     Opacity="0.16" />
   </Window.Resources>
 
   <Window.Styles>
@@ -33,8 +46,8 @@
       <Setter Property="HorizontalContentAlignment" Value="Center" />
       <Setter Property="VerticalContentAlignment" Value="Center" />
       <Setter Property="FontFamily" Value="Segoe UI Light, Inter, Noto Sans, sans-serif" />
-      <Setter Property="Foreground" Value="{DynamicResource TextControlForeground}" />
-      <Setter Property="CaretBrush" Value="{DynamicResource TextControlForeground}" />
+      <Setter Property="Foreground" Value="{DynamicResource TimerPrimaryTextBrush}" />
+      <Setter Property="CaretBrush" Value="{DynamicResource TimerPrimaryTextBrush}" />
     </Style>
 
     <Style Selector="TextBox.titleInput">
@@ -46,19 +59,19 @@
       <Setter Property="HorizontalContentAlignment" Value="Center" />
       <Setter Property="VerticalContentAlignment" Value="Center" />
       <Setter Property="FontFamily" Value="Segoe UI, Inter, Noto Sans, sans-serif" />
-      <Setter Property="Foreground" Value="{DynamicResource TextControlForeground}" />
-      <Setter Property="CaretBrush" Value="{DynamicResource TextControlForeground}" />
+      <Setter Property="Foreground" Value="{DynamicResource TimerSecondaryTextBrush}" />
+      <Setter Property="CaretBrush" Value="{DynamicResource TimerSecondaryTextBrush}" />
       <Setter Property="Opacity" Value="0.72" />
     </Style>
 
     <Style Selector="TextBox.titleInput:focus">
-      <Setter Property="BorderBrush" Value="{DynamicResource AccentFillColorDefaultBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource TimerAccentBrush}" />
       <Setter Property="BorderThickness" Value="0 0 0 1" />
       <Setter Property="Opacity" Value="1" />
     </Style>
 
     <Style Selector="TextBox.timerInput:focus">
-      <Setter Property="BorderBrush" Value="{DynamicResource AccentFillColorDefaultBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource TimerAccentBrush}" />
       <Setter Property="BorderThickness" Value="0 0 0 1" />
     </Style>
 
@@ -68,7 +81,7 @@
     </Style>
 
     <Style Selector="TextBox.timerInput.validation-feedback">
-      <Setter Property="Background" Value="{StaticResource ValidationFlashBrush}" />
+      <Setter Property="Background" Value="{DynamicResource TimerValidationFlashBrush}" />
     </Style>
 
     <Style Selector="Border#CompletionEmphasisBorder">
@@ -78,17 +91,17 @@
     </Style>
 
     <Style Selector="Grid.timer-expired Border#CompletionEmphasisBorder">
-      <Setter Property="BorderBrush" Value="{DynamicResource AccentFillColorDefaultBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource TimerCompletionBorderBrush}" />
       <Setter Property="BorderThickness" Value="2" />
     </Style>
 
     <Style Selector="Grid.timer-locked Border#CompletionEmphasisBorder">
-      <Setter Property="BorderBrush" Value="{DynamicResource SystemControlForegroundBaseMediumLowBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource TimerLockedBorderBrush}" />
       <Setter Property="BorderThickness" Value="1" />
     </Style>
 
     <Style Selector="Border#ExpiryFlashLayer">
-      <Setter Property="Background" Value="{DynamicResource AccentFillColorDefaultBrush}" />
+      <Setter Property="Background" Value="{DynamicResource TimerAccentBrush}" />
       <Setter Property="Opacity" Value="0" />
       <Setter Property="Transitions">
         <Transitions>
@@ -113,12 +126,12 @@
       <Setter Property="MinHeight" Value="0" />
       <Setter Property="FontFamily" Value="Segoe UI, Inter, Noto Sans, sans-serif" />
       <Setter Property="FontSize" Value="12" />
-      <Setter Property="Foreground" Value="{DynamicResource TextControlForeground}" />
+      <Setter Property="Foreground" Value="{DynamicResource TimerCommandTextBrush}" />
       <Setter Property="Cursor" Value="Hand" />
     </Style>
 
     <Style Selector="Button.textCommand:pointerover">
-      <Setter Property="Foreground" Value="{DynamicResource AccentFillColorDefaultBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource TimerAccentBrush}" />
     </Style>
 
     <Style Selector="Button.textCommand:pressed">
@@ -142,7 +155,7 @@
   </Window.Styles>
 
   <Grid x:Name="RootGrid"
-        Background="Transparent"
+        Background="{DynamicResource TimerWindowBackgroundBrush}"
         Classes="content-active">
     <Grid.ContextMenu>
       <ContextMenu>
@@ -217,26 +230,8 @@
                   ToggleType="CheckBox"
                   IsChecked="{Binding PromptOnExit, Mode=OneWay}"
                   Command="{Binding TogglePromptOnExitCommand}" />
-        <MenuItem Header="Theme">
-          <MenuItem Header="System"
-                    ToggleType="Radio"
-                    GroupName="ThemePreference"
-                    IsChecked="{Binding IsSystemThemeSelected, Mode=OneWay}"
-                    Command="{Binding SelectThemePreferenceCommand}"
-                    CommandParameter="System" />
-          <MenuItem Header="Light"
-                    ToggleType="Radio"
-                    GroupName="ThemePreference"
-                    IsChecked="{Binding IsLightThemeSelected, Mode=OneWay}"
-                    Command="{Binding SelectThemePreferenceCommand}"
-                    CommandParameter="Light" />
-          <MenuItem Header="Dark"
-                    ToggleType="Radio"
-                    GroupName="ThemePreference"
-                    IsChecked="{Binding IsDarkThemeSelected, Mode=OneWay}"
-                    Command="{Binding SelectThemePreferenceCommand}"
-                    CommandParameter="Dark" />
-        </MenuItem>
+        <MenuItem x:Name="ThemeMenuItem"
+                  Header="Theme" />
         <MenuItem Header="Window title">
           <MenuItem Header="Application name"
                     ToggleType="Radio"

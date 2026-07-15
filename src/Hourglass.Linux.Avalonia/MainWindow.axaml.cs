@@ -2,13 +2,16 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Media;
 using Avalonia.Platform;
+using Avalonia.Platform.Storage;
 using Avalonia.Styling;
 using Avalonia.Threading;
 using Hourglass.Linux.Services;
 using Hourglass.Platform;
 using Hourglass.Settings;
 using Hourglass.Timing;
+using System.Text.Json;
 
 namespace Hourglass.Linux.Avalonia;
 
@@ -18,6 +21,11 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
         AppContext.BaseDirectory,
         "Assets",
         "Sounds");
+
+    private static readonly JsonSerializerOptions ThemeJsonOptions = new(JsonSerializerDefaults.General)
+    {
+        WriteIndented = true
+    };
 
     private static readonly Uri StatusIconResourceUri = new("avares://hourglass-linux/Assets/hourglass.png");
 
@@ -149,6 +157,7 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
         this.statusIconService.ActionRequested += this.StatusIconActionRequested;
         this.UpdatePresentationClasses();
         this.ApplyThemePreference();
+        this.RebuildThemeMenu();
         this.RebuildRecentInputsMenu();
         this.RebuildSavedTimersMenu();
         this.ApplyDesktopProgress();
@@ -573,9 +582,17 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
             this.ApplyStatusIconState();
         }
 
-        if (e.PropertyName is nameof(MainWindowViewModel.ThemePreference))
+        if (e.PropertyName is nameof(MainWindowViewModel.ThemePreference)
+            or nameof(MainWindowViewModel.CustomThemeId)
+            or nameof(MainWindowViewModel.CurrentCustomTheme))
         {
             this.ApplyThemePreference();
+        }
+
+        if (e.PropertyName is nameof(MainWindowViewModel.CustomThemeMenuItems)
+            or nameof(MainWindowViewModel.CanExportCustomTheme))
+        {
+            this.RebuildThemeMenu();
         }
 
         if (e.PropertyName is nameof(MainWindowViewModel.RecentInputMenuItems))
@@ -618,7 +635,261 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
 
     private void ApplyThemePreference()
     {
-        this.RequestedThemeVariant = ToThemeVariant(this.viewModel.ThemePreference);
+        CustomThemeDefinition? customTheme = this.viewModel.CurrentCustomTheme;
+        this.RequestedThemeVariant = customTheme == null
+            ? ToThemeVariant(this.viewModel.ThemePreference)
+            : ToThemeVariant(customTheme.BaseThemePreference);
+
+        if (customTheme == null)
+        {
+            this.SetDefaultThemeResources();
+            return;
+        }
+
+        CustomThemeColors colors = customTheme.Colors;
+        this.SetBrushResource("TimerWindowBackgroundBrush", colors.Background);
+        this.SetBrushResource("TimerPrimaryTextBrush", colors.PrimaryText);
+        this.SetBrushResource("TimerSecondaryTextBrush", colors.SecondaryText);
+        this.SetBrushResource("TimerCommandTextBrush", colors.CommandText);
+        this.SetBrushResource("TimerAccentBrush", colors.Accent);
+        this.SetBrushResource("TimerProgressFillBrush", colors.ProgressFill);
+        this.SetBrushResource("TimerValidationFlashBrush", colors.ValidationFlash);
+        this.SetBrushResource("TimerCompletionBorderBrush", colors.CompletionBorder);
+        this.SetBrushResource("TimerLockedBorderBrush", colors.LockedBorder);
+    }
+
+    private void SetDefaultThemeResources()
+    {
+        this.SetBrushResource("TimerWindowBackgroundBrush", "Transparent");
+        this.SetBrushResource("TimerPrimaryTextBrush", CustomThemeColors.DefaultPrimaryText);
+        this.SetBrushResource("TimerSecondaryTextBrush", CustomThemeColors.DefaultSecondaryText);
+        this.SetBrushResource("TimerCommandTextBrush", CustomThemeColors.DefaultCommandText);
+        this.SetBrushResource("TimerAccentBrush", CustomThemeColors.DefaultAccent);
+        this.SetBrushResource("TimerProgressFillBrush", CustomThemeColors.DefaultProgressFill);
+        this.SetBrushResource("TimerValidationFlashBrush", CustomThemeColors.DefaultValidationFlash);
+        this.SetBrushResource("TimerCompletionBorderBrush", CustomThemeColors.DefaultCompletionBorder);
+        this.SetBrushResource("TimerLockedBorderBrush", CustomThemeColors.DefaultLockedBorder);
+    }
+
+    private void SetBrushResource(string key, string color)
+    {
+        this.Resources[key] = StringComparer.Ordinal.Equals(color, "Transparent")
+            ? Brushes.Transparent
+            : new SolidColorBrush(Color.Parse(color));
+    }
+
+    private void RebuildThemeMenu()
+    {
+        this.ThemeMenuItem.Items.Clear();
+        this.ThemeMenuItem.Items.Add(new MenuItem
+        {
+            Header = "System",
+            ToggleType = MenuItemToggleType.Radio,
+            GroupName = "ThemePreference",
+            IsChecked = this.viewModel.IsSystemThemeSelected,
+            Command = this.viewModel.SelectThemePreferenceCommand,
+            CommandParameter = nameof(LinuxThemePreference.System)
+        });
+        this.ThemeMenuItem.Items.Add(new MenuItem
+        {
+            Header = "Light",
+            ToggleType = MenuItemToggleType.Radio,
+            GroupName = "ThemePreference",
+            IsChecked = this.viewModel.IsLightThemeSelected,
+            Command = this.viewModel.SelectThemePreferenceCommand,
+            CommandParameter = nameof(LinuxThemePreference.Light)
+        });
+        this.ThemeMenuItem.Items.Add(new MenuItem
+        {
+            Header = "Dark",
+            ToggleType = MenuItemToggleType.Radio,
+            GroupName = "ThemePreference",
+            IsChecked = this.viewModel.IsDarkThemeSelected,
+            Command = this.viewModel.SelectThemePreferenceCommand,
+            CommandParameter = nameof(LinuxThemePreference.Dark)
+        });
+
+        if (this.viewModel.CustomThemeMenuItems.Length > 0)
+        {
+            this.ThemeMenuItem.Items.Add(new Separator());
+        }
+
+        foreach (CustomThemeMenuItem theme in this.viewModel.CustomThemeMenuItems)
+        {
+            var themeItem = new MenuItem
+            {
+                Header = theme.Name,
+                ToggleType = MenuItemToggleType.Radio,
+                GroupName = "ThemePreference",
+                IsChecked = theme.IsSelected,
+                Command = this.viewModel.SelectCustomThemeCommand,
+                CommandParameter = theme.Id
+            };
+            themeItem.Items.Add(new MenuItem
+            {
+                Header = "Edit",
+                Command = new RelayCommand(() => _ = this.EditCustomThemeAsync(theme.Id))
+            });
+            themeItem.Items.Add(new MenuItem
+            {
+                Header = "Duplicate",
+                Command = this.viewModel.DuplicateCustomThemeCommand,
+                CommandParameter = theme.Id
+            });
+            themeItem.Items.Add(new MenuItem
+            {
+                Header = "Export",
+                Command = new RelayCommand(() => _ = this.ExportCustomThemeAsync(theme.Id))
+            });
+            themeItem.Items.Add(new MenuItem
+            {
+                Header = "Delete",
+                Command = new RelayCommand(() => _ = this.DeleteCustomThemeAsync(theme.Id))
+            });
+            this.ThemeMenuItem.Items.Add(themeItem);
+        }
+
+        this.ThemeMenuItem.Items.Add(new Separator());
+        this.ThemeMenuItem.Items.Add(new MenuItem
+        {
+            Header = "New custom theme",
+            Command = new RelayCommand(() => _ = this.CreateCustomThemeAsync())
+        });
+        this.ThemeMenuItem.Items.Add(new MenuItem
+        {
+            Header = "Import custom theme",
+            Command = new RelayCommand(() => _ = this.ImportCustomThemeAsync())
+        });
+    }
+
+    private async Task CreateCustomThemeAsync()
+    {
+        var dialog = new CustomThemeEditorWindow();
+        CustomThemeDefinition? theme = await dialog.ShowDialog<CustomThemeDefinition?>(this).ConfigureAwait(true);
+        if (theme != null)
+        {
+            this.viewModel.SaveCustomTheme(theme, select: true);
+        }
+    }
+
+    private async Task EditCustomThemeAsync(string themeId)
+    {
+        CustomThemeDefinition? theme = this.viewModel.FindCustomTheme(themeId);
+        if (theme == null)
+        {
+            return;
+        }
+
+        var dialog = new CustomThemeEditorWindow(theme);
+        CustomThemeDefinition? editedTheme = await dialog.ShowDialog<CustomThemeDefinition?>(this).ConfigureAwait(true);
+        if (editedTheme != null)
+        {
+            this.viewModel.SaveCustomTheme(editedTheme, select: StringComparer.Ordinal.Equals(this.viewModel.CustomThemeId, editedTheme.Id));
+        }
+    }
+
+    private async Task DeleteCustomThemeAsync(string themeId)
+    {
+        CustomThemeDefinition? theme = this.viewModel.FindCustomTheme(themeId);
+        if (theme == null)
+        {
+            return;
+        }
+
+        var dialog = new CustomThemeDeleteWindow(theme.Name);
+        bool delete = await dialog.ShowDialog<bool>(this).ConfigureAwait(true);
+        if (delete)
+        {
+            this.viewModel.DeleteCustomThemeCommand.Execute(theme.Id);
+        }
+    }
+
+    private async Task ImportCustomThemeAsync()
+    {
+        TopLevel? topLevel = GetTopLevel(this);
+        if (topLevel == null)
+        {
+            return;
+        }
+
+        IReadOnlyList<IStorageFile> files = await topLevel.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            AllowMultiple = false,
+            FileTypeFilter =
+            [
+                new FilePickerFileType("Hourglass theme")
+                {
+                    Patterns = ["*.json"],
+                    MimeTypes = ["application/json"]
+                }
+            ],
+            Title = "Import custom theme"
+        }).ConfigureAwait(true);
+        IStorageFile? file = files.FirstOrDefault();
+        if (file == null)
+        {
+            return;
+        }
+
+        await using Stream stream = await file.OpenReadAsync().ConfigureAwait(true);
+        CustomThemeDefinition? theme;
+        try
+        {
+            theme = await JsonSerializer.DeserializeAsync<CustomThemeDefinition>(
+                stream,
+                ThemeJsonOptions).ConfigureAwait(true);
+        }
+        catch (JsonException)
+        {
+            return;
+        }
+        catch (NotSupportedException)
+        {
+            return;
+        }
+
+        if (theme is { IsValid: true })
+        {
+            this.viewModel.SaveCustomTheme(theme, select: true);
+        }
+    }
+
+    private async Task ExportCustomThemeAsync(string themeId)
+    {
+        CustomThemeDefinition? theme = this.viewModel.FindCustomTheme(themeId);
+        TopLevel? topLevel = GetTopLevel(this);
+        if (theme == null || topLevel == null)
+        {
+            return;
+        }
+
+        IStorageFile? file = await topLevel.StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+        {
+            DefaultExtension = "json",
+            FileTypeChoices =
+            [
+                new FilePickerFileType("Hourglass theme")
+                {
+                    Patterns = ["*.json"],
+                    MimeTypes = ["application/json"]
+                }
+            ],
+            SuggestedFileName = $"{SanitizeFileName(theme.Name)}.json",
+            Title = "Export custom theme"
+        }).ConfigureAwait(true);
+        if (file == null)
+        {
+            return;
+        }
+
+        await using Stream stream = await file.OpenWriteAsync().ConfigureAwait(true);
+        await JsonSerializer.SerializeAsync(stream, theme, ThemeJsonOptions).ConfigureAwait(true);
+    }
+
+    private static string SanitizeFileName(string name)
+    {
+        string sanitized = string.Concat(name.Select(character => Path.GetInvalidFileNameChars().Contains(character) ? '-' : character));
+        return string.IsNullOrWhiteSpace(sanitized) ? "hourglass-theme" : sanitized;
     }
 
     private void RebuildRecentInputsMenu()

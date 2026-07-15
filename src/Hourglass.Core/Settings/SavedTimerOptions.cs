@@ -14,9 +14,12 @@ public sealed record SavedTimerOptions(
     bool DoNotKeepComputerAwake = false,
     bool ShutDownWhenExpired = false,
     WindowTitleMode WindowTitleMode = WindowTitleMode.TimerTitle,
-    string? AudioAlertSoundId = null)
+    string? AudioAlertSoundId = null,
+    string? CustomThemeId = null)
 {
     public string? AudioAlertSoundId { get; init; } = NormalizeOptionalSoundId(AudioAlertSoundId);
+
+    public string? CustomThemeId { get; init; } = string.IsNullOrWhiteSpace(CustomThemeId) ? null : CustomThemeId.Trim();
 
     public static SavedTimerOptions FromSettings(LinuxAppSettings settings)
     {
@@ -32,7 +35,8 @@ public sealed record SavedTimerOptions(
             settings.DoNotKeepComputerAwake,
             settings.ShutDownWhenExpired,
             settings.WindowTitleMode,
-            settings.AudioAlertsEnabled ? settings.AudioAlertSoundId : BuiltInAudioAlertSounds.None);
+            settings.AudioAlertsEnabled ? settings.AudioAlertSoundId : BuiltInAudioAlertSounds.None,
+            settings.ThemePreference == LinuxThemePreference.Custom ? settings.CustomThemeId : null);
     }
 
     public LinuxAppSettings ApplyTo(LinuxAppSettings settings)
@@ -53,7 +57,9 @@ public sealed record SavedTimerOptions(
             AudioAlertsEnabled = this.AudioAlertSoundId == null
                 ? settings.AudioAlertsEnabled
                 : !BuiltInAudioAlertSounds.IsNone(this.AudioAlertSoundId),
-            AudioAlertSoundId = this.AudioAlertSoundId ?? settings.AudioAlertSoundId
+            AudioAlertSoundId = this.AudioAlertSoundId ?? settings.AudioAlertSoundId,
+            ThemePreference = this.CustomThemeId == null ? settings.ThemePreference : LinuxThemePreference.Custom,
+            CustomThemeId = this.CustomThemeId ?? settings.CustomThemeId
         };
     }
 
