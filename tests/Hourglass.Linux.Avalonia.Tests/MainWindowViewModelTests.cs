@@ -263,6 +263,29 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
+    public async Task SavingCustomThemePreservesExistingThemeEditedByAnotherWindow()
+    {
+        var previousTheme = new CustomThemeDefinition("theme-1", "Evening");
+        var externalEdit = new CustomThemeDefinition("theme-1", "Evening updated elsewhere");
+        var localTheme = new CustomThemeDefinition("theme-2", "Morning");
+        var settingsStore = new RecordingSettingsStore
+        {
+            LoadedCustomThemes = new CustomThemesDocument(themes: [previousTheme])
+        };
+        var viewModel = CreateViewModel(new ManualMonotonicClock(), settingsStore: settingsStore);
+
+        await viewModel.LoadSettingsAsync();
+        settingsStore.LatestCustomThemes = new CustomThemesDocument(themes: [externalEdit]);
+        viewModel.SaveCustomTheme(localTheme, select: false);
+        await viewModel.PendingSettingsSave;
+
+        Assert.NotNull(settingsStore.SavedCustomThemes);
+        Assert.Equal(
+            ["Evening updated elsewhere", "Morning"],
+            settingsStore.SavedCustomThemes.Themes.Select(theme => theme.Name).Order());
+    }
+
+    [Fact]
     public async Task SavingCustomThemeDeletePreservesThemesAddedByAnotherWindow()
     {
         var deletedTheme = new CustomThemeDefinition("theme-1", "Evening");
