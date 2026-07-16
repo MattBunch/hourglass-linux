@@ -866,13 +866,21 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
             return;
         }
 
-        await using Stream stream = await file.OpenReadAsync().ConfigureAwait(true);
         CustomThemeDefinition? theme;
         try
         {
+            await using Stream stream = await file.OpenReadAsync().ConfigureAwait(true);
             theme = await JsonSerializer.DeserializeAsync<CustomThemeDefinition>(
                 stream,
                 ThemeJsonOptions).ConfigureAwait(true);
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return;
+        }
+        catch (IOException)
+        {
+            return;
         }
         catch (JsonException)
         {
@@ -917,8 +925,23 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
             return;
         }
 
-        await using Stream stream = await file.OpenWriteAsync().ConfigureAwait(true);
-        await JsonSerializer.SerializeAsync(stream, theme, ThemeJsonOptions).ConfigureAwait(true);
+        try
+        {
+            await using Stream stream = await file.OpenWriteAsync().ConfigureAwait(true);
+            await JsonSerializer.SerializeAsync(stream, theme, ThemeJsonOptions).ConfigureAwait(true);
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
+        catch (IOException)
+        {
+        }
+        catch (JsonException)
+        {
+        }
+        catch (NotSupportedException)
+        {
+        }
     }
 
     private static string SanitizeFileName(string name)

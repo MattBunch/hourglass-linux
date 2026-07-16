@@ -870,6 +870,31 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
+    public void CustomThemeImportAndExportHandleStorageFailures()
+    {
+        string codeBehind = File.ReadAllText(FindRepositoryFile("src/Hourglass.Linux.Avalonia/MainWindow.axaml.cs"));
+        int importStart = codeBehind.IndexOf("private async Task ImportCustomThemeAsync", StringComparison.Ordinal);
+        int exportStart = codeBehind.IndexOf("private async Task ExportCustomThemeAsync", StringComparison.Ordinal);
+        int nextMethodStart = codeBehind.IndexOf("private static string SanitizeFileName", exportStart, StringComparison.Ordinal);
+        string importMethod = codeBehind[importStart..exportStart];
+        string exportMethod = codeBehind[exportStart..nextMethodStart];
+
+        Assert.Contains("try", importMethod);
+        Assert.Contains("file.OpenReadAsync()", importMethod);
+        Assert.Contains("catch (UnauthorizedAccessException)", importMethod);
+        Assert.Contains("catch (IOException)", importMethod);
+        Assert.Contains("catch (JsonException)", importMethod);
+        Assert.Contains("catch (NotSupportedException)", importMethod);
+        Assert.Contains("try", exportMethod);
+        Assert.Contains("file.OpenWriteAsync()", exportMethod);
+        Assert.Contains("JsonSerializer.SerializeAsync", exportMethod);
+        Assert.Contains("catch (UnauthorizedAccessException)", exportMethod);
+        Assert.Contains("catch (IOException)", exportMethod);
+        Assert.Contains("catch (JsonException)", exportMethod);
+        Assert.Contains("catch (NotSupportedException)", exportMethod);
+    }
+
+    [Fact]
     public void PrimaryAndTitleTextUseResponsiveControlsWithSafeLimits()
     {
         XNamespace avalonia = "https://github.com/avaloniaui";
