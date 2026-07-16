@@ -721,13 +721,17 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
         {
             var themeItem = new MenuItem
             {
-                Header = theme.Name,
+                Header = theme.Name
+            };
+            themeItem.Items.Add(new MenuItem
+            {
+                Header = "Use this theme",
                 ToggleType = MenuItemToggleType.Radio,
                 GroupName = "ThemePreference",
                 IsChecked = theme.IsSelected,
                 Command = this.viewModel.SelectCustomThemeCommand,
                 CommandParameter = theme.Id
-            };
+            });
             themeItem.Items.Add(new MenuItem
             {
                 Header = "Edit",

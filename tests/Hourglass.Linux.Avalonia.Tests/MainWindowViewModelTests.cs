@@ -860,6 +860,8 @@ public sealed class MainWindowViewModelTests
 
         Assert.Contains("nameof(MainWindowViewModel.CanModifyCustomThemes)", codeBehind);
         Assert.Contains("() => this.viewModel.CanModifyCustomThemes", codeBehind);
+        Assert.Contains("Header = \"Use this theme\"", codeBehind);
+        Assert.Contains("ToggleType = MenuItemToggleType.Radio", codeBehind);
         Assert.Contains("if (!this.viewModel.CanModifyCustomThemes)", codeBehind);
         Assert.Contains("theme != null && this.viewModel.CanModifyCustomThemes", codeBehind);
         Assert.Contains("editedTheme != null && this.viewModel.CanModifyCustomThemes", codeBehind);
@@ -2093,6 +2095,33 @@ public sealed class MainWindowViewModelTests
         Assert.False(settingsStore.SavedSettings.NotificationsEnabled);
         Assert.True(settingsStore.SavedSettings.ReverseProgressBar);
         Assert.True(settingsStore.SavedSettings.ShowInNotificationArea);
+    }
+
+    [Fact]
+    public async Task SettingsSaveAppliesCustomThemeSelectionAsCoherentOptionGroup()
+    {
+        var firstTheme = new CustomThemeDefinition("theme-1", "Evening");
+        var secondTheme = new CustomThemeDefinition("theme-2", "Morning");
+        var settingsStore = new RecordingSettingsStore
+        {
+            LoadedSettings = LinuxAppSettings.Default with
+            {
+                ThemePreference = LinuxThemePreference.Custom,
+                CustomThemeId = firstTheme.Id
+            },
+            LoadedCustomThemes = new CustomThemesDocument(themes: [firstTheme, secondTheme])
+        };
+        var viewModel = CreateViewModel(new ManualMonotonicClock(), settingsStore: settingsStore);
+
+        await viewModel.LoadSettingsAsync();
+        settingsStore.LoadedSettings = LinuxAppSettings.Default with { ThemePreference = LinuxThemePreference.System };
+
+        viewModel.SelectCustomThemeCommand.Execute(secondTheme.Id);
+        await viewModel.PendingSettingsSave;
+
+        Assert.NotNull(settingsStore.SavedSettings);
+        Assert.Equal(LinuxThemePreference.Custom, settingsStore.SavedSettings.ThemePreference);
+        Assert.Equal(secondTheme.Id, settingsStore.SavedSettings.CustomThemeId);
     }
 
     [Fact]

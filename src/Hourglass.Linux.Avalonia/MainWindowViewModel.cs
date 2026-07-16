@@ -2136,6 +2136,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             audioAlertSoundId = requested.AudioAlertSoundId;
         }
 
+        (LinuxThemePreference themePreference, string? customThemeId) = SelectThemeSelection(previous, requested, latest);
+
         return new LinuxAppSettings(
             recentTimerInputs,
             SelectChanged(previous.NotificationsEnabled, requested.NotificationsEnabled, latest.NotificationsEnabled),
@@ -2170,10 +2172,21 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
                 previous.OpenSavedTimersOnStartup,
                 requested.OpenSavedTimersOnStartup,
                 latest.OpenSavedTimersOnStartup),
-            SelectChanged(previous.ThemePreference, requested.ThemePreference, latest.ThemePreference),
+            themePreference,
             SelectChanged(previous.WindowTitleMode, requested.WindowTitleMode, latest.WindowTitleMode),
             audioAlertSoundId,
-            SelectChangedNullableString(previous.CustomThemeId, requested.CustomThemeId, latest.CustomThemeId));
+            customThemeId);
+    }
+
+    private static (LinuxThemePreference ThemePreference, string? CustomThemeId) SelectThemeSelection(
+        LinuxAppSettings previous,
+        LinuxAppSettings requested,
+        LinuxAppSettings latest)
+    {
+        return previous.ThemePreference == requested.ThemePreference
+            && StringComparer.Ordinal.Equals(previous.CustomThemeId, requested.CustomThemeId)
+            ? (latest.ThemePreference, latest.CustomThemeId)
+            : (requested.ThemePreference, requested.CustomThemeId);
     }
 
     private static CustomThemesDocument MergeCustomThemesChange(
