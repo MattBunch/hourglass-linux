@@ -1413,7 +1413,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     private void RefreshDisplay(string? explicitStatus = null, bool? hasValidationError = null)
     {
-        this.ReplaceViewState(TimerViewState.FromTimerState(
+        bool wasTimerModificationLocked = this.viewState.IsLocked;
+        TimerViewState nextViewState = TimerViewState.FromTimerState(
             this.TimerInput,
             this.engine.Snapshot,
             this.TimerTitle ?? string.Empty,
@@ -1423,7 +1424,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             hasValidationError ?? this.viewState.HasValidationError,
             this.settings.ShowTimeElapsed,
             this.settings.ReverseProgressBar,
-            this.IsTimerModificationLocked));
+            this.IsTimerModificationLocked);
+
+        this.ReplaceViewState(nextViewState);
         this.OnPropertyChanged(nameof(this.TimerInput));
         this.OnPropertyChanged(nameof(this.RemainingTime));
         this.OnPropertyChanged(nameof(this.StatusText));
@@ -1433,7 +1436,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         this.OnPropertyChanged(nameof(this.State));
         this.OnPropertyChanged(nameof(this.ShouldPromptOnExit));
         this.OnPropertyChanged(nameof(this.IsTimerModificationLocked));
-        this.OnPropertyChanged(nameof(this.CanModifyCustomThemes));
+        if (wasTimerModificationLocked != nextViewState.IsLocked)
+        {
+            this.OnPropertyChanged(nameof(this.CanModifyCustomThemes));
+        }
+
         this.OnPropertyChanged(nameof(this.ProgressPercent));
         this.OnPropertyChanged(nameof(this.DesktopProgressRequest));
         this.OnPropertyChanged(nameof(this.IsTimerInputVisible));

@@ -85,6 +85,31 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
+    public async Task LockedTimerTickDoesNotRepublishCustomThemeModificationState()
+    {
+        var clock = new ManualMonotonicClock();
+        var viewModel = CreateViewModel(
+            clock,
+            settingsStore: new RecordingSettingsStore
+            {
+                LoadedSettings = LinuxAppSettings.Default with { LockInterface = true }
+            });
+        var changedProperties = new List<string?>();
+
+        await viewModel.LoadSettingsAsync();
+        viewModel.TimerInput = "2 minutes";
+        viewModel.StartCommand.Execute(null);
+        viewModel.PropertyChanged += (_, args) => changedProperties.Add(args.PropertyName);
+
+        clock.Advance(TimeSpan.FromSeconds(1));
+        viewModel.Tick();
+
+        Assert.True(viewModel.IsTimerModificationLocked);
+        Assert.False(viewModel.CanModifyCustomThemes);
+        Assert.DoesNotContain(nameof(viewModel.CanModifyCustomThemes), changedProperties);
+    }
+
+    [Fact]
     public async Task TimeLeftWindowTitleModeUpdatesOnTimerTicks()
     {
         var clock = new ManualMonotonicClock();
