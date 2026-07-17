@@ -659,6 +659,8 @@ The current advisory file lock prevents a second instance but the second process
 
 ### 8.2 Custom Theme Management
 
+**Status:** Implemented on Linux with app-local JSON custom themes, simple in-app create/rename/duplicate/edit/delete, and single-theme import/export. Imported themes are data-only color definitions; the Linux app never loads XAML or executable resources from theme files.
+
 **Priority:** P3  
 **Complexity:** Large
 

@@ -6,5 +6,6 @@ public enum LinuxThemePreference
 {
     System,
     Light,
-    Dark
+    Dark,
+    Custom
 }

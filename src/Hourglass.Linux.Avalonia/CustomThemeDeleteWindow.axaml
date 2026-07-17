@@ -1,0 +1,28 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="Hourglass.Linux.Avalonia.CustomThemeDeleteWindow"
+        Title="Delete custom theme?"
+        Icon="/Assets/hourglass.png"
+        Width="360"
+        Height="150"
+        CanResize="False"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner">
+  <Grid Margin="20"
+        RowDefinitions="*,Auto">
+    <TextBlock x:Name="MessageText"
+               TextWrapping="Wrap"
+               VerticalAlignment="Center" />
+    <StackPanel Grid.Row="1"
+                Orientation="Horizontal"
+                HorizontalAlignment="Right"
+                Spacing="8">
+      <Button Content="Cancel"
+              IsCancel="True"
+              Click="CancelButtonClick" />
+      <Button Content="Delete"
+              IsDefault="True"
+              Click="DeleteButtonClick" />
+    </StackPanel>
+  </Grid>
+</Window>

@@ -12,12 +12,25 @@
         MinHeight="150">
   <Window.Resources>
     <local:ProgressWidthConverter x:Key="ProgressWidthConverter" />
+    <SolidColorBrush x:Key="TimerWindowBackgroundBrush"
+                     Color="Transparent" />
+    <SolidColorBrush x:Key="TimerPrimaryTextBrush"
+                     Color="#FF1F1F1F" />
+    <SolidColorBrush x:Key="TimerSecondaryTextBrush"
+                     Color="#B31F1F1F" />
+    <SolidColorBrush x:Key="TimerCommandTextBrush"
+                     Color="#FF1F1F1F" />
+    <SolidColorBrush x:Key="TimerAccentBrush"
+                     Color="#FF3665B3" />
+    <SolidColorBrush x:Key="TimerValidationFlashBrush"
+                     Color="#29D13438" />
+    <SolidColorBrush x:Key="TimerCompletionBorderBrush"
+                     Color="#FF3665B3" />
+    <SolidColorBrush x:Key="TimerLockedBorderBrush"
+                     Color="#661F1F1F" />
     <SolidColorBrush x:Key="TimerProgressFillBrush"
                      Color="#3665B3"
                      Opacity="0.45" />
-    <SolidColorBrush x:Key="ValidationFlashBrush"
-                     Color="#D13438"
-                     Opacity="0.16" />
   </Window.Resources>
 
   <Window.Styles>
@@ -68,7 +81,7 @@
     </Style>
 
     <Style Selector="TextBox.timerInput.validation-feedback">
-      <Setter Property="Background" Value="{StaticResource ValidationFlashBrush}" />
+      <Setter Property="Background" Value="{DynamicResource TimerValidationFlashBrush}" />
     </Style>
 
     <Style Selector="Border#CompletionEmphasisBorder">
@@ -119,6 +132,52 @@
 
     <Style Selector="Button.textCommand:pointerover">
       <Setter Property="Foreground" Value="{DynamicResource AccentFillColorDefaultBrush}" />
+    </Style>
+
+    <Style Selector="Grid.custom-theme Grid.progressTrack">
+      <Setter Property="Background" Value="{DynamicResource TimerWindowBackgroundBrush}" />
+    </Style>
+
+    <Style Selector="Grid.custom-theme TextBox.timerInput">
+      <Setter Property="Foreground" Value="{DynamicResource TimerPrimaryTextBrush}" />
+      <Setter Property="CaretBrush" Value="{DynamicResource TimerPrimaryTextBrush}" />
+    </Style>
+
+    <Style Selector="Grid.custom-theme TextBox.titleInput">
+      <Setter Property="Foreground" Value="{DynamicResource TimerSecondaryTextBrush}" />
+      <Setter Property="CaretBrush" Value="{DynamicResource TimerSecondaryTextBrush}" />
+    </Style>
+
+    <Style Selector="Grid.custom-theme TextBox.titleInput:focus">
+      <Setter Property="BorderBrush" Value="{DynamicResource TimerAccentBrush}" />
+    </Style>
+
+    <Style Selector="Grid.custom-theme TextBox.timerInput:focus">
+      <Setter Property="BorderBrush" Value="{DynamicResource TimerAccentBrush}" />
+    </Style>
+
+    <Style Selector="Grid.custom-theme TextBox.timerInput.validation-feedback">
+      <Setter Property="Background" Value="{DynamicResource TimerValidationFlashBrush}" />
+    </Style>
+
+    <Style Selector="Grid.custom-theme.timer-expired Border#CompletionEmphasisBorder">
+      <Setter Property="BorderBrush" Value="{DynamicResource TimerCompletionBorderBrush}" />
+    </Style>
+
+    <Style Selector="Grid.custom-theme.timer-locked Border#CompletionEmphasisBorder">
+      <Setter Property="BorderBrush" Value="{DynamicResource TimerLockedBorderBrush}" />
+    </Style>
+
+    <Style Selector="Grid.custom-theme Border#ExpiryFlashLayer">
+      <Setter Property="Background" Value="{DynamicResource TimerAccentBrush}" />
+    </Style>
+
+    <Style Selector="Grid.custom-theme Button.textCommand">
+      <Setter Property="Foreground" Value="{DynamicResource TimerCommandTextBrush}" />
+    </Style>
+
+    <Style Selector="Grid.custom-theme Button.textCommand:pointerover">
+      <Setter Property="Foreground" Value="{DynamicResource TimerAccentBrush}" />
     </Style>
 
     <Style Selector="Button.textCommand:pressed">
@@ -217,26 +276,8 @@
                   ToggleType="CheckBox"
                   IsChecked="{Binding PromptOnExit, Mode=OneWay}"
                   Command="{Binding TogglePromptOnExitCommand}" />
-        <MenuItem Header="Theme">
-          <MenuItem Header="System"
-                    ToggleType="Radio"
-                    GroupName="ThemePreference"
-                    IsChecked="{Binding IsSystemThemeSelected, Mode=OneWay}"
-                    Command="{Binding SelectThemePreferenceCommand}"
-                    CommandParameter="System" />
-          <MenuItem Header="Light"
-                    ToggleType="Radio"
-                    GroupName="ThemePreference"
-                    IsChecked="{Binding IsLightThemeSelected, Mode=OneWay}"
-                    Command="{Binding SelectThemePreferenceCommand}"
-                    CommandParameter="Light" />
-          <MenuItem Header="Dark"
-                    ToggleType="Radio"
-                    GroupName="ThemePreference"
-                    IsChecked="{Binding IsDarkThemeSelected, Mode=OneWay}"
-                    Command="{Binding SelectThemePreferenceCommand}"
-                    CommandParameter="Dark" />
-        </MenuItem>
+        <MenuItem x:Name="ThemeMenuItem"
+                  Header="Theme" />
         <MenuItem Header="Window title">
           <MenuItem Header="Application name"
                     ToggleType="Radio"
@@ -358,7 +399,7 @@
           IsHitTestVisible="False">
       <Border x:Name="ProgressIndicator"
               HorizontalAlignment="Left"
-              Background="{StaticResource TimerProgressFillBrush}">
+              Background="{DynamicResource TimerProgressFillBrush}">
         <Border.Width>
           <MultiBinding Converter="{StaticResource ProgressWidthConverter}">
             <Binding Path="ProgressPercent" />

@@ -38,7 +38,8 @@ public sealed record LinuxAppSettings
         bool openSavedTimersOnStartup = false,
         LinuxThemePreference themePreference = LinuxThemePreference.System,
         WindowTitleMode windowTitleMode = WindowTitleMode.TimerTitle,
-        string audioAlertSoundId = BuiltInAudioAlertSounds.NormalBeep)
+        string audioAlertSoundId = BuiltInAudioAlertSounds.NormalBeep,
+        string? customThemeId = null)
     {
         string normalizedAudioAlertSoundId = BuiltInAudioAlertSounds.NormalizeId(audioAlertSoundId);
         bool effectiveAudioAlertsEnabled = audioAlertsEnabled
@@ -61,7 +62,12 @@ public sealed record LinuxAppSettings
         this.ShowInNotificationArea = showInNotificationArea;
         this.RestoreActiveSessionOnStartup = restoreActiveSessionOnStartup;
         this.OpenSavedTimersOnStartup = openSavedTimersOnStartup;
-        this.ThemePreference = themePreference;
+        string? normalizedCustomThemeId = string.IsNullOrWhiteSpace(customThemeId) ? null : customThemeId.Trim();
+        LinuxThemePreference normalizedThemePreference = themePreference == LinuxThemePreference.Custom && normalizedCustomThemeId == null
+            ? LinuxThemePreference.System
+            : themePreference;
+        this.ThemePreference = normalizedThemePreference;
+        this.CustomThemeId = normalizedThemePreference == LinuxThemePreference.Custom ? normalizedCustomThemeId : null;
         this.WindowTitleMode = windowTitleMode;
         this.AudioAlertSoundId = effectiveAudioAlertsEnabled
             ? normalizedAudioAlertSoundId
@@ -108,6 +114,8 @@ public sealed record LinuxAppSettings
 
     public LinuxThemePreference ThemePreference { get; init; }
 
+    public string? CustomThemeId { get; init; }
+
     public WindowTitleMode WindowTitleMode { get; init; }
 
     public string AudioAlertSoundId { get; init; }
@@ -151,7 +159,8 @@ public sealed record LinuxAppSettings
             this.OpenSavedTimersOnStartup,
             this.ThemePreference,
             this.WindowTitleMode,
-            this.AudioAlertSoundId);
+            this.AudioAlertSoundId,
+            this.CustomThemeId);
     }
 
     public LinuxAppSettings ClearRecentTimerInputs()
@@ -177,7 +186,8 @@ public sealed record LinuxAppSettings
             this.OpenSavedTimersOnStartup,
             this.ThemePreference,
             this.WindowTitleMode,
-            this.AudioAlertSoundId);
+            this.AudioAlertSoundId,
+            this.CustomThemeId);
     }
 
     public string GetInitialTimerInput(string defaultTimerInput)

@@ -15,6 +15,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private const string NotificationBody = "Timer complete";
     private const string SettingsKey = "app";
     private const string ActiveSessionKey = "active-session";
+    private const string CustomThemesKey = "custom-themes";
 
     private readonly IAudioAlertService audioAlertService;
     private readonly CountdownEngine engine;
@@ -32,9 +33,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private CancellationTokenSource? audioPreviewCancellation;
     private IAsyncDisposable? inhibitionLease;
     private Task pendingActiveSessionSave = Task.CompletedTask;
+    private Task pendingCustomThemesSave = Task.CompletedTask;
     private Task pendingSavedTimersSave = Task.CompletedTask;
     private Task pendingSettingsSave = Task.CompletedTask;
     private string publishedWindowTitle = ApplicationTitle;
+    private CustomThemesDocument customThemes = CustomThemesDocument.Empty;
     private SavedTimersDocument savedTimers = SavedTimersDocument.Empty;
     private LinuxAppSettings settings = LinuxAppSettings.Default;
     private TimerViewState viewState = TimerViewState.Initial;
@@ -207,6 +210,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         this.ToggleRestoreActiveSessionOnStartupCommand = new RelayCommand(this.ToggleRestoreActiveSessionOnStartup, () => !this.IsTimerModificationLocked);
         this.ToggleOpenSavedTimersOnStartupCommand = new RelayCommand(this.ToggleOpenSavedTimersOnStartup, () => !this.IsTimerModificationLocked);
         this.SelectThemePreferenceCommand = new RelayCommand<string>(this.SelectThemePreference, value => !string.IsNullOrWhiteSpace(value) && !this.IsTimerModificationLocked);
+        this.SelectCustomThemeCommand = new RelayCommand<string>(this.SelectCustomTheme, id => !string.IsNullOrWhiteSpace(id) && !this.IsTimerModificationLocked);
+        this.DuplicateCustomThemeCommand = new RelayCommand<string>(this.DuplicateCustomTheme, id => !string.IsNullOrWhiteSpace(id) && !this.IsTimerModificationLocked);
+        this.DeleteCustomThemeCommand = new RelayCommand<string>(this.DeleteCustomTheme, id => !string.IsNullOrWhiteSpace(id) && !this.IsTimerModificationLocked);
         this.SelectWindowTitleModeCommand = new RelayCommand<string>(this.SelectWindowTitleMode, value => !string.IsNullOrWhiteSpace(value) && !this.IsTimerModificationLocked);
         this.SelectAudioAlertSoundCommand = new RelayCommand<string>(this.SelectAudioAlertSound, value => this.CanSelectAudioAlertSound(value));
         this.PreviewAudioAlertSoundCommand = new RelayCommand(this.PreviewAudioAlertSound, () => this.CanPreviewAudioAlertSound);
@@ -306,6 +312,12 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     public RelayCommand ToggleOpenSavedTimersOnStartupCommand { get; }
 
     public RelayCommand<string> SelectThemePreferenceCommand { get; }
+
+    public RelayCommand<string> SelectCustomThemeCommand { get; }
+
+    public RelayCommand<string> DuplicateCustomThemeCommand { get; }
+
+    public RelayCommand<string> DeleteCustomThemeCommand { get; }
 
     public RelayCommand<string> SelectWindowTitleModeCommand { get; }
 
@@ -473,11 +485,19 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     public LinuxThemePreference ThemePreference => this.settings.ThemePreference;
 
+    public string? CustomThemeId => this.settings.CustomThemeId;
+
     public bool IsSystemThemeSelected => this.settings.ThemePreference == LinuxThemePreference.System;
 
     public bool IsLightThemeSelected => this.settings.ThemePreference == LinuxThemePreference.Light;
 
     public bool IsDarkThemeSelected => this.settings.ThemePreference == LinuxThemePreference.Dark;
+
+    public bool IsCustomThemeSelected => this.settings.ThemePreference == LinuxThemePreference.Custom;
+
+    public CustomThemeDefinition? CurrentCustomTheme => this.customThemes.Find(this.settings.CustomThemeId);
+
+    public bool CanExportCustomTheme => this.CurrentCustomTheme != null;
 
     public WindowTitleMode WindowTitleMode => this.settings.WindowTitleMode;
 
@@ -503,11 +523,22 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     public SavedTimerMenuItem[] SavedTimerMenuItems =>
         this.savedTimers.Timers.Select(timer => new SavedTimerMenuItem(timer.Id, timer.Header)).ToArray();
 
+    public CustomThemeMenuItem[] CustomThemeMenuItems =>
+        this.customThemes.Themes
+            .Select(theme => new CustomThemeMenuItem(
+                theme.Id,
+                theme.Name,
+                this.settings.ThemePreference == LinuxThemePreference.Custom
+                    && StringComparer.Ordinal.Equals(this.settings.CustomThemeId, theme.Id)))
+            .ToArray();
+
     public bool CanSaveCurrentTimer =>
         TimerStart.FromString(this.TimerInput) is { IsValid: true };
 
     public bool IsTimerModificationLocked =>
         this.settings.LockInterface && (this.engine.State is TimerState.Running or TimerState.Paused);
+
+    public bool CanModifyCustomThemes => !this.IsTimerModificationLocked;
 
     public bool ShouldPromptOnExit =>
         this.settings.PromptOnExit && (this.engine.State is TimerState.Running or TimerState.Paused);
@@ -528,6 +559,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     internal Task PendingSettingsSave => Task.WhenAll(
         this.pendingSettingsSave,
+        this.pendingCustomThemesSave,
         this.pendingSavedTimersSave,
         this.pendingActiveSessionSave);
 
@@ -538,8 +570,10 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     {
         LinuxAppSettings loadedSettings = await this.LoadDocumentAsync(SettingsKey, LinuxAppSettings.Default, cancellationToken);
         SavedTimersDocument loadedSavedTimers = await this.LoadSavedTimersAsync(cancellationToken);
+        CustomThemesDocument loadedCustomThemes = await this.LoadDocumentAsync(CustomThemesKey, CustomThemesDocument.Empty, cancellationToken);
 
-        this.ReplaceSettings(loadedSettings, save: false);
+        this.ReplaceCustomThemes(loadedCustomThemes, save: false);
+        this.ReplaceSettings(NormalizeThemeSelection(loadedSettings, loadedCustomThemes), save: false);
         this.ReplaceSavedTimers(loadedSavedTimers, save: false);
 
         if (this.restoreActiveSessionOnLoad
@@ -624,7 +658,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         this.engine.Restore(timerInfo);
         if (session.HasOptions)
         {
-            this.ReplaceSettings(session.Options.ApplyTo(this.settings), save: false);
+            this.ReplaceSettings(NormalizeThemeSelection(session.Options.ApplyTo(this.settings), this.customThemes), save: false);
         }
 
         TimerPresentationMode presentationMode = timerInfo.State == TimerState.Expired
@@ -1057,7 +1091,89 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             return;
         }
 
-        this.ReplaceSettings(this.settings with { ThemePreference = themePreference }, save: true);
+        if (themePreference == LinuxThemePreference.Custom)
+        {
+            return;
+        }
+
+        this.ReplaceSettings(this.settings with { ThemePreference = themePreference, CustomThemeId = null }, save: true);
+    }
+
+    private void SelectCustomTheme(string? id)
+    {
+        CustomThemeDefinition? theme = this.customThemes.Find(id);
+        if (theme == null)
+        {
+            return;
+        }
+
+        this.ReplaceSettings(this.settings with
+        {
+            ThemePreference = LinuxThemePreference.Custom,
+            CustomThemeId = theme.Id
+        }, save: true);
+    }
+
+    public void SaveCustomTheme(CustomThemeDefinition theme, bool select)
+    {
+        ArgumentNullException.ThrowIfNull(theme);
+
+        if (!this.CanModifyCustomThemes)
+        {
+            return;
+        }
+
+        if (!theme.IsValid)
+        {
+            return;
+        }
+
+        this.ReplaceCustomThemes(this.customThemes.AddOrReplace(theme), save: true);
+        if (select)
+        {
+            this.SelectCustomTheme(theme.Id);
+        }
+    }
+
+    public CustomThemeDefinition? FindCustomTheme(string? id)
+    {
+        return this.customThemes.Find(id);
+    }
+
+    private void DuplicateCustomTheme(string? id)
+    {
+        CustomThemeDefinition? theme = this.customThemes.Find(id);
+        if (theme == null)
+        {
+            return;
+        }
+
+        this.SaveCustomTheme(theme.Duplicate(), select: true);
+    }
+
+    private void DeleteCustomTheme(string? id)
+    {
+        if (!this.CanModifyCustomThemes)
+        {
+            return;
+        }
+
+        CustomThemeDefinition? theme = this.customThemes.Find(id);
+        if (theme == null)
+        {
+            return;
+        }
+
+        if (StringComparer.Ordinal.Equals(this.settings.CustomThemeId, theme.Id))
+        {
+            this.ReplaceSettings(this.settings with
+            {
+                ThemePreference = LinuxThemePreference.System,
+                CustomThemeId = null
+            }, save: true);
+        }
+
+        this.ReplaceCustomThemes(this.customThemes.Remove(theme.Id), save: true);
     }
 
     private void SelectWindowTitleMode(string? value)
@@ -1232,7 +1348,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
         _ = this.StopActiveAudioAsync();
         this.engine.Stop();
-        this.ReplaceSettings(savedTimer.Options.ApplyTo(this.settings), save: true);
+        this.ReplaceSettings(NormalizeThemeSelection(savedTimer.Options.ApplyTo(this.settings), this.customThemes), save: true);
         this.ReplaceViewState(this.viewState with
         {
             TimerInput = savedTimer.TimerInput,
@@ -1297,7 +1413,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     private void RefreshDisplay(string? explicitStatus = null, bool? hasValidationError = null)
     {
-        this.ReplaceViewState(TimerViewState.FromTimerState(
+        bool wasTimerModificationLocked = this.viewState.IsLocked;
+        TimerViewState nextViewState = TimerViewState.FromTimerState(
             this.TimerInput,
             this.engine.Snapshot,
             this.TimerTitle ?? string.Empty,
@@ -1307,7 +1424,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             hasValidationError ?? this.viewState.HasValidationError,
             this.settings.ShowTimeElapsed,
             this.settings.ReverseProgressBar,
-            this.IsTimerModificationLocked));
+            this.IsTimerModificationLocked);
+
+        this.ReplaceViewState(nextViewState);
         this.OnPropertyChanged(nameof(this.TimerInput));
         this.OnPropertyChanged(nameof(this.RemainingTime));
         this.OnPropertyChanged(nameof(this.StatusText));
@@ -1317,6 +1436,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         this.OnPropertyChanged(nameof(this.State));
         this.OnPropertyChanged(nameof(this.ShouldPromptOnExit));
         this.OnPropertyChanged(nameof(this.IsTimerModificationLocked));
+        if (wasTimerModificationLocked != nextViewState.IsLocked)
+        {
+            this.OnPropertyChanged(nameof(this.CanModifyCustomThemes));
+        }
+
         this.OnPropertyChanged(nameof(this.ProgressPercent));
         this.OnPropertyChanged(nameof(this.DesktopProgressRequest));
         this.OnPropertyChanged(nameof(this.IsTimerInputVisible));
@@ -1338,6 +1462,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         this.ResetCommand.RaiseCanExecuteChanged();
         this.RestartCommand.RaiseCanExecuteChanged();
         this.CancelEditCommand.RaiseCanExecuteChanged();
+        this.SelectCustomThemeCommand.RaiseCanExecuteChanged();
+        this.DuplicateCustomThemeCommand.RaiseCanExecuteChanged();
+        this.DeleteCustomThemeCommand.RaiseCanExecuteChanged();
         this.SelectRecentInputCommand.RaiseCanExecuteChanged();
         this.ClearRecentInputsCommand.RaiseCanExecuteChanged();
         this.SaveCurrentTimerCommand.RaiseCanExecuteChanged();
@@ -1363,8 +1490,14 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private void ReplaceSettings(LinuxAppSettings next, bool save)
     {
         ArgumentNullException.ThrowIfNull(next);
+        next = NormalizeThemeSelection(next, this.customThemes);
 
         LinuxAppSettings previous = this.settings;
+        if (previous == next)
+        {
+            return;
+        }
+
         this.settings = next;
 
         if (!previous.RecentTimerInputs.SequenceEqual(next.RecentTimerInputs, StringComparer.Ordinal))
@@ -1435,9 +1568,22 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         if (previous.ThemePreference != next.ThemePreference)
         {
             this.OnPropertyChanged(nameof(this.ThemePreference));
+            this.OnPropertyChanged(nameof(this.CustomThemeId));
             this.OnPropertyChanged(nameof(this.IsSystemThemeSelected));
             this.OnPropertyChanged(nameof(this.IsLightThemeSelected));
             this.OnPropertyChanged(nameof(this.IsDarkThemeSelected));
+            this.OnPropertyChanged(nameof(this.IsCustomThemeSelected));
+            this.OnPropertyChanged(nameof(this.CurrentCustomTheme));
+            this.OnPropertyChanged(nameof(this.CanExportCustomTheme));
+            this.OnPropertyChanged(nameof(this.CustomThemeMenuItems));
+        }
+
+        if (!StringComparer.Ordinal.Equals(previous.CustomThemeId, next.CustomThemeId))
+        {
+            this.OnPropertyChanged(nameof(this.CustomThemeId));
+            this.OnPropertyChanged(nameof(this.CurrentCustomTheme));
+            this.OnPropertyChanged(nameof(this.CanExportCustomTheme));
+            this.OnPropertyChanged(nameof(this.CustomThemeMenuItems));
         }
 
         if (previous.WindowTitleMode != next.WindowTitleMode)
@@ -1458,6 +1604,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         {
             this.OnPropertyChanged(nameof(this.LockInterface));
             this.OnPropertyChanged(nameof(this.IsTimerModificationLocked));
+            this.OnPropertyChanged(nameof(this.CanModifyCustomThemes));
             this.OnPropertyChanged(nameof(this.CanHideToNotificationArea));
             this.OnPropertyChanged(nameof(this.StatusIconMenuState));
         }
@@ -1469,6 +1616,37 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         }
 
         this.RaiseSettingsCommandCanExecuteChanged();
+    }
+
+    private void ReplaceCustomThemes(CustomThemesDocument next, bool save)
+    {
+        ArgumentNullException.ThrowIfNull(next);
+
+        if (this.customThemes == next)
+        {
+            return;
+        }
+
+        CustomThemesDocument previous = this.customThemes;
+        this.customThemes = next;
+        this.OnPropertyChanged(nameof(this.CustomThemeMenuItems));
+        this.OnPropertyChanged(nameof(this.CurrentCustomTheme));
+        this.OnPropertyChanged(nameof(this.CanExportCustomTheme));
+
+        if (this.settings.ThemePreference == LinuxThemePreference.Custom
+            && this.customThemes.Find(this.settings.CustomThemeId) == null)
+        {
+            this.ReplaceSettings(this.settings with
+            {
+                ThemePreference = LinuxThemePreference.System,
+                CustomThemeId = null
+            }, save: true);
+        }
+
+        if (save)
+        {
+            this.QueueCustomThemesSave(previous, this.customThemes);
+        }
     }
 
     private void ReplaceSavedTimers(SavedTimersDocument next, bool save)
@@ -1797,6 +1975,14 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             requestedSavedTimers);
     }
 
+    private void QueueCustomThemesSave(CustomThemesDocument previousCustomThemes, CustomThemesDocument requestedCustomThemes)
+    {
+        this.pendingCustomThemesSave = this.SaveCustomThemesAfterAsync(
+            this.pendingCustomThemesSave,
+            previousCustomThemes,
+            requestedCustomThemes);
+    }
+
     private void QueueActiveSessionSave()
     {
         ActiveTimerSessionDocument session = this.CreateActiveSessionDocument();
@@ -1876,11 +2062,52 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         }
     }
 
+    private async Task SaveCustomThemesAfterAsync(
+        Task previousSave,
+        CustomThemesDocument previousCustomThemes,
+        CustomThemesDocument requestedCustomThemes)
+    {
+        try
+        {
+            await previousSave.ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+        }
+
+        CustomThemesDocument latestCustomThemes = await this.LoadLatestCustomThemesForSaveAsync(previousCustomThemes).ConfigureAwait(false);
+        CustomThemesDocument mergedCustomThemes = MergeCustomThemesChange(
+            previousCustomThemes,
+            requestedCustomThemes,
+            latestCustomThemes);
+
+        try
+        {
+            await this.settingsStore.SaveAsync(CustomThemesKey, mergedCustomThemes).ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+        }
+    }
+
     private async Task<LinuxAppSettings> LoadLatestSettingsForSaveAsync(LinuxAppSettings fallback)
     {
         try
         {
             return await this.settingsStore.LoadAsync<LinuxAppSettings>(SettingsKey).ConfigureAwait(false)
+                ?? fallback;
+        }
+        catch (Exception)
+        {
+            return fallback;
+        }
+    }
+
+    private async Task<CustomThemesDocument> LoadLatestCustomThemesForSaveAsync(CustomThemesDocument fallback)
+    {
+        try
+        {
+            return await this.settingsStore.LoadAsync<CustomThemesDocument>(CustomThemesKey).ConfigureAwait(false)
                 ?? fallback;
         }
         catch (Exception)
@@ -1916,6 +2143,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             audioAlertSoundId = requested.AudioAlertSoundId;
         }
 
+        (LinuxThemePreference themePreference, string? customThemeId) = SelectThemeSelection(previous, requested, latest);
+
         return new LinuxAppSettings(
             recentTimerInputs,
             SelectChanged(previous.NotificationsEnabled, requested.NotificationsEnabled, latest.NotificationsEnabled),
@@ -1950,9 +2179,81 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
                 previous.OpenSavedTimersOnStartup,
                 requested.OpenSavedTimersOnStartup,
                 latest.OpenSavedTimersOnStartup),
-            SelectChanged(previous.ThemePreference, requested.ThemePreference, latest.ThemePreference),
+            themePreference,
             SelectChanged(previous.WindowTitleMode, requested.WindowTitleMode, latest.WindowTitleMode),
-            audioAlertSoundId);
+            audioAlertSoundId,
+            customThemeId);
+    }
+
+    private static (LinuxThemePreference ThemePreference, string? CustomThemeId) SelectThemeSelection(
+        LinuxAppSettings previous,
+        LinuxAppSettings requested,
+        LinuxAppSettings latest)
+    {
+        return previous.ThemePreference == requested.ThemePreference
+            && StringComparer.Ordinal.Equals(previous.CustomThemeId, requested.CustomThemeId)
+            ? (latest.ThemePreference, latest.CustomThemeId)
+            : (requested.ThemePreference, requested.CustomThemeId);
+    }
+
+    private static CustomThemesDocument MergeCustomThemesChange(
+        CustomThemesDocument previous,
+        CustomThemesDocument requested,
+        CustomThemesDocument latest)
+    {
+        CustomThemeDefinition[] previousThemes = previous.Themes;
+        CustomThemeDefinition[] requestedThemes = requested.Themes;
+        CustomThemeDefinition[] latestThemes = latest.Themes;
+
+        var previousIds = previousThemes
+            .Select(theme => theme.Id)
+            .ToHashSet(StringComparer.Ordinal);
+        var previousById = previousThemes
+            .ToDictionary(theme => theme.Id, StringComparer.Ordinal);
+        var requestedById = requestedThemes
+            .ToDictionary(theme => theme.Id, StringComparer.Ordinal);
+        var latestIds = latestThemes
+            .Select(theme => theme.Id)
+            .ToHashSet(StringComparer.Ordinal);
+
+        IEnumerable<CustomThemeDefinition> mergedLatest = latestThemes
+            .Select(theme => SelectMergedCustomTheme(theme, previousById, requestedById))
+            .OfType<CustomThemeDefinition>();
+
+        IEnumerable<CustomThemeDefinition> requestedAdditions = requestedThemes
+            .Where(theme => !latestIds.Contains(theme.Id) && !previousIds.Contains(theme.Id));
+
+        return new CustomThemesDocument(themes: requestedAdditions.Concat(mergedLatest).ToArray());
+    }
+
+    private static CustomThemeDefinition? SelectMergedCustomTheme(
+        CustomThemeDefinition latestTheme,
+        Dictionary<string, CustomThemeDefinition> previousById,
+        Dictionary<string, CustomThemeDefinition> requestedById)
+    {
+        if (requestedById.TryGetValue(latestTheme.Id, out CustomThemeDefinition? requestedTheme))
+        {
+            return previousById.TryGetValue(latestTheme.Id, out CustomThemeDefinition? previousTheme)
+                && requestedTheme == previousTheme
+                    ? latestTheme
+                    : requestedTheme;
+        }
+
+        return previousById.ContainsKey(latestTheme.Id)
+                    ? null
+                    : latestTheme;
+    }
+
+    private static LinuxAppSettings NormalizeThemeSelection(LinuxAppSettings settings, CustomThemesDocument customThemes)
+    {
+        if (settings.ThemePreference != LinuxThemePreference.Custom)
+        {
+            return settings with { CustomThemeId = null };
+        }
+
+        return customThemes.Find(settings.CustomThemeId) == null
+            ? settings with { ThemePreference = LinuxThemePreference.System, CustomThemeId = null }
+            : settings;
     }
 
     private static string[] MergeRecentTimerInputs(
@@ -1984,6 +2285,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     }
 
     private static string SelectChanged(string previous, string requested, string latest)
+    {
+        return StringComparer.Ordinal.Equals(previous, requested) ? latest : requested;
+    }
+
+    private static string? SelectChangedNullableString(string? previous, string? requested, string? latest)
     {
         return StringComparer.Ordinal.Equals(previous, requested) ? latest : requested;
     }
@@ -2039,6 +2345,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         this.ToggleRestoreActiveSessionOnStartupCommand.RaiseCanExecuteChanged();
         this.ToggleOpenSavedTimersOnStartupCommand.RaiseCanExecuteChanged();
         this.SelectThemePreferenceCommand.RaiseCanExecuteChanged();
+        this.SelectCustomThemeCommand.RaiseCanExecuteChanged();
+        this.DuplicateCustomThemeCommand.RaiseCanExecuteChanged();
+        this.DeleteCustomThemeCommand.RaiseCanExecuteChanged();
         this.SelectWindowTitleModeCommand.RaiseCanExecuteChanged();
         this.SelectAudioAlertSoundCommand.RaiseCanExecuteChanged();
         this.PreviewAudioAlertSoundCommand.RaiseCanExecuteChanged();

@@ -40,7 +40,8 @@ public sealed class SavedTimersDocumentTests
                 DoNotKeepComputerAwake: true,
                 ShutDownWhenExpired: true,
                 WindowTitleMode: WindowTitleMode.TimerTitlePlusTimeLeft,
-                AudioAlertSoundId: BuiltInAudioAlertSounds.LoudBeep));
+                AudioAlertSoundId: BuiltInAudioAlertSounds.LoudBeep,
+                CustomThemeId: "theme-1"));
         var document = new SavedTimersDocument(timers: [timer]);
 
         string json = JsonSerializer.Serialize(document);
@@ -85,10 +86,11 @@ public sealed class SavedTimersDocumentTests
             LoopSound: true,
             CloseWhenExpired: true,
             LockInterface: true,
-            DoNotKeepComputerAwake: true,
-            ShutDownWhenExpired: true,
-            WindowTitleMode: WindowTitleMode.TimeElapsedPlusTimerTitle,
-            AudioAlertSoundId: BuiltInAudioAlertSounds.QuietBeep);
+                DoNotKeepComputerAwake: true,
+                ShutDownWhenExpired: true,
+                WindowTitleMode: WindowTitleMode.TimeElapsedPlusTimerTitle,
+                AudioAlertSoundId: BuiltInAudioAlertSounds.QuietBeep,
+                CustomThemeId: "theme-1");
         var document = new ActiveTimerSessionDocument(
             timerInput: "10 seconds",
             options: options);
@@ -99,6 +101,17 @@ public sealed class SavedTimersDocumentTests
         Assert.NotNull(roundTripped);
         Assert.True(roundTripped.HasOptions);
         Assert.Equal(options, roundTripped.Options);
+    }
+
+    [Fact]
+    public void SavedTimerOptionsApplyCustomThemeSelection()
+    {
+        var options = new SavedTimerOptions(CustomThemeId: "theme-1");
+
+        LinuxAppSettings settings = options.ApplyTo(LinuxAppSettings.Default);
+
+        Assert.Equal(LinuxThemePreference.Custom, settings.ThemePreference);
+        Assert.Equal("theme-1", settings.CustomThemeId);
     }
 
     [Fact]

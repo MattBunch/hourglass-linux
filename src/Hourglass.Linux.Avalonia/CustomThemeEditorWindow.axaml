@@ -1,0 +1,60 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="Hourglass.Linux.Avalonia.CustomThemeEditorWindow"
+        Title="Custom theme"
+        Icon="/Assets/hourglass.png"
+        Width="420"
+        Height="520"
+        MinWidth="380"
+        MinHeight="480"
+        WindowStartupLocation="CenterOwner">
+  <Grid Margin="18"
+        RowDefinitions="*,Auto">
+    <ScrollViewer>
+      <StackPanel Spacing="10">
+        <TextBlock Text="Name" />
+        <TextBox x:Name="NameBox" />
+        <TextBlock Text="Base theme" />
+        <ComboBox x:Name="BaseThemeBox"
+                  SelectedIndex="0">
+          <ComboBoxItem Content="System" />
+          <ComboBoxItem Content="Light" />
+          <ComboBoxItem Content="Dark" />
+        </ComboBox>
+        <TextBlock Text="Background" />
+        <TextBox x:Name="BackgroundBox" />
+        <TextBlock Text="Primary text" />
+        <TextBox x:Name="PrimaryTextBox" />
+        <TextBlock Text="Secondary text" />
+        <TextBox x:Name="SecondaryTextBox" />
+        <TextBlock Text="Command text" />
+        <TextBox x:Name="CommandTextBox" />
+        <TextBlock Text="Accent" />
+        <TextBox x:Name="AccentBox" />
+        <TextBlock Text="Progress fill" />
+        <TextBox x:Name="ProgressFillBox" />
+        <TextBlock Text="Validation flash" />
+        <TextBox x:Name="ValidationFlashBox" />
+        <TextBlock Text="Completion border" />
+        <TextBox x:Name="CompletionBorderBox" />
+        <TextBlock Text="Locked border" />
+        <TextBox x:Name="LockedBorderBox" />
+        <TextBlock x:Name="ValidationText"
+                   Foreground="{DynamicResource SystemControlErrorTextForegroundBrush}"
+                   TextWrapping="Wrap" />
+      </StackPanel>
+    </ScrollViewer>
+    <StackPanel Grid.Row="1"
+                Orientation="Horizontal"
+                HorizontalAlignment="Right"
+                Spacing="8"
+                Margin="0 14 0 0">
+      <Button Content="Cancel"
+              IsCancel="True"
+              Click="CancelButtonClick" />
+      <Button Content="Save"
+              IsDefault="True"
+              Click="SaveButtonClick" />
+    </StackPanel>
+  </Grid>
+</Window>

@@ -76,7 +76,7 @@ public sealed class JsonFileSettingsStoreTests : IDisposable
     }
 
     [Fact]
-    public async Task SaveAndLoadRoundTripsSavedTimersAndActiveSession()
+    public async Task SaveAndLoadRoundTripsSavedTimersActiveSessionAndCustomThemes()
     {
         var store = this.CreateStore();
         var savedTimers = new SavedTimersDocument(timers:
@@ -90,12 +90,18 @@ public sealed class JsonFileSettingsStoreTests : IDisposable
             startTime: new DateTime(2026, 7, 2, 8, 0, 0),
             endTime: new DateTime(2026, 7, 2, 8, 0, 10),
             totalTimeTicks: TimeSpan.FromSeconds(10).Ticks);
+        var customThemes = new CustomThemesDocument(themes:
+        [
+            new CustomThemeDefinition("theme-1", "Evening", LinuxThemePreference.Dark)
+        ]);
 
         await store.SaveAsync("saved-timers", savedTimers);
         await store.SaveAsync("active-session", activeSession);
+        await store.SaveAsync("custom-themes", customThemes);
 
         SavedTimersDocument? loadedSavedTimers = await store.LoadAsync<SavedTimersDocument>("saved-timers");
         ActiveTimerSessionDocument? loadedActiveSession = await store.LoadAsync<ActiveTimerSessionDocument>("active-session");
+        CustomThemesDocument? loadedCustomThemes = await store.LoadAsync<CustomThemesDocument>("custom-themes");
 
         Assert.NotNull(loadedSavedTimers);
         SavedTimerDefinition loadedTimer = Assert.Single(loadedSavedTimers.Timers);
@@ -110,6 +116,8 @@ public sealed class JsonFileSettingsStoreTests : IDisposable
         Assert.Equal(activeSession.EndTime, loadedActiveSession.EndTime);
         Assert.Equal(activeSession.TotalTimeTicks, loadedActiveSession.TotalTimeTicks);
         Assert.Equal(new SavedTimerOptions(), loadedActiveSession.Options);
+        Assert.NotNull(loadedCustomThemes);
+        Assert.Equal(customThemes.Themes, loadedCustomThemes.Themes);
     }
 
     [Fact]
