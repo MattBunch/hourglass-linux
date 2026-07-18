@@ -2010,6 +2010,25 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
+    public async Task SelectUnavailableAudioAlertSoundDoesNotChangeOrSaveSettings()
+    {
+        var settingsStore = new RecordingSettingsStore();
+        var audioAlertService = new RecordingAudioAlertService();
+        audioAlertService.SetSoundAvailable(AudioAlertSoundIds.QuietBeep, available: false);
+        var viewModel = CreateViewModel(
+            new ManualMonotonicClock(),
+            settingsStore: settingsStore,
+            audioAlertService: audioAlertService);
+
+        viewModel.SelectAudioAlertSoundCommand.Execute(AudioAlertSoundIds.QuietBeep);
+        await viewModel.PendingSettingsSave;
+
+        Assert.True(viewModel.AudioAlertsEnabled);
+        Assert.True(viewModel.IsNormalBeepSoundSelected);
+        Assert.Null(settingsStore.SavedSettings);
+    }
+
+    [Fact]
     public async Task SelectNoSoundDisablesAudioAlertsAndSavesSettings()
     {
         var settingsStore = new RecordingSettingsStore();
@@ -2059,6 +2078,70 @@ public sealed class MainWindowViewModelTests
 
         Assert.Equal(1, audioAlertService.CallCount);
         Assert.Equal(AudioAlertSoundIds.LoudBeep, audioAlertService.SoundId);
+    }
+
+    [Fact]
+    public void PreviewUnavailableAudioAlertSoundDoesNotPlay()
+    {
+        var audioAlertService = new RecordingAudioAlertService();
+        audioAlertService.SetSoundAvailable(AudioAlertSoundIds.NormalBeep, available: false);
+        var viewModel = CreateViewModel(
+            new ManualMonotonicClock(),
+            audioAlertService: audioAlertService);
+
+        Assert.False(viewModel.CanPreviewAudioAlertSound);
+
+        viewModel.PreviewAudioAlertSoundCommand.Execute(null);
+
+        Assert.Equal(0, audioAlertService.CallCount);
+    }
+
+    [Fact]
+    public async Task StopPreviewCancelsActiveAudioAlertPreview()
+    {
+        var audioAlertService = new RecordingAudioAlertService
+        {
+            HoldPlaybackUntilCanceled = true
+        };
+        var viewModel = CreateViewModel(
+            new ManualMonotonicClock(),
+            audioAlertService: audioAlertService);
+
+        viewModel.PreviewAudioAlertSoundCommand.Execute(null);
+        await audioAlertService.PlaybackStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.True(viewModel.IsAudioPreviewActive);
+
+        viewModel.StopAudioAlertPreviewCommand.Execute(null);
+        await audioAlertService.PlaybackCanceled.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.False(viewModel.IsAudioPreviewActive);
+    }
+
+    [Fact]
+    public async Task SelectNoSoundStopsActiveAudioAlertPreview()
+    {
+        var audioAlertService = new RecordingAudioAlertService
+        {
+            HoldPlaybackUntilCanceled = true
+        };
+        var settingsStore = new RecordingSettingsStore();
+        var viewModel = CreateViewModel(
+            new ManualMonotonicClock(),
+            settingsStore: settingsStore,
+            audioAlertService: audioAlertService);
+
+        viewModel.PreviewAudioAlertSoundCommand.Execute(null);
+        await audioAlertService.PlaybackStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        viewModel.SelectAudioAlertSoundCommand.Execute(AudioAlertSoundIds.None);
+        await audioAlertService.PlaybackCanceled.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await viewModel.PendingSettingsSave;
+
+        Assert.False(viewModel.IsAudioPreviewActive);
+        Assert.NotNull(settingsStore.SavedSettings);
+        Assert.False(settingsStore.SavedSettings.AudioAlertsEnabled);
+        Assert.Equal(AudioAlertSoundIds.None, settingsStore.SavedSettings.AudioAlertSoundId);
     }
 
     [Fact]
@@ -3916,22 +3999,42 @@ public sealed class MainWindowViewModelTests
 
         public bool ThrowOnPlay { get; init; }
 
+        public bool HoldPlaybackUntilCanceled { get; init; }
+
+        public TaskCompletionSource PlaybackStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public TaskCompletionSource PlaybackCanceled { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
         public bool IsSoundAvailable(string soundId)
         {
             return this.availableSoundIds.Contains(soundId);
         }
 
-        public Task<IAsyncDisposable?> PlayAlertAsync(string soundId, CancellationToken cancellationToken = default)
+        public async Task<IAsyncDisposable?> PlayAlertAsync(string soundId, CancellationToken cancellationToken = default)
         {
             this.CallCount++;
             this.SoundId = soundId;
 
             if (this.ThrowOnPlay)
             {
-                return Task.FromException<IAsyncDisposable?>(new InvalidOperationException("Audio failed."));
+                throw new InvalidOperationException("Audio failed.");
             }
 
-            return Task.FromResult<IAsyncDisposable?>(null);
+            if (this.HoldPlaybackUntilCanceled)
+            {
+                this.PlaybackStarted.TrySetResult();
+                try
+                {
+                    await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    this.PlaybackCanceled.TrySetResult();
+                    throw;
+                }
+            }
+
+            return null;
         }
 
         public Task<IAsyncDisposable?> PlayAlertLoopingAsync(string soundId, CancellationToken cancellationToken = default)
@@ -3945,6 +4048,18 @@ public sealed class MainWindowViewModelTests
             }
 
             return Task.FromResult<IAsyncDisposable?>(new RecordingPlayback(this));
+        }
+
+        public void SetSoundAvailable(string soundId, bool available)
+        {
+            if (available)
+            {
+                this.availableSoundIds.Add(soundId);
+            }
+            else
+            {
+                this.availableSoundIds.Remove(soundId);
+            }
         }
 
         private sealed class RecordingPlayback(RecordingAudioAlertService owner) : IAsyncDisposable

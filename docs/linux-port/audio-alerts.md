@@ -2,14 +2,15 @@
 
 Phase 11 adds best-effort timer-expiry audio through `Hourglass.Platform.IAudioAlertService`.
 
-## Built-In Sound
+## Built-In Sounds
 
-The Linux MVP supports one built-in alert sound:
+The Linux app supports `None` plus the packaged built-in alert sounds:
 
-- `resource:Normal beep`
-- published as `Assets/Sounds/BeepNormal.wav`
+- `resource:Loud beep`, published as `Assets/Sounds/BeepLoud.wav`
+- `resource:Normal beep`, published as `Assets/Sounds/BeepNormal.wav`
+- `resource:Quiet beep`, published as `Assets/Sounds/BeepQuiet.wav`
 
-The WAV file is copied into the modern Avalonia project so installed Linux builds do not depend on the legacy Windows project directory.
+The WAV files are copied into the modern Avalonia project so installed Linux builds do not depend on the legacy Windows project directory. Arbitrary user-selected audio files are deferred until Flatpak, portal, and file-permission behavior can be made consistent.
 
 ## Playback Backend
 
@@ -45,8 +46,9 @@ Linux settings include:
 
 ```json
 {
-  "AudioAlertsEnabled": true
+  "AudioAlertsEnabled": true,
+  "AudioAlertSoundId": "resource:Normal beep"
 }
 ```
 
-The setting defaults to `true`. Existing settings JSON that omits `AudioAlertsEnabled` continues to load with audio alerts enabled.
+Audio alerts default to `true` and the Normal beep. Existing settings JSON that omits `AudioAlertsEnabled` or `AudioAlertSoundId` continues to load with audio alerts enabled and the default sound. Selecting `None` persists audio alerts as disabled with `AudioAlertSoundId` set to `none`.

@@ -671,6 +671,8 @@ The current advisory file lock prevents a second instance but the second process
 
 ### 8.3 Sound Selection and Preview
 
+**Status:** Implemented on Linux for `None` plus packaged built-in Loud, Normal, and Quiet beep sounds. The Avalonia menu persists the selected sound, exposes preview and stop-preview commands, and uses service-level availability checks so missing packaged assets fail safely. Arbitrary user-selected audio files are deferred until Flatpak, portal, and file-permission behavior can be made consistent.
+
 **Priority:** P2  
 **Complexity:** Large
 
