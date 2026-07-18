@@ -764,7 +764,11 @@ Linux wake scheduling varies by distro, hardware, permissions, power manager, pa
 
 ## Milestone 10: Updates and Distribution Parity
 
+**Status:** Implemented for Linux update policy, reproducible `linux-x64` publish/AppDir scripts, package metadata validation, and CI packaging artifacts. Public release signing, package repository publication, Flathub submission, and AppImage update metadata remain future work.
+
 ### 10.1 Linux Update Strategy
+
+**Status:** Implemented as a no-in-app-updater policy for Linux builds. Package channels own updates, and Linux builds do not add updater UUIDs, silent downloads, or runtime network checks.
 
 **Priority:** P2  
 **Complexity:** Medium
@@ -778,6 +782,8 @@ The Windows in-app updater should not be copied directly.
 - Keep update checks optional and document network/privacy behavior before enabling them.
 
 ### 10.2 Packaging Completion
+
+**Status:** Implemented for the first CI-backed package artifact workflow. The Flatpak and AppImage prototypes install shared app metadata, icons, and bundled sound assets, while final signing and distribution-channel submission remain deferred.
 
 **Priority:** P1 for release readiness  
 **Complexity:** Large

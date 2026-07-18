@@ -9,6 +9,8 @@ fi
 publish_dir=$1
 appdir=$2
 app_id=io.github.MattBunch.Hourglass
+script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+repo_root=$(cd -- "$script_dir/../.." && pwd)
 
 if [[ ! -x "$publish_dir/hourglass-linux" ]]; then
   printf 'Expected executable not found: %s\n' "$publish_dir/hourglass-linux" >&2
@@ -24,10 +26,10 @@ mkdir -p \
   "$appdir/usr/share/metainfo"
 
 cp -a "$publish_dir"/. "$appdir/usr/bin/"
-install -Dm644 "packaging/linux/$app_id.desktop" "$appdir/usr/share/applications/$app_id.desktop"
-install -Dm644 "src/Hourglass.Linux.Avalonia/Assets/hourglass.png" "$appdir/usr/share/icons/hicolor/256x256/apps/hourglass.png"
-install -Dm644 "src/Hourglass.Linux.Avalonia/Assets/hourglass.svg" "$appdir/usr/share/icons/hicolor/scalable/apps/hourglass.svg"
-install -Dm644 "packaging/linux/$app_id.metainfo.xml" "$appdir/usr/share/metainfo/$app_id.metainfo.xml"
+install -Dm644 "$repo_root/packaging/linux/$app_id.desktop" "$appdir/usr/share/applications/$app_id.desktop"
+install -Dm644 "$repo_root/src/Hourglass.Linux.Avalonia/Assets/hourglass.png" "$appdir/usr/share/icons/hicolor/256x256/apps/hourglass.png"
+install -Dm644 "$repo_root/src/Hourglass.Linux.Avalonia/Assets/hourglass.svg" "$appdir/usr/share/icons/hicolor/scalable/apps/hourglass.svg"
+install -Dm644 "$repo_root/packaging/linux/$app_id.metainfo.xml" "$appdir/usr/share/metainfo/$app_id.metainfo.xml"
 
 ln -s "usr/share/icons/hicolor/256x256/apps/hourglass.png" "$appdir/hourglass.png"
 ln -s "usr/share/icons/hicolor/scalable/apps/hourglass.svg" "$appdir/hourglass.svg"

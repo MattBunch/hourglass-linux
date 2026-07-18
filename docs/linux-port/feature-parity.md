@@ -14,8 +14,8 @@
 | Audio alerts | Windows-focused implementation | `IAudioAlertService` with best-effort Linux process backend, built-in Loud/Normal/Quiet beep selection, `None`, preview/stop-preview commands, per-sound availability checks, and stoppable looping playback handles | User-selected audio files remain deferred until sandbox and file-permission behavior is designed. |
 | Settings | .NET Framework settings | Linux JSON settings store for recent inputs, saved timer definitions, active-session restoration, notifications, sound, theme preferences, custom themes, active-session window geometry, always-on-top, pop-up-on-expiry, prompt-on-exit, and expanded timer options | Keep schemas versioned and backward-compatible as advanced parity features are added. |
 | Single instance | Windows Forms application base with command-line handoff | `ISingleInstanceService` with Linux advisory file lock plus Unix socket handoff for activation and timer-start requests | Keep the supported Linux command-line surface documented and test socket behavior under packaged namespaces. |
-| Updates | Windows in-app update check | Not implemented | Disable or replace for Linux packaging. |
-| Packaging | MSI, bundle, portable Windows build | Publish docs plus Flatpak and AppImage prototype files | Flatpak first, AppImage second. |
+| Updates | Windows in-app update check | Linux update policy documented with no in-app updater, no updater UUID, and no silent downloads | Package channels own updates; future network checks must be opt-in and documented. |
+| Packaging | MSI, bundle, portable Windows build | Reproducible `linux-x64` publish script, AppDir script, package validator, Flatpak/AppImage metadata, and CI artifacts | Flatpak first, AppImage second; signing and repository submission remain future work. |
 
 The Linux MVP should not promise complete feature parity. It should prioritize a reliable native timer experience with notifications, sound, settings, and testable timing behavior.
 
