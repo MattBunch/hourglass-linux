@@ -10,16 +10,12 @@ The initial runtime target is `linux-x64`.
 
 ## Local Publish
 
-Restore the app project for the target runtime before publishing:
+Use the release publish script for the supported runtime target:
 
 ```bash
-dotnet restore src/Hourglass.Linux.Avalonia/Hourglass.Linux.Avalonia.csproj --runtime linux-x64
-dotnet publish src/Hourglass.Linux.Avalonia/Hourglass.Linux.Avalonia.csproj \
-  --configuration Release \
-  --runtime linux-x64 \
-  --self-contained true \
-  --no-restore \
-  --output /tmp/hourglass-linux-publish
+scripts/publish-linux-release.sh --runtime linux-x64 --output /tmp/hourglass-linux-publish
+packaging/appimage/build-appdir.sh /tmp/hourglass-linux-publish /tmp/hourglass-linux.AppDir
+scripts/validate-linux-packaging.sh /tmp/hourglass-linux-publish /tmp/hourglass-linux.AppDir
 ```
 
 The publish output is generated content and should not be committed.
@@ -35,7 +31,9 @@ The publish output is generated content and should not be committed.
 - `packaging/flatpak/io.github.MattBunch.Hourglass.yml` is a draft Flatpak manifest.
 - `packaging/linux/io.github.MattBunch.Hourglass.desktop` is desktop launcher metadata.
 - `packaging/linux/io.github.MattBunch.Hourglass.metainfo.xml` is draft AppStream metadata.
-- `packaging/appimage/build-appdir.sh` assembles an AppDir from a `dotnet publish` output.
+- `packaging/appimage/build-appdir.sh` assembles an AppDir from a publish output directory.
+- `scripts/publish-linux-release.sh` produces the self-contained `linux-x64` publish directory.
+- `scripts/validate-linux-packaging.sh` checks publish and AppDir layout plus package metadata.
 
 ## Permissions
 
@@ -50,10 +48,19 @@ The current `systemd-inhibit` backend is suitable for unpackaged developer build
 
 Audio playback uses command-line players in developer and AppImage-style builds: `pw-play`, `paplay`, then `aplay --quiet`. The AppImage prototype copies the full publish directory, so the bundled WAV file is included automatically.
 
-The Flatpak prototype installs the WAV asset beside the app binary. The command-line player backend is not guaranteed to work inside a Flatpak sandbox unless the runtime exposes the required tools and audio session access. Treat Flatpak audio as a packaging validation item, not proven production behavior.
+The Flatpak prototype installs the packaged WAV assets beside the app binary. The command-line player backend is not guaranteed to work inside a Flatpak sandbox unless the runtime exposes the required tools and audio session access. Treat Flatpak audio as a packaging validation item, not proven production behavior.
 
 Single-instance behavior uses a per-user XDG lock file. Native developer builds and AppImage builds share the host user's XDG runtime/cache namespace. Flatpak builds may use a sandbox-specific namespace, so this phase does not guarantee single-instance ownership across native/AppImage and Flatpak package boundaries. Desktop-file activation forwarding is not implemented yet.
 
 ## Updates And Privacy
 
-Linux packages must not reuse the legacy Windows in-app updater or its persistent UUID behavior. Package channels should own updates where possible, and any future AppImage update metadata must be designed separately from the Windows updater.
+Linux packages must not reuse the legacy Windows in-app updater or its persistent UUID behavior. Package channels should own updates where possible, and any future AppImage update metadata must be designed separately from the Windows updater. The detailed update policy lives in [update-strategy.md](update-strategy.md).
+
+## CI Artifacts
+
+The test workflow builds release packaging artifacts for pull requests and pushes. It uploads:
+
+- a self-contained `linux-x64` publish tarball;
+- an AppDir tarball assembled from that publish output.
+
+CI artifacts are validation outputs, not public releases.

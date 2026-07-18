@@ -30,3 +30,51 @@ jobs:
 
       - name: Test
         run: dotnet test Hourglass.Linux.sln --configuration Release --no-build --verbosity normal
+
+  packaging:
+    name: Build Linux package artifacts
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Install package validators
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes appstream desktop-file-utils
+
+      - name: Publish linux-x64
+        run: scripts/publish-linux-release.sh --runtime linux-x64 --output /tmp/hourglass-linux-publish
+
+      - name: Build AppDir
+        run: packaging/appimage/build-appdir.sh /tmp/hourglass-linux-publish /tmp/hourglass-linux.AppDir
+
+      - name: Validate packaging
+        env:
+          HOURGLASS_REQUIRE_PACKAGE_VALIDATORS: "true"
+        run: scripts/validate-linux-packaging.sh /tmp/hourglass-linux-publish /tmp/hourglass-linux.AppDir
+
+      - name: Pack publish directory
+        run: tar -C /tmp/hourglass-linux-publish -czf /tmp/hourglass-linux-linux-x64.tar.gz .
+
+      - name: Pack AppDir
+        run: tar -C /tmp -czf /tmp/hourglass-linux-AppDir.tar.gz hourglass-linux.AppDir
+
+      - name: Upload publish artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: hourglass-linux-linux-x64
+          path: /tmp/hourglass-linux-linux-x64.tar.gz
+
+      - name: Upload AppDir artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: hourglass-linux-AppDir
+          path: /tmp/hourglass-linux-AppDir.tar.gz

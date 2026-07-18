@@ -6,10 +6,22 @@
   <metadata_license>MIT</metadata_license>
   <project_license>MIT</project_license>
   <description>
-    <p>Hourglass Linux is a native Avalonia-based port of the Hourglass timer.</p>
+    <p>Hourglass Linux is a native Avalonia-based port of the Hourglass timer, focused on fast countdown entry, visible remaining time, saved timers, audio alerts, desktop notifications, and Linux desktop integration.</p>
   </description>
+  <developer id="io.github.mattbunch">
+    <name>Matt Bunch</name>
+  </developer>
+  <url type="homepage">https://github.com/MattBunch/hourglass-linux</url>
   <launchable type="desktop-id">io.github.MattBunch.Hourglass.desktop</launchable>
   <provides>
     <binary>hourglass-linux</binary>
   </provides>
+  <releases>
+    <release version="0.1.0" date="2026-07-18">
+      <description>
+        <p>Initial Linux packaging prototype for local release validation.</p>
+      </description>
+    </release>
+  </releases>
+  <content_rating type="oars-1.1" />
 </component>

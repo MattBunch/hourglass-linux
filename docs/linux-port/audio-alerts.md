@@ -36,9 +36,9 @@ Desktop mute state, per-application volume, missing output devices, and session 
 
 ## Packaging
 
-AppImage builds copy the full publish directory, including `Assets/Sounds/BeepNormal.wav`.
+AppImage builds copy the full publish directory, including every packaged WAV under `Assets/Sounds/`.
 
-The Flatpak prototype installs the bundled WAV file, but command-based playback inside a Flatpak sandbox is not guaranteed. A production Flatpak may need a portal-aware audio implementation or explicit runtime dependency review before audio can be considered fully supported.
+The Flatpak prototype installs the bundled WAV files, but command-based playback inside a Flatpak sandbox is not guaranteed. A production Flatpak may need a portal-aware audio implementation or explicit runtime dependency review before audio can be considered fully supported.
 
 ## Settings
 
