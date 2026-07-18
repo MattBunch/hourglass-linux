@@ -402,6 +402,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     public TimerState State => this.viewState.State;
 
+    public DateTime? EndTime => this.engine.EndTime;
+
     public double ProgressPercent => this.viewState.ProgressPercent;
 
     public bool IsTimerInputVisible => this.viewState.IsTimerInputVisible;
@@ -482,6 +484,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     public bool RestoreActiveSessionOnStartup => this.settings.RestoreActiveSessionOnStartup;
 
     public bool OpenSavedTimersOnStartup => this.settings.OpenSavedTimersOnStartup;
+
+    public bool WakeFromSuspendEnabled => this.settings.WakeFromSuspendEnabled;
 
     public LinuxThemePreference ThemePreference => this.settings.ThemePreference;
 
@@ -2189,7 +2193,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             themePreference,
             SelectChanged(previous.WindowTitleMode, requested.WindowTitleMode, latest.WindowTitleMode),
             audioAlertSoundId,
-            customThemeId);
+            customThemeId,
+            SelectChanged(
+                previous.WakeFromSuspendEnabled,
+                requested.WakeFromSuspendEnabled,
+                latest.WakeFromSuspendEnabled));
     }
 
     private static (LinuxThemePreference ThemePreference, string? CustomThemeId) SelectThemeSelection(

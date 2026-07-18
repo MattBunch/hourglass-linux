@@ -136,10 +136,20 @@ public interface IStartupIntegrationService
 
 public interface IWakeAlarmService
 {
-    Task<WakeAlarmScheduleResult> TryScheduleWakeAsync(DateTimeOffset wakeAt, CancellationToken cancellationToken = default);
+    Task<WakeAlarmScheduleResult> TryScheduleWakeAsync(
+        WakeAlarmRequest request,
+        CancellationToken cancellationToken = default);
 }
 
-public readonly record struct WakeAlarmScheduleResult(bool Supported, string Message);
+public sealed record WakeAlarmRequest(DateTimeOffset WakeAt, string Reason);
+
+public readonly record struct WakeAlarmScheduleResult(
+    bool Supported,
+    bool Scheduled,
+    string Message,
+    IWakeAlarmLease? Lease);
+
+public interface IWakeAlarmLease : IAsyncDisposable;
 
 public interface ISystemPowerService
 {

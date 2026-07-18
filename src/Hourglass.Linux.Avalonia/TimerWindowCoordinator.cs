@@ -25,6 +25,7 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
     private static readonly Uri StatusIconResourceUri = new("avares://hourglass-linux/Assets/hourglass.png");
 
     private readonly DesktopProgressController desktopProgressController;
+    private readonly WakeAlarmController wakeAlarmController;
     private readonly IClassicDesktopStyleApplicationLifetime lifetime;
     private readonly IAudioAlertService audioAlertService;
     private readonly INotificationService notificationService;
@@ -39,6 +40,7 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
     private bool exitCloseInProgress;
     private bool isShuttingDown;
     private bool showInNotificationArea;
+    private bool wakeFromSuspendEnabled;
     private WindowRegistration? mostRecentWindow;
 
     public TimerWindowCoordinator(IClassicDesktopStyleApplicationLifetime lifetime)
@@ -49,6 +51,7 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
             new LinuxAudioAlertService(SoundAssetsDirectory),
             new CoordinatedSessionInhibitor(new SystemdSessionInhibitor()),
             new UnsupportedSystemPowerService(),
+            new RtcWakeAlarmService(),
             LinuxDesktopProgressServiceFactory.CreateDefault(),
             CreateStatusIconService())
     {
@@ -61,6 +64,7 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
         IAudioAlertService audioAlertService,
         CoordinatedSessionInhibitor sessionInhibitor,
         ISystemPowerService systemPowerService,
+        IWakeAlarmService wakeAlarmService,
         IDesktopProgressService desktopProgressService,
         IStatusIconService statusIconService)
     {
@@ -70,6 +74,9 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
         this.audioAlertService = audioAlertService ?? throw new ArgumentNullException(nameof(audioAlertService));
         this.sessionInhibitor = sessionInhibitor ?? throw new ArgumentNullException(nameof(sessionInhibitor));
         this.systemPowerService = systemPowerService ?? throw new ArgumentNullException(nameof(systemPowerService));
+        this.wakeAlarmController = new WakeAlarmController(
+            wakeAlarmService ?? throw new ArgumentNullException(nameof(wakeAlarmService)),
+            () => DateTimeOffset.Now);
         this.savedTimersStore = new CoordinatedSavedTimersStore(this.settingsStore);
         this.desktopProgressController = new DesktopProgressController(
             desktopProgressService ?? throw new ArgumentNullException(nameof(desktopProgressService)));
@@ -86,6 +93,7 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
         ActiveTimerSessionsDocument activeSessions = await this.LoadActiveSessionsAsync(cancellationToken)
             .ConfigureAwait(true);
         this.showInNotificationArea = settings.ShowInNotificationArea && this.statusIconService.IsSupported;
+        this.wakeFromSuspendEnabled = settings.WakeFromSuspendEnabled;
 
         bool restoredAny = false;
         if (settings.RestoreActiveSessionOnStartup)
@@ -127,6 +135,8 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
         {
             this.ActivateMostRelevantWindow();
         }
+
+        this.ApplyWakeAlarm();
     }
 
     public Task HandleLaunchRequestAsync(SingleInstanceLaunchRequest request)
@@ -147,6 +157,7 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
     {
         this.statusIconService.ActionRequested -= this.StatusIconActionRequested;
         await this.pendingSessionSave.ConfigureAwait(false);
+        await this.wakeAlarmController.DisposeAsync().ConfigureAwait(false);
         await this.desktopProgressController.ClearAsync().ConfigureAwait(false);
         await this.statusIconService.DisposeAsync().ConfigureAwait(false);
         await this.sessionInhibitor.DisposeAsync().ConfigureAwait(false);
@@ -202,6 +213,7 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
         _ = this.QueueSessionSave();
         this.ApplyDesktopProgress();
         this.ApplyStatusIconState();
+        this.ApplyWakeAlarm();
         return window;
     }
 
@@ -240,6 +252,7 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
         _ = this.QueueSessionSave();
         this.ApplyDesktopProgress();
         this.ApplyStatusIconState();
+        this.ApplyWakeAlarm();
     }
 
     private void ApplyInitialGeometry(MainWindow window, WindowGeometrySnapshot? restoredGeometry)
@@ -358,6 +371,7 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
     {
         _ = this.QueueSessionSave();
         this.ApplyStatusIconState();
+        this.ApplyWakeAlarm();
     }
 
     private void WindowGeometryChanged(object? sender, EventArgs e)
@@ -431,6 +445,7 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
         Task sessionSave = this.QueueSessionSave();
         this.ApplyDesktopProgress();
         this.ApplyStatusIconState();
+        this.ApplyWakeAlarm();
 
         if (this.windows.Count == 0 && !this.isShuttingDown)
         {
@@ -592,6 +607,15 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
     {
         DesktopProgressRequest request = this.GetAggregateDesktopProgressRequest();
         _ = this.desktopProgressController.ApplyAsync(request);
+    }
+
+    private void ApplyWakeAlarm()
+    {
+        WakeAlarmTimerSnapshot[] timers = this.windows
+            .Where(window => !this.closingWindows.Contains(window.Window))
+            .Select(window => new WakeAlarmTimerSnapshot(window.ViewModel.State, window.ViewModel.EndTime))
+            .ToArray();
+        _ = this.wakeAlarmController.ApplyAsync(timers, this.wakeFromSuspendEnabled);
     }
 
     private DesktopProgressRequest GetAggregateDesktopProgressRequest()

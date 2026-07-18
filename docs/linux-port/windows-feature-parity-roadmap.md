@@ -734,6 +734,7 @@ Support the Windows display modes where they make sense on Linux:
 
 **Priority:** P3  
 **Complexity:** Extra large
+**Status:** Initial disabled-by-default service/backend implemented. Physical hardware, permission, and packaging validation remain before user-facing enablement.
 
 Linux wake scheduling varies by distro, hardware, permissions, power manager, packaging format, and whether the system supports RTC wake alarms.
 
