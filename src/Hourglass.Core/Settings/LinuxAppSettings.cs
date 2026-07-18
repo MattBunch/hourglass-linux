@@ -39,7 +39,8 @@ public sealed record LinuxAppSettings
         LinuxThemePreference themePreference = LinuxThemePreference.System,
         WindowTitleMode windowTitleMode = WindowTitleMode.TimerTitle,
         string audioAlertSoundId = BuiltInAudioAlertSounds.NormalBeep,
-        string? customThemeId = null)
+        string? customThemeId = null,
+        bool wakeFromSuspendEnabled = false)
     {
         string normalizedAudioAlertSoundId = BuiltInAudioAlertSounds.NormalizeId(audioAlertSoundId);
         bool effectiveAudioAlertsEnabled = audioAlertsEnabled
@@ -72,6 +73,7 @@ public sealed record LinuxAppSettings
         this.AudioAlertSoundId = effectiveAudioAlertsEnabled
             ? normalizedAudioAlertSoundId
             : BuiltInAudioAlertSounds.None;
+        this.WakeFromSuspendEnabled = wakeFromSuspendEnabled;
     }
 
     public static LinuxAppSettings Default { get; } = new();
@@ -120,6 +122,8 @@ public sealed record LinuxAppSettings
 
     public string AudioAlertSoundId { get; init; }
 
+    public bool WakeFromSuspendEnabled { get; init; }
+
     public LinuxAppSettings AddRecentTimerInput(string timerInput, int maxRecentTimerInputs = DefaultMaxRecentTimerInputs)
     {
         if (maxRecentTimerInputs < 1)
@@ -160,7 +164,8 @@ public sealed record LinuxAppSettings
             this.ThemePreference,
             this.WindowTitleMode,
             this.AudioAlertSoundId,
-            this.CustomThemeId);
+            this.CustomThemeId,
+            this.WakeFromSuspendEnabled);
     }
 
     public LinuxAppSettings ClearRecentTimerInputs()
@@ -187,7 +192,8 @@ public sealed record LinuxAppSettings
             this.ThemePreference,
             this.WindowTitleMode,
             this.AudioAlertSoundId,
-            this.CustomThemeId);
+            this.CustomThemeId,
+            this.WakeFromSuspendEnabled);
     }
 
     public string GetInitialTimerInput(string defaultTimerInput)

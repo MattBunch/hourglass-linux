@@ -30,6 +30,7 @@ public sealed class LinuxAppSettingsTests
         Assert.False(settings.ShowInNotificationArea);
         Assert.True(settings.RestoreActiveSessionOnStartup);
         Assert.False(settings.OpenSavedTimersOnStartup);
+        Assert.False(settings.WakeFromSuspendEnabled);
         Assert.Equal(LinuxThemePreference.System, settings.ThemePreference);
         Assert.Null(settings.CustomThemeId);
         Assert.Equal(WindowTitleMode.TimerTitle, settings.WindowTitleMode);
@@ -67,6 +68,7 @@ public sealed class LinuxAppSettingsTests
         Assert.False(updated.ShowInNotificationArea);
         Assert.True(updated.RestoreActiveSessionOnStartup);
         Assert.False(updated.OpenSavedTimersOnStartup);
+        Assert.False(updated.WakeFromSuspendEnabled);
         Assert.Equal(LinuxThemePreference.System, updated.ThemePreference);
         Assert.Equal(WindowTitleMode.TimerTitle, updated.WindowTitleMode);
         Assert.Equal(BuiltInAudioAlertSounds.NormalBeep, updated.AudioAlertSoundId);
@@ -97,7 +99,8 @@ public sealed class LinuxAppSettingsTests
             themePreference: LinuxThemePreference.Dark,
             windowTitleMode: WindowTitleMode.TimeLeftPlusTimerTitle,
             audioAlertSoundId: BuiltInAudioAlertSounds.QuietBeep,
-            customThemeId: "theme-1");
+            customThemeId: "theme-1",
+            wakeFromSuspendEnabled: true);
 
         Assert.Equal(["15 minutes"], settings.RecentTimerInputs);
         Assert.False(settings.NotificationsEnabled);
@@ -117,6 +120,7 @@ public sealed class LinuxAppSettingsTests
         Assert.True(settings.ShowInNotificationArea);
         Assert.False(settings.RestoreActiveSessionOnStartup);
         Assert.True(settings.OpenSavedTimersOnStartup);
+        Assert.True(settings.WakeFromSuspendEnabled);
         Assert.Equal(LinuxThemePreference.Dark, settings.ThemePreference);
         Assert.Null(settings.CustomThemeId);
         Assert.Equal(WindowTitleMode.TimeLeftPlusTimerTitle, settings.WindowTitleMode);
@@ -148,7 +152,8 @@ public sealed class LinuxAppSettingsTests
             themePreference: LinuxThemePreference.Light,
             windowTitleMode: WindowTitleMode.TimeElapsed,
             audioAlertSoundId: BuiltInAudioAlertSounds.LoudBeep,
-            customThemeId: "theme-1");
+            customThemeId: "theme-1",
+            wakeFromSuspendEnabled: true);
 
         LinuxAppSettings updated = settings.AddRecentTimerInput("2 seconds");
 
@@ -170,6 +175,7 @@ public sealed class LinuxAppSettingsTests
         Assert.True(updated.ShowInNotificationArea);
         Assert.False(updated.RestoreActiveSessionOnStartup);
         Assert.True(updated.OpenSavedTimersOnStartup);
+        Assert.True(updated.WakeFromSuspendEnabled);
         Assert.Equal(LinuxThemePreference.Light, updated.ThemePreference);
         Assert.Null(updated.CustomThemeId);
         Assert.Equal(WindowTitleMode.TimeElapsed, updated.WindowTitleMode);
@@ -180,6 +186,7 @@ public sealed class LinuxAppSettingsTests
         Assert.Empty(cleared.RecentTimerInputs);
         Assert.False(cleared.RestoreActiveSessionOnStartup);
         Assert.True(cleared.OpenSavedTimersOnStartup);
+        Assert.True(cleared.WakeFromSuspendEnabled);
         Assert.Equal(LinuxThemePreference.Light, cleared.ThemePreference);
         Assert.Equal(WindowTitleMode.TimeElapsed, cleared.WindowTitleMode);
         Assert.Equal(BuiltInAudioAlertSounds.None, cleared.AudioAlertSoundId);
@@ -211,6 +218,7 @@ public sealed class LinuxAppSettingsTests
         Assert.False(settings.ShowInNotificationArea);
         Assert.True(settings.RestoreActiveSessionOnStartup);
         Assert.False(settings.OpenSavedTimersOnStartup);
+        Assert.False(settings.WakeFromSuspendEnabled);
         Assert.Equal(LinuxThemePreference.System, settings.ThemePreference);
         Assert.Equal(WindowTitleMode.TimerTitle, settings.WindowTitleMode);
         Assert.Equal(BuiltInAudioAlertSounds.NormalBeep, settings.AudioAlertSoundId);
@@ -265,7 +273,8 @@ public sealed class LinuxAppSettingsTests
             themePreference: LinuxThemePreference.Custom,
             windowTitleMode: WindowTitleMode.TimerTitlePlusTimeLeft,
             audioAlertSoundId: BuiltInAudioAlertSounds.QuietBeep,
-            customThemeId: "theme-1");
+            customThemeId: "theme-1",
+            wakeFromSuspendEnabled: true);
 
         string json = JsonSerializer.Serialize(settings);
         LinuxAppSettings? roundTripped = JsonSerializer.Deserialize<LinuxAppSettings>(json);
@@ -289,6 +298,7 @@ public sealed class LinuxAppSettingsTests
         Assert.True(roundTripped.ShowInNotificationArea);
         Assert.False(roundTripped.RestoreActiveSessionOnStartup);
         Assert.True(roundTripped.OpenSavedTimersOnStartup);
+        Assert.True(roundTripped.WakeFromSuspendEnabled);
         Assert.Equal(LinuxThemePreference.Custom, roundTripped.ThemePreference);
         Assert.Equal("theme-1", roundTripped.CustomThemeId);
         Assert.Equal(WindowTitleMode.TimerTitlePlusTimeLeft, roundTripped.WindowTitleMode);
