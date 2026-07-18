@@ -17,8 +17,10 @@ The MVP settings model stores:
 
 - Recent timer inputs, so the timer field can restore the most recently started timer.
 - Whether timer-expiry desktop notifications are enabled.
+- Timer behavior preferences such as sound, theme, window title mode, progress display, keep-awake behavior, and close/loop options.
+- Saved timer definitions, active timer sessions, custom themes, and active-session window geometry in separate versioned documents.
 
-Window state, theme preferences, sound preferences, and migrated Windows settings are not part of this stage.
+Migrated Windows settings are not part of this stage.
 
 ## Privacy
 

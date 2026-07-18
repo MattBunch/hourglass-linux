@@ -548,7 +548,7 @@ The current Linux implementation exposes the startup preferences and restores th
 
 ## Milestone 6: Multi-Window Timer Management
 
-**Status:** Implemented for native Linux timer windows. The Avalonia app now uses an application-level timer-window coordinator, supports multiple independent timer windows, opens saved timers as separate windows, persists active sessions in a versioned multi-session document, and coordinates shared keep-awake, status-icon, and desktop-progress behavior. Command-line handoff remains deferred to Milestone 7, and durable window geometry remains deferred to Milestone 8.
+**Status:** Implemented for native Linux timer windows. The Avalonia app now uses an application-level timer-window coordinator, supports multiple independent timer windows, opens saved timers as separate windows, persists active sessions in a versioned multi-session document, and coordinates shared keep-awake, status-icon, and desktop-progress behavior. Command-line handoff is implemented in Milestone 7, and durable active-session window geometry is implemented in Milestone 8.5.
 
 ### 6.1 Multiple Timer Windows
 
@@ -646,7 +646,11 @@ The current advisory file lock prevents a second instance but the second process
 
 ## Milestone 8: Themes, Sounds, and Window Titles
 
+**Status:** Implemented on Linux across built-in theme selection, custom theme management, sound selection and preview, window title modes, and active-session window geometry persistence. The next documented roadmap area is Milestone 9: Wake From Suspend.
+
 ### 8.1 Built-In Light and Dark Themes
+
+**Status:** Implemented on Linux with explicit System, Light, and Dark theme choices. The selected theme is persisted in Linux settings and saved-timer options, and the Avalonia shell maps the preference to platform theme variants without introducing Windows color dependencies in `Hourglass.Core`.
 
 **Priority:** P2  
 **Complexity:** Medium
@@ -684,6 +688,8 @@ The current advisory file lock prevents a second instance but the second process
 
 ### 8.4 Window Title Modes
 
+**Status:** Implemented on Linux for application name, time left, time elapsed, timer title, and the supported combined time/title ordering modes. Formatting lives in `Hourglass.Core` and is covered by pure formatter tests; the Avalonia view model persists the selected mode and updates dynamic title modes on timer ticks. The optional title-bar-hidden mode remains deferred because it is desktop-dependent.
+
 **Priority:** P2  
 **Complexity:** Medium
 
@@ -707,6 +713,8 @@ Support the Windows display modes where they make sense on Linux:
 - Treat title-bar removal as desktop-dependent and test resizing, dragging, and close recovery carefully.
 
 ### 8.5 Window Geometry Persistence
+
+**Status:** Implemented on Linux for active timer sessions and multi-window restore. Normal bounds, maximized state, last non-minimized geometry, per-window active-session snapshots, work-area validation, off-screen recovery, window cascading, and debounced geometry saves are implemented and tested. Broader saved-timer geometry semantics remain future work unless a later workflow requires them.
 
 **Priority:** P2  
 **Complexity:** Large with multi-window support
