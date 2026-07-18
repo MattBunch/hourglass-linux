@@ -35,6 +35,7 @@ public sealed class PackagingMetadataTests
 
         XElement release = Assert.Single(component.Element("releases")?.Elements("release") ?? []);
         Assert.Equal("0.1.0", release.Attribute("version")?.Value);
+        Assert.Equal("2026-07-18", release.Attribute("date")?.Value);
     }
 
     [Fact]

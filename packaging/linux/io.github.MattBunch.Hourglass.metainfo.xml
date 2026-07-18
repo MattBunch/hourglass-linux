@@ -17,7 +17,7 @@
     <binary>hourglass-linux</binary>
   </provides>
   <releases>
-    <release version="0.1.0" date="2026-07-19">
+    <release version="0.1.0" date="2026-07-18">
       <description>
         <p>Initial Linux packaging prototype for local release validation.</p>
       </description>
