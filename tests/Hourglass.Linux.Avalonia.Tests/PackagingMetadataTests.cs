@@ -78,9 +78,14 @@ public sealed class PackagingMetadataTests
         string workflow = File.ReadAllText(FindRepositoryFile(".github/workflows/tests.yml"));
 
         Assert.Contains("--runtime linux-x64", publishScript, StringComparison.Ordinal);
+        Assert.Contains("dotnet publish \"$project\"", publishScript, StringComparison.Ordinal);
         Assert.Contains("--self-contained true", publishScript, StringComparison.Ordinal);
+        Assert.DoesNotContain("cp -a -- \"$build_output/.\"", publishScript, StringComparison.Ordinal);
         Assert.Contains("desktop-file-validate", validateScript, StringComparison.Ordinal);
         Assert.Contains("appstreamcli validate --no-net", validateScript, StringComparison.Ordinal);
+        Assert.Contains("HOURGLASS_REQUIRE_PACKAGE_VALIDATORS", validateScript, StringComparison.Ordinal);
+        Assert.Contains("sudo apt-get install --yes appstream desktop-file-utils", workflow, StringComparison.Ordinal);
+        Assert.Contains("HOURGLASS_REQUIRE_PACKAGE_VALIDATORS: \"true\"", workflow, StringComparison.Ordinal);
         Assert.Contains("Build Linux package artifacts", workflow, StringComparison.Ordinal);
         Assert.Contains("scripts/validate-linux-packaging.sh /tmp/hourglass-linux-publish /tmp/hourglass-linux.AppDir", workflow, StringComparison.Ordinal);
         Assert.Contains("actions/upload-artifact@v4", workflow, StringComparison.Ordinal);

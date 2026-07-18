@@ -14,6 +14,7 @@ app_id=io.github.MattBunch.Hourglass
 desktop_file="$repo_root/packaging/linux/$app_id.desktop"
 metainfo_file="$repo_root/packaging/linux/$app_id.metainfo.xml"
 flatpak_manifest="$repo_root/packaging/flatpak/$app_id.yml"
+require_validators=${HOURGLASS_REQUIRE_PACKAGE_VALIDATORS:-false}
 
 require_file() {
   if [[ ! -f "$1" ]]; then
@@ -74,12 +75,18 @@ require_file "$appdir/usr/share/icons/hicolor/scalable/apps/hourglass.svg"
 
 if command -v desktop-file-validate >/dev/null 2>&1; then
   desktop-file-validate "$desktop_file"
+elif [[ "$require_validators" == true ]]; then
+  printf 'Missing required validator: desktop-file-validate\n' >&2
+  exit 1
 else
   printf 'Skipping desktop-file-validate: command not found\n' >&2
 fi
 
 if command -v appstreamcli >/dev/null 2>&1; then
   appstreamcli validate --no-net "$metainfo_file"
+elif [[ "$require_validators" == true ]]; then
+  printf 'Missing required validator: appstreamcli\n' >&2
+  exit 1
 else
   printf 'Skipping appstreamcli validate: command not found\n' >&2
 fi

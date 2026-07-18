@@ -46,7 +46,6 @@ fi
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 repo_root=$(cd -- "$script_dir/.." && pwd)
 project="$repo_root/src/Hourglass.Linux.Avalonia/Hourglass.Linux.Avalonia.csproj"
-build_output="$repo_root/src/Hourglass.Linux.Avalonia/bin/Release/net10.0/$runtime"
 
 case "$runtime" in
   linux-x64)
@@ -62,15 +61,12 @@ mkdir -p -- "$output"
 
 dotnet restore "$project" \
   --runtime "$runtime" \
-  --disable-parallel \
   --verbosity normal
 
-dotnet build "$project" \
+dotnet publish "$project" \
   --configuration Release \
   --runtime "$runtime" \
   --self-contained true \
   --no-restore \
-  --maxcpucount:1 \
+  --output "$output" \
   --verbosity normal
-
-cp -a -- "$build_output/." "$output/"

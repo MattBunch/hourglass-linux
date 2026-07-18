@@ -18,7 +18,7 @@ packaging/appimage/build-appdir.sh /tmp/hourglass-linux-publish /tmp/hourglass-l
 scripts/validate-linux-packaging.sh /tmp/hourglass-linux-publish /tmp/hourglass-linux.AppDir
 ```
 
-The release output is generated content and should not be committed.
+The publish output is generated content and should not be committed.
 
 ## Package Strategy
 
@@ -31,7 +31,7 @@ The release output is generated content and should not be committed.
 - `packaging/flatpak/io.github.MattBunch.Hourglass.yml` is a draft Flatpak manifest.
 - `packaging/linux/io.github.MattBunch.Hourglass.desktop` is desktop launcher metadata.
 - `packaging/linux/io.github.MattBunch.Hourglass.metainfo.xml` is draft AppStream metadata.
-- `packaging/appimage/build-appdir.sh` assembles an AppDir from a release output directory.
+- `packaging/appimage/build-appdir.sh` assembles an AppDir from a publish output directory.
 - `scripts/publish-linux-release.sh` produces the self-contained `linux-x64` publish directory.
 - `scripts/validate-linux-packaging.sh` checks publish and AppDir layout plus package metadata.
 
