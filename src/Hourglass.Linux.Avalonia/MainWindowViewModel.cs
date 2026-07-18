@@ -1514,6 +1514,12 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         if (previous.AudioAlertsEnabled != next.AudioAlertsEnabled)
         {
             this.OnPropertyChanged(nameof(this.AudioAlertsEnabled));
+            this.OnPropertyChanged(nameof(this.IsNoSoundSelected));
+            this.OnPropertyChanged(nameof(this.IsLoudBeepSoundSelected));
+            this.OnPropertyChanged(nameof(this.IsNormalBeepSoundSelected));
+            this.OnPropertyChanged(nameof(this.IsQuietBeepSoundSelected));
+            this.OnPropertyChanged(nameof(this.CanPreviewAudioAlertSound));
+            this.PreviewAudioAlertSoundCommand.RaiseCanExecuteChanged();
         }
 
         if (!StringComparer.Ordinal.Equals(previous.AudioAlertSoundId, next.AudioAlertSoundId))
@@ -1524,6 +1530,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             this.OnPropertyChanged(nameof(this.IsNormalBeepSoundSelected));
             this.OnPropertyChanged(nameof(this.IsQuietBeepSoundSelected));
             this.OnPropertyChanged(nameof(this.CanPreviewAudioAlertSound));
+            this.PreviewAudioAlertSoundCommand.RaiseCanExecuteChanged();
         }
 
         if (previous.AlwaysOnTop != next.AlwaysOnTop)

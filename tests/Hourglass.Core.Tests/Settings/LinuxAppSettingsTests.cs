@@ -228,6 +228,18 @@ public sealed class LinuxAppSettingsTests
         Assert.Equal(BuiltInAudioAlertSounds.None, settings.AudioAlertSoundId);
     }
 
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("resource:Missing beep")]
+    public void UnknownOrBlankAudioAlertSoundUsesDefaultBuiltInSound(string soundId)
+    {
+        var settings = new LinuxAppSettings(audioAlertSoundId: soundId);
+
+        Assert.True(settings.AudioAlertsEnabled);
+        Assert.Equal(BuiltInAudioAlertSounds.NormalBeep, settings.AudioAlertSoundId);
+    }
+
     [Fact]
     public void SerializationRoundTripsAllPreferences()
     {

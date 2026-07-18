@@ -3,6 +3,7 @@ namespace Hourglass.Linux.Services.Tests;
 using System.ComponentModel;
 using System.Diagnostics;
 using Hourglass.Platform;
+using Hourglass.Settings;
 using Xunit;
 
 public sealed class LinuxAudioAlertServiceTests : IDisposable
@@ -179,6 +180,19 @@ public sealed class LinuxAudioAlertServiceTests : IDisposable
 
         ProcessStartInfo call = Assert.Single(calls);
         Assert.Equal(soundPath, call.ArgumentList.Single());
+    }
+
+    [Fact]
+    public void BuiltInSoundDirectoryMapsAllPackagedSoundAssets()
+    {
+        IReadOnlyDictionary<string, string> soundPaths = LinuxAudioAlertService.CreateBuiltInSoundPaths(this.tempDirectory);
+
+        Assert.DoesNotContain(AudioAlertSoundIds.None, soundPaths.Keys);
+        foreach (AudioAlertSoundDefinition sound in BuiltInAudioAlertSounds.All.Where(sound => !sound.IsNone))
+        {
+            Assert.True(soundPaths.TryGetValue(sound.Id, out string? path));
+            Assert.Equal(Path.Combine(this.tempDirectory, sound.AssetFileName!), path);
+        }
     }
 
     [Fact]
