@@ -644,34 +644,35 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             session = null;
         }
 
-        TimerInfo? timerInfo = session?.ToTimerInfo(this.wallClockNow());
-        if (session == null || timerInfo == null)
+        ActiveTimerSessionSnapshot? snapshot = session == null
+            ? null
+            : ActiveTimerSessionSnapshot.FromDocument(session, this.wallClockNow(), TimeSpan.Zero);
+        if (snapshot == null)
         {
             return false;
         }
 
-        this.RestoreTimerInfo(session, timerInfo);
+        this.RestoreActiveSessionSnapshot(snapshot);
         return true;
     }
 
-    private void RestoreTimerInfo(ActiveTimerSessionDocument session, TimerInfo timerInfo)
+    private void RestoreActiveSessionSnapshot(ActiveTimerSessionSnapshot snapshot)
     {
-        bool expiredWhileClosed = session.State == TimerState.Running
-            && timerInfo.State == TimerState.Expired;
+        TimerInfo timerInfo = snapshot.ToTimerInfo();
 
         this.engine.Restore(timerInfo);
-        if (session.HasOptions)
+        if (snapshot.HasOptions)
         {
-            this.ReplaceSettings(NormalizeThemeSelection(session.Options.ApplyTo(this.settings), this.customThemes), save: false);
+            this.ReplaceSettings(NormalizeThemeSelection(snapshot.Options.ApplyTo(this.settings), this.customThemes), save: false);
         }
 
         TimerPresentationMode presentationMode = timerInfo.State == TimerState.Expired
             ? TimerPresentationMode.Status
-            : ToTimerPresentationMode(session.PresentationMode);
+            : ToTimerPresentationMode(snapshot.PresentationMode);
         this.ReplaceViewState(TimerViewState.FromTimerState(
-            string.IsNullOrWhiteSpace(session.TimerInput) ? TimerViewState.DefaultTimerInput : session.TimerInput,
+            string.IsNullOrWhiteSpace(snapshot.TimerInput) ? TimerViewState.DefaultTimerInput : snapshot.TimerInput,
             this.engine.Snapshot,
-            session.TimerTitle,
+            snapshot.TimerTitle,
             null,
             presentationMode,
             null,
@@ -685,7 +686,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         {
             _ = this.AcquireInhibitionAsync();
         }
-        else if (expiredWhileClosed)
+        else if (snapshot.ExpiredWhileClosed)
         {
             _ = this.HandleRestoredExpiredAsync();
         }
@@ -701,27 +702,31 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     internal ActiveTimerSessionDocument CreateActiveSessionDocument(WindowGeometrySnapshot? windowGeometry = null)
     {
-        return ActiveTimerSessionDocument.FromTimerInfo(
+        return ActiveTimerSessionSnapshot.FromState(
             this.TimerInput,
             this.TimerTitle ?? string.Empty,
             ToActiveTimerPresentationMode(this.viewState.PresentationMode),
-            this.engine.ToTimerInfo(),
+            this.engine.Snapshot,
             this.wallClockNow(),
             SavedTimerOptions.FromSettings(this.settings),
-            windowGeometry);
+            windowGeometry)
+            .ToDocument();
     }
 
     internal bool RestoreActiveSession(ActiveTimerSessionDocument session)
     {
         ArgumentNullException.ThrowIfNull(session);
 
-        TimerInfo? timerInfo = session.ToTimerInfo(this.wallClockNow());
-        if (timerInfo == null)
+        ActiveTimerSessionSnapshot? snapshot = ActiveTimerSessionSnapshot.FromDocument(
+            session,
+            this.wallClockNow(),
+            TimeSpan.Zero);
+        if (snapshot == null)
         {
             return false;
         }
 
-        this.RestoreTimerInfo(session, timerInfo);
+        this.RestoreActiveSessionSnapshot(snapshot);
         return true;
     }
 

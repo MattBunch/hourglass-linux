@@ -32,8 +32,11 @@ Runtime code should prefer focused immutable snapshots from `Hourglass.Core.Sett
 - `TimerDefaults` for options applied to newly started or saved timers.
 - `LinuxSettingsSnapshot` for mapping between the compatibility DTO and focused settings models.
 - `LinuxSettingsMerger` for pure previous/requested/latest merge behavior during coordinated saves.
+- `ActiveTimerSessionSnapshot` for active timer session restore/save decisions.
+- `ActiveTimerSessionsSnapshot` for immutable multi-window active-session collections.
+- `WindowGeometrySnapshot` for active-session window placement.
 
-New setting groups should be added to the focused model first, with explicit mapping back to the persisted compatibility document.
+The persisted active-session documents remain the compatibility shapes for `active-session` and `active-sessions`, while runtime code maps them into focused snapshots before restoring timer state. New setting groups should be added to the focused model first, with explicit mapping back to the persisted compatibility document.
 
 ## Privacy
 
