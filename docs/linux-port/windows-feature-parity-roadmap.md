@@ -797,72 +797,126 @@ The Windows in-app updater should not be copied directly.
 
 ---
 
-## Cross-Cutting Engineering Work
+## Post-Milestone-10 Cross-Cutting Plan
 
-### Settings and Migration
+Milestones 1 through 10 now cover the main practical parity features. The next work is release-hardening: reduce settings coupling, make optional platform integrations easier to reason about, and prove that the app remains usable across the supported Linux packaging and desktop combinations.
 
-Every new persistent option must:
+This section is intentionally not Milestone 11. These workstreams cut across implemented features rather than adding one new user-facing capability.
 
-- have an explicit default matching either current Linux behavior or intentional Windows parity;
-- deserialize safely when absent from older JSON;
-- avoid breaking existing `app.json` files;
-- be covered by round-trip and old-schema tests;
-- be separated into global preferences, saved-timer definitions, and active-session state where appropriate;
-- use atomic writes for valuable multi-window/session data.
+### Workstream 1: Settings Architecture Split
 
-Before the settings surface becomes large, split the current record into focused immutable models, for example:
+**Goal:** Break the growing `LinuxAppSettings` surface into focused immutable models without breaking existing JSON files.
 
-- `ApplicationPreferences`;
-- `TimerDefaults`;
-- `SavedTimerDefinition`;
-- `ActiveTimerSession`;
-- `WindowPlacement`.
+**Implementation plan:**
 
-The exact names may differ, but one monolithic settings record should not become the long-term persistence architecture.
+1. Inventory every persisted setting by owner: global app preference, timer default, saved-timer option, active-session snapshot, custom-theme reference, or window placement.
+2. Introduce focused records in `Hourglass.Core.Settings` while keeping the current `app.json`, saved-timer, active-session, and custom-theme documents readable.
+3. Add mapper methods that convert old document shapes into the new records immediately after deserialization and convert the new records back to the current storage documents when saving.
+4. Move merge logic out of `MainWindowViewModel` into pure settings merge functions that accept previous, requested, and latest snapshots.
+5. Keep `MainWindowViewModel` responsible only for replacing a settings snapshot, raising property notifications, and queuing persistence.
+6. Update `docs/linux-port/settings.md` after the split so the document names, owners, and compatibility rules match the implementation.
 
-### Platform Service Boundaries
+**Acceptance criteria:**
 
-The following integrations should remain behind `Hourglass.Platform` interfaces:
+- Existing `app.json`, saved timers, active sessions, and custom themes still deserialize with defaults for absent fields.
+- Saved timer options and active-session options continue to preserve per-timer behavior.
+- Concurrent settings saves still merge independent option changes without losing newer persisted data.
+- Round-trip, old-schema, and concurrent-save tests cover every new settings model.
 
-- notifications;
-- controllable audio playback;
-- session inhibition;
-- launcher/taskbar progress;
-- status/tray icon;
-- existing-instance IPC and activation;
-- window attention where direct Avalonia behavior is insufficient;
-- wake alarms;
-- system power actions;
-- startup/autostart integration if added later.
+### Workstream 2: Platform Boundary Consolidation
 
-Each integration must have a no-op or unsupported implementation so the core timer remains usable on environments without that capability.
+**Goal:** Make every optional Linux integration explicit, injectable, and safe to run when unsupported.
 
-### Error Handling
+**Implementation plan:**
 
-- A failed optional desktop integration must not stop or corrupt a timer.
-- Failures should be logged with enough context for diagnosis but should not repeatedly spam the user.
-- User-visible errors are appropriate when the user explicitly requested an action, such as scheduling wake or shutting down.
-- Best-effort effects such as notifications, launcher progress, and attention requests should fail silently or with diagnostic logging unless repeated failure makes a setting misleading.
+1. Audit all optional effects: notifications, controllable audio, session inhibition, desktop progress, status icon, single-instance IPC, window attention, wake alarms, system power actions, and future startup/autostart.
+2. Ensure each effect has one narrow `Hourglass.Platform` interface, one supported Linux implementation where available, and one unsupported/no-op implementation in the platform or services layer.
+3. Move private no-op implementations out of view-model internals when they represent platform behavior rather than test scaffolding.
+4. Keep Avalonia-only behavior in the Avalonia shell, but expose any direct desktop side effect through a small boundary before it reaches core logic.
+5. Document capability meanings clearly: `IsSupported` must mean the backend was selected and initialized, not that the desktop visibly rendered an effect.
 
-### Accessibility
+**Acceptance criteria:**
 
-- All timer actions must be keyboard accessible.
-- Focus order must remain predictable when controls appear and disappear.
-- Expiry and validation states must not rely on color alone.
-- Flashing must remain below unsafe rates and respect reduced-motion preferences.
-- Timer text and title must remain legible at minimum window size and full-screen scale.
-- Context-menu check states need accessible names and correct toggle semantics.
+- `Hourglass.Core` remains free of Avalonia, Linux APIs, D-Bus, filesystem, clock, notification, audio, and power dependencies.
+- Unsupported integrations do not throw during normal timer workflows.
+- Tests cover supported and unsupported behavior for each platform service.
+- Adding a future backend does not require changing timer transition logic.
 
-### Localization
+### Workstream 3: Error Handling and Diagnostics
 
-The legacy Windows app uses localized resources. The Linux UI currently contains several direct English strings.
+**Goal:** Make optional-integration failures predictable and diagnosable without corrupting timers or overwhelming users.
 
-Before a public parity release:
+**Implementation plan:**
 
-- move user-facing text into resource files;
-- keep command labels, status text, error messages, option descriptions, and dialog text localizable;
-- avoid constructing sentences by concatenating translated fragments;
-- add formatting tests for title modes and notification text.
+1. Classify failures as best-effort, user-requested, startup/configuration, or data-corruption recovery.
+2. Keep best-effort failures such as notifications, audio fallback, launcher progress, status icon updates, attention requests, and session inhibition from stopping or mutating the timer.
+3. Surface user-visible errors only when the user explicitly requested an action, such as wake scheduling or a future shutdown backend.
+4. Add structured diagnostic context at service boundaries: backend name, command or capability used, document key, and whether fallback was attempted.
+5. Suppress repeated noisy failures after the first useful diagnostic unless the user changes the relevant setting or backend.
+
+**Acceptance criteria:**
+
+- Timer start, pause, resume, stop, restart, expiry, save, restore, and close paths continue after optional effect failures.
+- Malformed settings and session documents fall back to defaults or valid subsets without crashing startup.
+- User-requested unsupported actions remain disabled or report a clear reason.
+- Tests cover representative failures for every optional integration path.
+
+### Workstream 4: Accessibility Pass
+
+**Goal:** Verify the implemented parity UI remains usable by keyboard and assistive technologies.
+
+**Implementation plan:**
+
+1. Review all timer commands, menu items, dialogs, and dynamic controls for keyboard reachability and stable focus order.
+2. Confirm expiry, invalid-input, locked-interface, disabled-command, and selected-option states do not rely on color alone.
+3. Add accessible names or automation properties for icon-like buttons, context-menu check states, and custom-theme controls where Avalonia defaults are insufficient.
+4. Keep validation and completion effects short, non-repeating, and below unsafe flashing rates; document the reduced-motion fallback when Avalonia exposes a dependable desktop signal.
+5. Verify timer and title text remain legible at minimum window size, maximized/full-screen size, and common desktop scale factors.
+
+**Acceptance criteria:**
+
+- Every primary timer action has a keyboard path.
+- Focus returns to a predictable control after dialogs close, timers expire, and edit mode is canceled.
+- Context-menu toggles expose correct checked state and labels.
+- Automated tests or targeted UI characterization tests cover the most important accessibility regressions.
+
+### Workstream 5: Localization Prep
+
+**Goal:** Prepare the Linux UI for localization before a public parity release.
+
+**Implementation plan:**
+
+1. Inventory direct user-facing English strings in Avalonia views, view models, notifications, dialogs, menu labels, status text, validation messages, and packaging-visible metadata.
+2. Move localizable runtime UI strings into resource files; keep packaging metadata localized separately through AppStream-supported mechanisms if needed.
+3. Avoid concatenating translated fragments. Prefer resource strings with placeholders for timer title, time text, sound name, and backend names.
+4. Keep deterministic formatting logic in `Hourglass.Core` for timer titles, notification titles, and status text that must be tested independently.
+5. Add tests for resource-backed title/status/notification formatting using representative blank-title, custom-title, elapsed-time, and time-left modes.
+
+**Acceptance criteria:**
+
+- No new user-facing runtime string is hard-coded outside the localization boundary unless it is a protocol value, file name, command name, or diagnostic-only implementation detail.
+- Title, status, notification, and dialog text remain testable without starting Avalonia.
+- Existing English behavior remains unchanged after extraction.
+
+### Workstream 6: Release Validation Matrix
+
+**Goal:** Turn the existing smoke-test notes into a repeatable release-readiness checklist.
+
+**Implementation plan:**
+
+1. Create a release validation checklist under `docs/linux-port/` that records exact desktop, session type, package type, app version, and tester notes.
+2. Cover native/AppImage and Flatpak paths separately because settings paths, audio, portals, notifications, single-instance behavior, and wake support can differ.
+3. Keep the minimum desktop matrix: Fedora GNOME Wayland, Fedora GNOME X11 where available, KDE Plasma Wayland, KDE Plasma X11 where available, XFCE X11, and Cinnamon or MATE X11.
+4. For each environment, test start, pause, resume, stop, restart, absolute-time parsing, duration parsing, minimize and expiry, notification, sound, always-on-top, completion attention, session inhibition, desktop progress when supported, status-icon recovery when supported, clean shutdown, and settings persistence.
+5. Add a separate multi-monitor checklist for mixed scale factors, monitor disconnect, restored placement, full-screen on secondary displays, and off-screen recovery.
+6. Record wake-from-suspend as a special hardware validation track. It must remain disabled by default until physical hardware, permissions, native/AppImage, and Flatpak behavior are proven.
+
+**Acceptance criteria:**
+
+- Every release candidate has an attached validation record or an explicit skipped-with-reason entry.
+- Package artifacts are produced by the CI-backed publish/AppDir workflow and pass strict metadata validation.
+- Known unsupported desktop capabilities are documented as unsupported rather than treated as failures.
+- Any failed release-check item either blocks release or has a documented deferral with user impact.
 
 ---
 
@@ -921,38 +975,28 @@ For every environment, smoke-test:
 
 ---
 
-## Suggested Issue Breakdown
+## Suggested Post-Milestone-10 Issue Breakdown
 
-Create one focused issue or Codex task for each of the following rather than attempting one large parity pull request:
+Create one focused issue or Codex task for each of the following rather than attempting one large hardening pull request:
 
-1. Add pop-up-on-expiry preference and window attention abstraction.
-2. Add expiry and invalid-input visual states.
-3. Add restart semantics and command.
-4. Add Windows-compatible keyboard shortcuts.
-5. Add full-screen mode and restoration.
-6. Add prompt-on-exit behavior.
-7. Expand settings architecture for timer defaults and per-timer options.
-8. Add reverse progress and elapsed-time display.
-9. Add loop-timer behavior.
-10. Refactor audio service for stoppable and looping playback.
-11. Add interface locking and per-timer keep-awake option.
-12. Introduce desktop launcher progress abstraction and first backend.
-13. Add optional status/tray service and recovery behavior.
-14. Add recent-input selection and clearing UI.
-15. Add saved-timer definition storage.
-16. Add active-session persistence and restoration.
-17. Refactor application lifetime for multiple timer windows.
-18. Add multi-window timer coordinator.
-19. Add existing-instance IPC and window activation.
-20. Add command-line timer handoff.
-21. Add built-in theme selection.
-22. Add sound selection and preview.
-23. Add window-title modes.
-24. Add safe multi-monitor window geometry persistence.
-25. Investigate and prototype wake-from-suspend behind `IWakeAlarmService`.
-26. Complete Flatpak and AppImage release workflows.
-27. Localize the Linux UI and new parity options.
-28. Run the full desktop-environment parity test matrix.
+1. Inventory settings ownership and define the target settings model split.
+2. Extract timer defaults and global application preferences from `LinuxAppSettings`.
+3. Extract active-session and window-placement persistence models with legacy JSON compatibility.
+4. Move settings merge behavior into pure core functions and cover concurrent-save scenarios.
+5. Audit platform service boundaries and relocate no-op implementations that represent real platform behavior.
+6. Add or tighten unsupported-backend tests for every optional desktop integration.
+7. Define the optional-effect failure taxonomy and align service diagnostics with it.
+8. Add regression tests for timer continuity after optional integration failures.
+9. Run keyboard/focus/accessibility characterization for the main timer window and dialogs.
+10. Add accessible names and checked-state coverage where Avalonia defaults are insufficient.
+11. Inventory direct user-facing Linux UI strings and choose the runtime resource structure.
+12. Move timer status, command, dialog, and notification strings behind resources.
+13. Add localization-safe formatter tests for title, status, and notification text.
+14. Create the release validation checklist document.
+15. Run and record the native/AppImage desktop smoke matrix.
+16. Run and record the Flatpak sandbox smoke matrix.
+17. Run and record multi-monitor placement validation.
+18. Run and record physical wake-from-suspend validation before enabling any user-facing wake option.
 
 ## Definition of Practical Feature Parity
 
@@ -966,5 +1010,7 @@ The Linux port can be considered to have practical parity when:
 - secondary launches activate or send timer requests to the running process;
 - unsupported privileged features are clearly identified rather than silently pretending to work;
 - the app passes automated tests and the documented Linux desktop smoke-test matrix.
+
+Post-Milestone-10 work is the hardening path to make those criteria reliable enough for a public Linux parity release.
 
 Wake-from-suspend, automatic shutdown, custom themes, and universal tray behavior should be treated as optional advanced parity. Their absence should not prevent a stable release if the core and practical parity criteria above are satisfied.

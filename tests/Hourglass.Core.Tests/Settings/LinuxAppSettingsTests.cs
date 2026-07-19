@@ -304,4 +304,117 @@ public sealed class LinuxAppSettingsTests
         Assert.Equal(WindowTitleMode.TimerTitlePlusTimeLeft, roundTripped.WindowTitleMode);
         Assert.Equal(BuiltInAudioAlertSounds.None, roundTripped.AudioAlertSoundId);
     }
+
+    [Fact]
+    public void FocusedSettingsSnapshotRoundTripsCurrentSettingsDocument()
+    {
+        var settings = new LinuxAppSettings(
+            ["10 seconds", "5 minutes"],
+            notificationsEnabled: false,
+            audioAlertsEnabled: true,
+            alwaysOnTop: true,
+            popUpWhenExpired: false,
+            promptOnExit: false,
+            reverseProgressBar: true,
+            showTimeElapsed: true,
+            loopTimer: true,
+            loopSound: false,
+            closeWhenExpired: false,
+            lockInterface: true,
+            doNotKeepComputerAwake: true,
+            shutDownWhenExpired: false,
+            showProgressInTaskbar: false,
+            showInNotificationArea: true,
+            restoreActiveSessionOnStartup: false,
+            openSavedTimersOnStartup: true,
+            themePreference: LinuxThemePreference.Custom,
+            windowTitleMode: WindowTitleMode.TimeElapsedPlusTimerTitle,
+            audioAlertSoundId: BuiltInAudioAlertSounds.LoudBeep,
+            customThemeId: " theme-1 ",
+            wakeFromSuspendEnabled: true);
+
+        LinuxSettingsSnapshot snapshot = LinuxSettingsSnapshot.FromSettings(settings);
+        LinuxAppSettings roundTripped = snapshot.ToSettings();
+
+        Assert.Equal(["10 seconds", "5 minutes"], snapshot.RecentTimerInputs);
+        Assert.False(snapshot.ApplicationPreferences.NotificationsEnabled);
+        Assert.True(snapshot.ApplicationPreferences.AlwaysOnTop);
+        Assert.Equal(LinuxThemePreference.Custom, snapshot.ApplicationPreferences.ThemePreference);
+        Assert.Equal("theme-1", snapshot.ApplicationPreferences.CustomThemeId);
+        Assert.True(snapshot.TimerDefaults.AudioAlertsEnabled);
+        Assert.True(snapshot.TimerDefaults.ReverseProgressBar);
+        Assert.Equal(WindowTitleMode.TimeElapsedPlusTimerTitle, snapshot.TimerDefaults.WindowTitleMode);
+        Assert.Equal(BuiltInAudioAlertSounds.LoudBeep, snapshot.TimerDefaults.AudioAlertSoundId);
+        Assert.True(snapshot.TimerDefaults.WakeFromSuspendEnabled);
+        Assert.Equal(settings.RecentTimerInputs, roundTripped.RecentTimerInputs);
+        Assert.Equal(settings.NotificationsEnabled, roundTripped.NotificationsEnabled);
+        Assert.Equal(settings.AlwaysOnTop, roundTripped.AlwaysOnTop);
+        Assert.Equal(settings.ThemePreference, roundTripped.ThemePreference);
+        Assert.Equal(settings.CustomThemeId, roundTripped.CustomThemeId);
+        Assert.Equal(settings.AudioAlertsEnabled, roundTripped.AudioAlertsEnabled);
+        Assert.Equal(settings.ReverseProgressBar, roundTripped.ReverseProgressBar);
+        Assert.Equal(settings.WindowTitleMode, roundTripped.WindowTitleMode);
+        Assert.Equal(settings.AudioAlertSoundId, roundTripped.AudioAlertSoundId);
+        Assert.Equal(settings.WakeFromSuspendEnabled, roundTripped.WakeFromSuspendEnabled);
+    }
+
+    [Fact]
+    public void SettingsMergerPreservesLatestIndependentChanges()
+    {
+        LinuxAppSettings previous = LinuxAppSettings.Default;
+        LinuxAppSettings requested = previous with
+        {
+            NotificationsEnabled = false,
+            ReverseProgressBar = true
+        };
+        LinuxAppSettings latest = previous with
+        {
+            AlwaysOnTop = true,
+            ShowTimeElapsed = true
+        };
+
+        LinuxAppSettings merged = LinuxSettingsMerger.MergeSettingsChange(previous, requested, latest);
+
+        Assert.False(merged.NotificationsEnabled);
+        Assert.True(merged.ReverseProgressBar);
+        Assert.True(merged.AlwaysOnTop);
+        Assert.True(merged.ShowTimeElapsed);
+    }
+
+    [Fact]
+    public void SettingsMergerKeepsCoherentAudioAndLoopOptionGroups()
+    {
+        LinuxAppSettings previous = LinuxAppSettings.Default with
+        {
+            LoopTimer = false,
+            LoopSound = false,
+            CloseWhenExpired = false,
+            AudioAlertsEnabled = true,
+            AudioAlertSoundId = BuiltInAudioAlertSounds.NormalBeep
+        };
+        LinuxAppSettings requested = previous with
+        {
+            LoopTimer = true,
+            LoopSound = false,
+            CloseWhenExpired = false,
+            AudioAlertsEnabled = false,
+            AudioAlertSoundId = BuiltInAudioAlertSounds.None
+        };
+        LinuxAppSettings latest = previous with
+        {
+            LoopTimer = false,
+            LoopSound = true,
+            CloseWhenExpired = false,
+            AudioAlertsEnabled = true,
+            AudioAlertSoundId = BuiltInAudioAlertSounds.QuietBeep
+        };
+
+        LinuxAppSettings merged = LinuxSettingsMerger.MergeSettingsChange(previous, requested, latest);
+
+        Assert.True(merged.LoopTimer);
+        Assert.False(merged.LoopSound);
+        Assert.False(merged.CloseWhenExpired);
+        Assert.False(merged.AudioAlertsEnabled);
+        Assert.Equal(BuiltInAudioAlertSounds.None, merged.AudioAlertSoundId);
+    }
 }
