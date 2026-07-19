@@ -807,6 +807,8 @@ This section is intentionally not Milestone 11. These workstreams cut across imp
 
 **Goal:** Break the growing `LinuxAppSettings` surface into focused immutable models without breaking existing JSON files.
 
+**Status:** Implemented for global application preferences, timer defaults, app settings merge behavior, active-session snapshots, multi-window active-session collections, and active-session window placement. The persisted JSON document names and DTO shapes remain compatible.
+
 **Implementation plan:**
 
 1. Inventory every persisted setting by owner: global app preference, timer default, saved-timer option, active-session snapshot, custom-theme reference, or window placement.
@@ -979,10 +981,10 @@ For every environment, smoke-test:
 
 Create one focused issue or Codex task for each of the following rather than attempting one large hardening pull request:
 
-1. Inventory settings ownership and define the target settings model split.
-2. Extract timer defaults and global application preferences from `LinuxAppSettings`.
-3. Extract active-session and window-placement persistence models with legacy JSON compatibility.
-4. Move settings merge behavior into pure core functions and cover concurrent-save scenarios.
+1. Implemented: Inventory settings ownership and define the target settings model split.
+2. Implemented: Extract timer defaults and global application preferences from `LinuxAppSettings`.
+3. Implemented: Extract active-session and window-placement persistence models with legacy JSON compatibility.
+4. Implemented: Move settings merge behavior into pure core functions and cover concurrent-save scenarios.
 5. Audit platform service boundaries and relocate no-op implementations that represent real platform behavior.
 6. Add or tighten unsupported-backend tests for every optional desktop integration.
 7. Define the optional-effect failure taxonomy and align service diagnostics with it.

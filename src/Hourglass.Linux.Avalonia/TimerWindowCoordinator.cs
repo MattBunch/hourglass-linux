@@ -351,7 +351,8 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
 
     private static bool IsRestorableActiveSession(ActiveTimerSessionDocument? session, DateTime wallClockNow)
     {
-        return session?.ToTimerInfo(wallClockNow) != null;
+        return session != null
+            && ActiveTimerSessionSnapshot.FromDocument(session, wallClockNow, TimeSpan.Zero) != null;
     }
 
     private void ViewModelNewTimerRequested(object? sender, EventArgs e)

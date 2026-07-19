@@ -77,6 +77,237 @@ public sealed class SavedTimersDocumentTests
     }
 
     [Fact]
+    public void ActiveSessionSnapshotRestoresRunningTimerBeforeTarget()
+    {
+        DateTime start = new(2026, 7, 2, 8, 0, 0);
+        DateTime end = start.AddSeconds(10);
+        var document = new ActiveTimerSessionDocument(
+            timerInput: "10 seconds",
+            timerStartInput: "10 seconds",
+            timerTitle: "Tea",
+            state: TimerState.Running,
+            startTime: start,
+            endTime: end,
+            totalTimeTicks: TimeSpan.FromSeconds(10).Ticks);
+
+        ActiveTimerSessionSnapshot? snapshot = ActiveTimerSessionSnapshot.FromDocument(
+            document,
+            start.AddSeconds(4),
+            TimeSpan.Zero);
+
+        Assert.NotNull(snapshot);
+        Assert.Equal(TimerState.Running, snapshot.CountdownState.State);
+        Assert.Equal(TimerState.Running, snapshot.SavedState);
+        Assert.False(snapshot.ExpiredWhileClosed);
+        Assert.Equal(TimeSpan.FromSeconds(4), snapshot.CountdownState.TimeElapsed);
+        Assert.Equal(TimeSpan.FromSeconds(6), snapshot.CountdownState.TimeLeft);
+    }
+
+    [Fact]
+    public void ActiveSessionSnapshotMarksRunningTimerExpiredAfterTarget()
+    {
+        DateTime start = new(2026, 7, 2, 8, 0, 0);
+        DateTime end = start.AddSeconds(10);
+        var document = new ActiveTimerSessionDocument(
+            timerInput: "10 seconds",
+            timerStartInput: "10 seconds",
+            timerTitle: "Tea",
+            state: TimerState.Running,
+            startTime: start,
+            endTime: end,
+            totalTimeTicks: TimeSpan.FromSeconds(10).Ticks);
+
+        ActiveTimerSessionSnapshot? snapshot = ActiveTimerSessionSnapshot.FromDocument(
+            document,
+            end.AddSeconds(5),
+            TimeSpan.Zero);
+
+        Assert.NotNull(snapshot);
+        Assert.Equal(TimerState.Expired, snapshot.CountdownState.State);
+        Assert.True(snapshot.ExpiredWhileClosed);
+        Assert.Equal(TimeSpan.Zero, snapshot.CountdownState.TimeLeft);
+        Assert.Equal(TimeSpan.FromSeconds(5), snapshot.CountdownState.TimeExpired);
+    }
+
+    [Fact]
+    public void ActiveSessionSnapshotRestoresPausedTimerWithoutWallClockDrift()
+    {
+        DateTime savedAt = new(2026, 7, 2, 8, 0, 0);
+        var document = new ActiveTimerSessionDocument(
+            timerInput: "10 seconds",
+            timerStartInput: "10 seconds",
+            state: TimerState.Paused,
+            savedAt: savedAt,
+            timeElapsedTicks: TimeSpan.FromSeconds(4).Ticks,
+            timeLeftTicks: TimeSpan.FromSeconds(6).Ticks,
+            totalTimeTicks: TimeSpan.FromSeconds(10).Ticks);
+
+        ActiveTimerSessionSnapshot? snapshot = ActiveTimerSessionSnapshot.FromDocument(
+            document,
+            savedAt.AddHours(2),
+            TimeSpan.FromHours(2));
+
+        Assert.NotNull(snapshot);
+        Assert.Equal(TimerState.Paused, snapshot.CountdownState.State);
+        Assert.Equal(TimeSpan.FromSeconds(4), snapshot.CountdownState.TimeElapsed);
+        Assert.Equal(TimeSpan.FromSeconds(6), snapshot.CountdownState.TimeLeft);
+    }
+
+    [Fact]
+    public void ActiveSessionSnapshotRestoresAlreadyExpiredTimerWithoutExpiredWhileClosedFlag()
+    {
+        DateTime start = new(2026, 7, 2, 8, 0, 0);
+        DateTime end = start.AddSeconds(10);
+        var document = new ActiveTimerSessionDocument(
+            timerInput: "10 seconds",
+            timerStartInput: "10 seconds",
+            state: TimerState.Expired,
+            startTime: start,
+            endTime: end,
+            timeElapsedTicks: TimeSpan.FromSeconds(15).Ticks,
+            timeLeftTicks: TimeSpan.Zero.Ticks,
+            timeExpiredTicks: TimeSpan.FromSeconds(5).Ticks,
+            totalTimeTicks: TimeSpan.FromSeconds(10).Ticks);
+
+        ActiveTimerSessionSnapshot? snapshot = ActiveTimerSessionSnapshot.FromDocument(
+            document,
+            end.AddSeconds(15),
+            TimeSpan.Zero);
+
+        Assert.NotNull(snapshot);
+        Assert.Equal(TimerState.Expired, snapshot.CountdownState.State);
+        Assert.False(snapshot.ExpiredWhileClosed);
+        Assert.Equal(TimeSpan.FromSeconds(15), snapshot.CountdownState.TimeExpired);
+    }
+
+    [Fact]
+    public void ActiveSessionSnapshotRejectsActiveSessionWithoutValidStartExpression()
+    {
+        var document = new ActiveTimerSessionDocument(
+            timerInput: "not valid",
+            timerStartInput: "also not valid",
+            state: TimerState.Paused,
+            timeElapsedTicks: TimeSpan.FromSeconds(4).Ticks,
+            timeLeftTicks: TimeSpan.FromSeconds(6).Ticks,
+            totalTimeTicks: TimeSpan.FromSeconds(10).Ticks);
+
+        ActiveTimerSessionSnapshot? snapshot = ActiveTimerSessionSnapshot.FromDocument(
+            document,
+            new DateTime(2026, 7, 2, 8, 0, 0),
+            TimeSpan.Zero);
+
+        Assert.Null(snapshot);
+    }
+
+    [Fact]
+    public void ActiveSessionSnapshotRoundTripsDocumentStateOptionsAndGeometry()
+    {
+        DateTime start = new(2026, 7, 2, 8, 0, 0);
+        DateTime end = start.AddSeconds(10);
+        var geometry = new WindowGeometrySnapshot(10, 20, 420, 240, WindowGeometryState.Maximized);
+        var options = new SavedTimerOptions(
+            ReverseProgressBar: true,
+            ShowTimeElapsed: true,
+            WindowTitleMode: WindowTitleMode.TimeElapsedPlusTimerTitle,
+            AudioAlertSoundId: BuiltInAudioAlertSounds.QuietBeep,
+            CustomThemeId: "theme-1");
+        var document = new ActiveTimerSessionDocument(
+            timerInput: "10 seconds",
+            timerStartInput: "10 seconds",
+            timerTitle: "Tea",
+            presentationMode: ActiveTimerPresentationMode.Status,
+            savedAt: start.AddSeconds(4),
+            state: TimerState.Running,
+            startTime: start,
+            endTime: end,
+            timeElapsedTicks: TimeSpan.FromSeconds(4).Ticks,
+            timeLeftTicks: TimeSpan.FromSeconds(6).Ticks,
+            totalTimeTicks: TimeSpan.FromSeconds(10).Ticks,
+            options: options,
+            windowGeometry: geometry);
+
+        ActiveTimerSessionSnapshot? snapshot = ActiveTimerSessionSnapshot.FromDocument(
+            document,
+            start.AddSeconds(4),
+            TimeSpan.Zero);
+        ActiveTimerSessionDocument? roundTripped = snapshot?.ToDocument();
+
+        Assert.NotNull(roundTripped);
+        Assert.Equal("10 seconds", roundTripped.TimerInput);
+        Assert.Equal("10 seconds", roundTripped.TimerStartInput);
+        Assert.Equal("Tea", roundTripped.TimerTitle);
+        Assert.Equal(ActiveTimerPresentationMode.Status, roundTripped.PresentationMode);
+        Assert.True(roundTripped.HasOptions);
+        Assert.Equal(options, roundTripped.Options);
+        Assert.Equal(geometry, roundTripped.WindowGeometry);
+        Assert.Equal(TimerState.Running, roundTripped.State);
+        Assert.Equal(TimeSpan.FromSeconds(4).Ticks, roundTripped.TimeElapsedTicks);
+        Assert.Equal(TimeSpan.FromSeconds(6).Ticks, roundTripped.TimeLeftTicks);
+    }
+
+    [Fact]
+    public void ActiveSessionSnapshotPreservesOlderDocumentWithoutOptionsOrGeometry()
+    {
+        const string json = """
+            {
+              "Version": 1,
+              "TimerInput": "10 seconds",
+              "State": 2,
+              "TimeElapsedTicks": 40000000,
+              "TimeLeftTicks": 60000000,
+              "TotalTimeTicks": 100000000
+            }
+            """;
+
+        ActiveTimerSessionDocument? document = JsonSerializer.Deserialize<ActiveTimerSessionDocument>(json);
+        Assert.NotNull(document);
+
+        ActiveTimerSessionSnapshot? snapshot = ActiveTimerSessionSnapshot.FromDocument(
+            document,
+            new DateTime(2026, 7, 2, 8, 0, 0),
+            TimeSpan.Zero);
+        ActiveTimerSessionDocument? roundTripped = snapshot?.ToDocument();
+
+        Assert.NotNull(snapshot);
+        Assert.False(snapshot.HasOptions);
+        Assert.Null(snapshot.WindowGeometry);
+        Assert.NotNull(roundTripped);
+        Assert.False(roundTripped.HasOptions);
+        Assert.Equal(new SavedTimerOptions(), roundTripped.Options);
+        Assert.Null(roundTripped.WindowGeometry);
+    }
+
+    [Fact]
+    public void ActiveSessionSnapshotFromStateCreatesPersistenceDocument()
+    {
+        DateTime start = new(2026, 7, 2, 8, 0, 0);
+        CountdownState timerState = CountdownTransitions.StartDuration(
+            CountdownState.Stopped,
+            TimeSpan.FromSeconds(10),
+            start,
+            TimeSpan.Zero).State;
+        var options = new SavedTimerOptions(LoopTimer: true);
+        var geometry = new WindowGeometrySnapshot(10, 20, 420, 240);
+
+        ActiveTimerSessionDocument document = ActiveTimerSessionSnapshot.FromState(
+            "10 seconds",
+            "Tea",
+            ActiveTimerPresentationMode.Input,
+            timerState,
+            start,
+            options,
+            geometry).ToDocument();
+
+        Assert.Equal("10 seconds", document.TimerInput);
+        Assert.Equal("Tea", document.TimerTitle);
+        Assert.Equal(TimerState.Running, document.State);
+        Assert.Equal(TimeSpan.FromSeconds(10).Ticks, document.TotalTimeTicks);
+        Assert.True(document.HasOptions);
+        Assert.Equal(options, document.Options);
+        Assert.Equal(geometry, document.WindowGeometry);
+    }
+
+    [Fact]
     public void ActiveSessionDocumentRoundTripsOptions()
     {
         var options = new SavedTimerOptions(
@@ -395,5 +626,109 @@ public sealed class SavedTimersDocumentTests
         Assert.Equal("first", session.SessionId);
         Assert.NotNull(session.Session);
         Assert.Equal("30 seconds", session.Session.TimerInput);
+    }
+
+    [Fact]
+    public void ActiveTimerSessionsSnapshotFiltersInvalidEntriesAndDuplicateIds()
+    {
+        ActiveTimerSessionSnapshot first = CreateActiveSessionSnapshot("10 seconds");
+        ActiveTimerSessionSnapshot duplicate = CreateActiveSessionSnapshot("20 seconds");
+        var document = new ActiveTimerSessionsSnapshot(sessions:
+        [
+            new ActiveTimerSessionSnapshotDefinition("session-1", first),
+            new ActiveTimerSessionSnapshotDefinition("session-1", duplicate),
+            new ActiveTimerSessionSnapshotDefinition("session-2", null)
+        ]);
+
+        ActiveTimerSessionSnapshotDefinition session = Assert.Single(document.Sessions);
+        Assert.Equal("session-1", session.SessionId);
+        Assert.NotNull(session.Session);
+        Assert.Equal("10 seconds", session.Session.TimerInput);
+    }
+
+    [Fact]
+    public void ActiveTimerSessionsSnapshotReturnsSessionSnapshots()
+    {
+        ActiveTimerSessionSnapshot first = CreateActiveSessionSnapshot("10 seconds");
+        ActiveTimerSessionSnapshot replacement = CreateActiveSessionSnapshot("20 seconds");
+        var document = new ActiveTimerSessionsSnapshot(sessions:
+        [
+            new ActiveTimerSessionSnapshotDefinition("session-1", first)
+        ]);
+        ActiveTimerSessionSnapshotDefinition[] sessions = document.Sessions;
+
+        sessions[0] = new ActiveTimerSessionSnapshotDefinition("session-2", replacement);
+
+        ActiveTimerSessionSnapshotDefinition session = Assert.Single(document.Sessions);
+        Assert.Equal("session-1", session.SessionId);
+        Assert.NotNull(session.Session);
+        Assert.Equal("10 seconds", session.Session.TimerInput);
+    }
+
+    [Fact]
+    public void ActiveTimerSessionsSnapshotAddReplaceAndRemovePreservesOtherSessions()
+    {
+        ActiveTimerSessionSnapshot first = CreateActiveSessionSnapshot("10 seconds");
+        ActiveTimerSessionSnapshot second = CreateActiveSessionSnapshot("20 seconds");
+        ActiveTimerSessionSnapshot replacement = CreateActiveSessionSnapshot("30 seconds");
+
+        ActiveTimerSessionsSnapshot snapshot = ActiveTimerSessionsSnapshot.Empty
+            .AddOrReplace("first", first)
+            .AddOrReplace("second", second)
+            .AddOrReplace("first", replacement)
+            .Remove("second");
+
+        ActiveTimerSessionSnapshotDefinition session = Assert.Single(snapshot.Sessions);
+        Assert.Equal("first", session.SessionId);
+        Assert.NotNull(session.Session);
+        Assert.Equal("30 seconds", session.Session.TimerInput);
+    }
+
+    [Fact]
+    public void ActiveTimerSessionsSnapshotRoundTripsDocument()
+    {
+        var document = new ActiveTimerSessionsDocument(sessions:
+        [
+            new ActiveTimerSessionDefinition(
+                "session-1",
+                new ActiveTimerSessionDocument(
+                    timerInput: "10 seconds",
+                    timerStartInput: "10 seconds",
+                    state: TimerState.Paused,
+                    timeElapsedTicks: TimeSpan.FromSeconds(4).Ticks,
+                    timeLeftTicks: TimeSpan.FromSeconds(6).Ticks,
+                    totalTimeTicks: TimeSpan.FromSeconds(10).Ticks))
+        ]);
+
+        ActiveTimerSessionsSnapshot snapshot = ActiveTimerSessionsSnapshot.FromDocument(
+            document,
+            new DateTime(2026, 7, 2, 8, 0, 0),
+            TimeSpan.Zero);
+        ActiveTimerSessionsDocument roundTripped = snapshot.ToDocument();
+
+        ActiveTimerSessionDefinition session = Assert.Single(roundTripped.Sessions);
+        Assert.Equal("session-1", session.SessionId);
+        Assert.NotNull(session.Session);
+        Assert.Equal("10 seconds", session.Session.TimerInput);
+        Assert.Equal(TimerState.Paused, session.Session.State);
+    }
+
+    private static ActiveTimerSessionSnapshot CreateActiveSessionSnapshot(string timerInput)
+    {
+        ActiveTimerSessionDocument document = new(
+            timerInput: timerInput,
+            timerStartInput: timerInput,
+            state: TimerState.Paused,
+            timeElapsedTicks: TimeSpan.FromSeconds(4).Ticks,
+            timeLeftTicks: TimeSpan.FromSeconds(6).Ticks,
+            totalTimeTicks: TimeSpan.FromSeconds(10).Ticks);
+
+        ActiveTimerSessionSnapshot? snapshot = ActiveTimerSessionSnapshot.FromDocument(
+            document,
+            new DateTime(2026, 7, 2, 8, 0, 0),
+            TimeSpan.Zero);
+
+        Assert.NotNull(snapshot);
+        return snapshot;
     }
 }
