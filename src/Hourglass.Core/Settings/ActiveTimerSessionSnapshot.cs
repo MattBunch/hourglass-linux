@@ -222,9 +222,7 @@ public sealed record ActiveTimerSessionSnapshot(
 
     private static TimerStart? GetTimerStart(ActiveTimerSessionDocument document)
     {
-        string timerStartInput = string.IsNullOrWhiteSpace(document.TimerStartInput)
-            ? document.TimerInput
-            : document.TimerStartInput;
-        return TimerStart.FromString(timerStartInput);
+        TimerStart? timerStart = TimerStart.FromString(document.TimerStartInput);
+        return timerStart ?? TimerStart.FromString(document.TimerInput);
     }
 }

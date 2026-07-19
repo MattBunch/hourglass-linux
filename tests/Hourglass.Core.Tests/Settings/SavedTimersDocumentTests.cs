@@ -511,6 +511,24 @@ public sealed class SavedTimersDocumentTests
     }
 
     [Fact]
+    public void ActiveSessionDocumentFallsBackToTimerInputWhenStoredStartInputIsInvalid()
+    {
+        var document = new ActiveTimerSessionDocument(
+            timerInput: "10 seconds",
+            timerStartInput: "not valid",
+            state: TimerState.Paused,
+            timeElapsedTicks: TimeSpan.FromSeconds(4).Ticks,
+            timeLeftTicks: TimeSpan.FromSeconds(6).Ticks,
+            totalTimeTicks: TimeSpan.FromSeconds(10).Ticks);
+
+        var timerInfo = document.ToTimerInfo(new DateTime(2026, 7, 2, 8, 0, 0));
+
+        Assert.NotNull(timerInfo);
+        Assert.Equal(TimerState.Paused, timerInfo.State);
+        Assert.NotNull(timerInfo.TimerStart);
+    }
+
+    [Fact]
     public void ActiveSessionDocumentFallsBackToTimerInputForOlderSchema()
     {
         const string json = """
