@@ -2081,6 +2081,40 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
+    public async Task AudioPreviewCompletionRaisesPropertyChangedThroughUiDispatcher()
+    {
+        var audioAlertService = new RecordingAudioAlertService();
+        var uiDispatcher = new RecordingUiDispatcher();
+        var viewModel = CreateViewModel(
+            new ManualMonotonicClock(),
+            audioAlertService: audioAlertService,
+            uiDispatcher: uiDispatcher);
+        int previewNotifications = 0;
+        var completed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        viewModel.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName != nameof(MainWindowViewModel.IsAudioPreviewActive))
+            {
+                return;
+            }
+
+            Assert.True(uiDispatcher.IsDispatching);
+            previewNotifications++;
+            if (previewNotifications == 2)
+            {
+                completed.TrySetResult();
+            }
+        };
+
+        viewModel.PreviewAudioAlertSoundCommand.Execute(null);
+
+        Task finished = await Task.WhenAny(completed.Task, Task.Delay(TimeSpan.FromSeconds(2)));
+        Assert.Same(completed.Task, finished);
+        Assert.True(uiDispatcher.PostCount >= 2);
+    }
+
+    [Fact]
     public void PreviewUnavailableAudioAlertSoundDoesNotPlay()
     {
         var audioAlertService = new RecordingAudioAlertService();
@@ -2371,6 +2405,28 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
+    public async Task CoordinatedAppSettingsStorePreservesIndependentStaleWindowChanges()
+    {
+        var settingsStore = new RecordingSettingsStore
+        {
+            LoadedSettings = LinuxAppSettings.Default
+        };
+        var appSettingsStore = new CoordinatedAppSettingsStore(settingsStore);
+        LinuxAppSettings previous = LinuxAppSettings.Default;
+
+        await appSettingsStore.SaveChangeAsync(
+            previous,
+            previous with { NotificationsEnabled = false });
+        await appSettingsStore.SaveChangeAsync(
+            previous,
+            previous with { AlwaysOnTop = true });
+
+        Assert.NotNull(settingsStore.SavedSettings);
+        Assert.False(settingsStore.SavedSettings.NotificationsEnabled);
+        Assert.True(settingsStore.SavedSettings.AlwaysOnTop);
+    }
+
+    [Fact]
     public async Task UnsupportedStatusIconMasksPersistedSettingAndDoesNotSaveToggle()
     {
         var settingsStore = new RecordingSettingsStore
@@ -2620,6 +2676,29 @@ public sealed class MainWindowViewModelTests
 
         Assert.Equal(1, closeRequests);
         Assert.Equal(0, attentionRequests);
+    }
+
+    [Fact]
+    public async Task CloseWhenExpiredPublishesCloseThroughUiDispatcher()
+    {
+        var clock = new ManualMonotonicClock();
+        var uiDispatcher = new RecordingUiDispatcher();
+        var viewModel = CreateViewModel(clock, uiDispatcher: uiDispatcher);
+        var closeRequested = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        viewModel.CloseRequested += (_, _) =>
+        {
+            Assert.True(uiDispatcher.IsDispatching);
+            closeRequested.TrySetResult();
+        };
+        viewModel.ToggleCloseWhenExpiredCommand.Execute(null);
+        viewModel.TimerInput = "1 second";
+        viewModel.StartCommand.Execute(null);
+
+        clock.Advance(TimeSpan.FromSeconds(1));
+        viewModel.Tick();
+
+        Task finished = await Task.WhenAny(closeRequested.Task, Task.Delay(TimeSpan.FromSeconds(2)));
+        Assert.Same(closeRequested.Task, finished);
     }
 
     [Fact]
@@ -3926,7 +4005,8 @@ public sealed class MainWindowViewModelTests
         IAudioAlertService? audioAlertService = null,
         ISystemPowerService? systemPowerService = null,
         bool statusIconSupported = false,
-        bool statusIconCanRecoverHiddenWindow = false)
+        bool statusIconCanRecoverHiddenWindow = false,
+        IUiDispatcher? uiDispatcher = null)
     {
         ISettingsStore resolvedSettingsStore = settingsStore ?? new RecordingSettingsStore();
 
@@ -3936,11 +4016,56 @@ public sealed class MainWindowViewModelTests
             notificationService ?? new RecordingNotificationService(),
             sessionInhibitor ?? new RecordingSessionInhibitor(),
             resolvedSettingsStore,
+            new DirectAppSettingsStore(resolvedSettingsStore),
             savedTimersStore ?? new DirectSavedTimersStore(resolvedSettingsStore),
             audioAlertService ?? new RecordingAudioAlertService(),
             systemPowerService ?? new RecordingSystemPowerService(),
             statusIconSupported,
-            statusIconCanRecoverHiddenWindow);
+            statusIconCanRecoverHiddenWindow,
+            uiDispatcher: uiDispatcher);
+    }
+
+    private sealed class RecordingUiDispatcher : IUiDispatcher
+    {
+        public int PostCount { get; private set; }
+
+        public bool IsDispatching { get; private set; }
+
+        public bool CheckAccess()
+        {
+            return this.IsDispatching;
+        }
+
+        public void Post(Action action)
+        {
+            ArgumentNullException.ThrowIfNull(action);
+            this.PostCount++;
+            bool wasDispatching = this.IsDispatching;
+            this.IsDispatching = true;
+            try
+            {
+                action();
+            }
+            finally
+            {
+                this.IsDispatching = wasDispatching;
+            }
+        }
+
+        public Task InvokeAsync(Action action, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            this.Post(action);
+            return Task.CompletedTask;
+        }
+
+        public Task<T> InvokeAsync<T>(Func<T> action, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            T result = default!;
+            this.Post(() => result = action());
+            return Task.FromResult(result);
+        }
     }
 
     private sealed class ManualMonotonicClock : IMonotonicClock
@@ -4000,6 +4125,8 @@ public sealed class MainWindowViewModelTests
         public bool ThrowOnPlay { get; init; }
 
         public bool HoldPlaybackUntilCanceled { get; init; }
+
+        public bool IsSupported => true;
 
         public TaskCompletionSource PlaybackStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 

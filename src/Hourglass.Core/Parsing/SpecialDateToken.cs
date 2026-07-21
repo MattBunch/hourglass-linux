@@ -134,7 +134,8 @@ namespace Hourglass.Parsing
         /// <returns>The <see cref="SpecialDateDefinition"/> object for a <see cref="Match"/>.</returns>
         private static SpecialDateDefinition GetSpecialDateDefinitionForMatch(Match match)
         {
-            return SpecialDates.FirstOrDefault(e => match.Groups[e.MatchGroup].Success);
+            return SpecialDates.FirstOrDefault(e => match.Groups[e.MatchGroup].Success)
+                ?? throw new FormatException();
         }
 
         /// <summary>
@@ -143,7 +144,8 @@ namespace Hourglass.Parsing
         /// <returns>The <see cref="SpecialDateDefinition"/> object for this part.</returns>
         private SpecialDateDefinition GetSpecialDateDefinition()
         {
-            return SpecialDates.FirstOrDefault(e => e.SpecialDate == this.SpecialDate);
+            return SpecialDates.FirstOrDefault(e => e.SpecialDate == this.SpecialDate)
+                ?? throw new InvalidOperationException();
         }
 
         /// <summary>

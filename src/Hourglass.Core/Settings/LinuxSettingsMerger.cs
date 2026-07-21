@@ -79,20 +79,38 @@ public static class LinuxSettingsMerger
         bool audioAlertsEnabled = SelectChanged(previous.AudioAlertsEnabled, requested.AudioAlertsEnabled, latest.AudioAlertsEnabled);
         string audioAlertSoundId = SelectChanged(previous.AudioAlertSoundId, requested.AudioAlertSoundId, latest.AudioAlertSoundId);
 
-        if (previous.LoopTimer != requested.LoopTimer
-            || previous.LoopSound != requested.LoopSound
-            || previous.CloseWhenExpired != requested.CloseWhenExpired)
+        bool requestedLoopTimerChanged = previous.LoopTimer != requested.LoopTimer;
+        bool requestedLoopSoundChanged = previous.LoopSound != requested.LoopSound;
+        bool requestedCloseWhenExpiredChanged = previous.CloseWhenExpired != requested.CloseWhenExpired;
+        if (closeWhenExpired && requestedCloseWhenExpiredChanged)
         {
-            loopTimer = requested.LoopTimer;
-            loopSound = requested.LoopSound;
-            closeWhenExpired = requested.CloseWhenExpired;
+            loopTimer = false;
+            loopSound = false;
+        }
+        else if (closeWhenExpired
+            && ((requestedLoopTimerChanged && loopTimer) || (requestedLoopSoundChanged && loopSound)))
+        {
+            closeWhenExpired = false;
         }
 
-        if (previous.AudioAlertsEnabled != requested.AudioAlertsEnabled
-            || !StringComparer.Ordinal.Equals(previous.AudioAlertSoundId, requested.AudioAlertSoundId))
+        bool requestedAudioEnabledChanged = previous.AudioAlertsEnabled != requested.AudioAlertsEnabled;
+        bool requestedAudioSoundChanged = !StringComparer.Ordinal.Equals(previous.AudioAlertSoundId, requested.AudioAlertSoundId);
+        if (requestedAudioEnabledChanged && !requested.AudioAlertsEnabled)
         {
-            audioAlertsEnabled = requested.AudioAlertsEnabled;
-            audioAlertSoundId = requested.AudioAlertSoundId;
+            audioAlertsEnabled = false;
+            audioAlertSoundId = BuiltInAudioAlertSounds.None;
+        }
+        else if (requestedAudioSoundChanged && !StringComparer.Ordinal.Equals(audioAlertSoundId, BuiltInAudioAlertSounds.None))
+        {
+            audioAlertsEnabled = true;
+        }
+        else if (!audioAlertsEnabled)
+        {
+            audioAlertSoundId = BuiltInAudioAlertSounds.None;
+        }
+        else if (StringComparer.Ordinal.Equals(audioAlertSoundId, BuiltInAudioAlertSounds.None))
+        {
+            audioAlertSoundId = BuiltInAudioAlertSounds.Default.Id;
         }
 
         return new TimerDefaults(

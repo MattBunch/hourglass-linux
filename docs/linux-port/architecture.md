@@ -14,6 +14,8 @@ The Linux port will be a native C#/.NET application using Avalonia for the Linux
 
 `Hourglass.Core` has no dependency on UI or platform services. `Hourglass.Platform` can reference core models, but not Linux implementation details. `Hourglass.Linux.Services` implements platform interfaces. `Hourglass.Linux.Avalonia` composes the UI and Linux services.
 
+CI includes a lightweight architecture test that checks this project-reference direction. It is not a replacement for review, but it prevents accidental Avalonia references from entering Core or Linux Services.
+
 ## Extraction Strategy
 
 The first real porting phase should extract reusable parsing, serialization, timer state, and settings models from the existing app where practical. The extraction should happen before attempting full UI parity.
@@ -37,3 +39,17 @@ Single-instance startup is routed through `ISingleInstanceService`; the Linux im
 Wake-from-suspend scheduling is explicitly out of scope for the Linux MVP. The first disabled-by-default wake alarm backend is documented in [wake-alarms.md](wake-alarms.md), but it remains an advanced, privilege-sensitive capability rather than baseline Linux behavior.
 
 Packaging prototypes live under `packaging/`; publishing and permissions are documented in [packaging.md](packaging.md).
+
+## UI Thread Ownership
+
+Avalonia objects are owned by the Avalonia UI thread. The application layer uses an internal `IUiDispatcher` boundary so view-model property changes, command-state notifications, and UI-facing events are posted back to the UI dispatcher when asynchronous work completes on a worker thread. Core and Platform do not reference this dispatcher.
+
+Infrastructure work such as settings I/O, notification delivery, audio playback, IPC, and wake-alarm access can continue on background threads. Any resulting UI publication must cross the dispatcher boundary first.
+
+## Lifecycle Ownership
+
+The coordinator owns shared per-process services such as status icon state, desktop progress, wake alarms, session inhibition, saved timers, and active-session persistence. Individual windows own per-window timer state and per-window options. `app.json` is global process state and is saved through a shared app-settings coordinator when windows are created by `TimerWindowCoordinator`.
+
+Startup restoration does not save an uninitialized default window over existing active sessions. A window is loaded with restored, saved-timer, or command-line state before its first replacement active-session save is queued.
+
+CI proves restore, build, unit tests, format verification, packaging publish, AppDir creation, and static package validation. It does not prove real desktop focus behavior, notification daemon behavior, audio server availability, suspend/resume behavior, or RTC hardware behavior; those remain manual desktop and hardware checks.

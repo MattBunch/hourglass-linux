@@ -123,12 +123,12 @@ namespace Hourglass.Serialization
         /// Gets or sets the <see cref="TimerStart"/> used to start this timer, or <c>null</c> if the <see
         /// cref="TimerBase.State"/> is <see cref="TimerState.Stopped"/>.
         /// </summary>
-        public TimerStartInfo TimerStart { get; set; }
+        public TimerStartInfo? TimerStart { get; set; }
 
         /// <summary>
         /// Gets or sets the configuration data for this timer.
         /// </summary>
-        public TimerOptionsInfo Options { get; set; }
+        public TimerOptionsInfo? Options { get; set; }
 
     }
 }

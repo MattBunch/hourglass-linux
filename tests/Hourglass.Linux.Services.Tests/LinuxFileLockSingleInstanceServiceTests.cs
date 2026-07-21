@@ -1,8 +1,10 @@
 namespace Hourglass.Linux.Services.Tests;
 
+using System.Buffers.Binary;
 using Hourglass.Platform;
 using Hourglass.Linux.Services;
 using System.Net.Sockets;
+using System.Text;
 using Xunit;
 
 public sealed class LinuxFileLockSingleInstanceServiceTests
@@ -374,6 +376,142 @@ public sealed class LinuxFileLockSingleInstanceServiceTests
         Assert.Equal(sent.Arguments, received.Arguments);
     }
 
+    [Fact]
+    public async Task OversizedFrameIsRejectedWithoutBlockingLaterLaunchRequests()
+    {
+        string tempDirectory = CreateTempDirectory();
+        string socketPath = Path.Combine(tempDirectory, "hourglass-linux.sock");
+        var fileSystem = new RecordingLockFileSystem { CreateRealDirectories = true };
+        using var service = new LinuxFileLockSingleInstanceService(
+            Path.Combine(tempDirectory, "hourglass-linux.lock"),
+            socketPath,
+            fileSystem,
+            () => 123,
+            () => new DateTimeOffset(2026, 6, 14, 8, 0, 0, TimeSpan.Zero));
+        var receivedCompletion = new TaskCompletionSource<SingleInstanceLaunchRequest>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        Assert.True(await service.TryAcquireAsync());
+        await service.StartRequestListenerAsync((request, _) =>
+        {
+            receivedCompletion.TrySetResult(request);
+            return Task.CompletedTask;
+        });
+
+        await SendRawFrameAsync(socketPath, 8193, []);
+
+        var sent = new SingleInstanceLaunchRequest(SingleInstanceLaunchRequestKind.Activate, []);
+        await service.SendLaunchRequestAsync(sent);
+
+        Task completed = await Task.WhenAny(receivedCompletion.Task, Task.Delay(TimeSpan.FromSeconds(2)));
+        Assert.Same(receivedCompletion.Task, completed);
+        SingleInstanceLaunchRequest received = await receivedCompletion.Task;
+        Assert.Equal(SingleInstanceLaunchRequestKind.Activate, received.Kind);
+    }
+
+    [Fact]
+    public async Task MalformedJsonFrameIsRejectedWithoutInvokingHandler()
+    {
+        string tempDirectory = CreateTempDirectory();
+        string socketPath = Path.Combine(tempDirectory, "hourglass-linux.sock");
+        var fileSystem = new RecordingLockFileSystem { CreateRealDirectories = true };
+        using var service = new LinuxFileLockSingleInstanceService(
+            Path.Combine(tempDirectory, "hourglass-linux.lock"),
+            socketPath,
+            fileSystem,
+            () => 123,
+            () => new DateTimeOffset(2026, 6, 14, 8, 0, 0, TimeSpan.Zero));
+        int receivedCount = 0;
+        var receivedCompletion = new TaskCompletionSource<SingleInstanceLaunchRequest>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        Assert.True(await service.TryAcquireAsync());
+        await service.StartRequestListenerAsync((request, _) =>
+        {
+            receivedCount++;
+            receivedCompletion.TrySetResult(request);
+            return Task.CompletedTask;
+        });
+
+        await SendRawFrameAsync(socketPath, Encoding.UTF8.GetBytes("{"));
+
+        var sent = new SingleInstanceLaunchRequest(SingleInstanceLaunchRequestKind.Activate, []);
+        await service.SendLaunchRequestAsync(sent);
+
+        Task completed = await Task.WhenAny(receivedCompletion.Task, Task.Delay(TimeSpan.FromSeconds(2)));
+        Assert.Same(receivedCompletion.Task, completed);
+        Assert.Equal(1, receivedCount);
+    }
+
+    [Fact]
+    public async Task StartTimerFrameWithoutInputIsRejectedWithoutInvokingHandler()
+    {
+        string tempDirectory = CreateTempDirectory();
+        string socketPath = Path.Combine(tempDirectory, "hourglass-linux.sock");
+        var fileSystem = new RecordingLockFileSystem { CreateRealDirectories = true };
+        using var service = new LinuxFileLockSingleInstanceService(
+            Path.Combine(tempDirectory, "hourglass-linux.lock"),
+            socketPath,
+            fileSystem,
+            () => 123,
+            () => new DateTimeOffset(2026, 6, 14, 8, 0, 0, TimeSpan.Zero));
+        int receivedCount = 0;
+        var receivedCompletion = new TaskCompletionSource<SingleInstanceLaunchRequest>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        Assert.True(await service.TryAcquireAsync());
+        await service.StartRequestListenerAsync((request, _) =>
+        {
+            receivedCount++;
+            receivedCompletion.TrySetResult(request);
+            return Task.CompletedTask;
+        });
+
+        await SendRawFrameAsync(socketPath, Encoding.UTF8.GetBytes("""{"Kind":1,"Arguments":[]}"""));
+
+        var sent = new SingleInstanceLaunchRequest(SingleInstanceLaunchRequestKind.Activate, []);
+        await service.SendLaunchRequestAsync(sent);
+
+        Task completed = await Task.WhenAny(receivedCompletion.Task, Task.Delay(TimeSpan.FromSeconds(2)));
+        Assert.Same(receivedCompletion.Task, completed);
+        Assert.Equal(1, receivedCount);
+    }
+
+    [Fact]
+    public async Task DisposeWaitsForActiveRequestHandler()
+    {
+        string tempDirectory = CreateTempDirectory();
+        string socketPath = Path.Combine(tempDirectory, "hourglass-linux.sock");
+        var fileSystem = new RecordingLockFileSystem { CreateRealDirectories = true };
+        using var service = new LinuxFileLockSingleInstanceService(
+            Path.Combine(tempDirectory, "hourglass-linux.lock"),
+            socketPath,
+            fileSystem,
+            () => 123,
+            () => new DateTimeOffset(2026, 6, 14, 8, 0, 0, TimeSpan.Zero));
+        var handlerEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseHandler = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        Assert.True(await service.TryAcquireAsync());
+        await service.StartRequestListenerAsync(async (_, _) =>
+        {
+            handlerEntered.SetResult();
+            await releaseHandler.Task;
+        });
+
+        await service.SendLaunchRequestAsync(new SingleInstanceLaunchRequest(SingleInstanceLaunchRequestKind.Activate, []));
+        await handlerEntered.Task;
+
+        Task disposeTask = Task.Run(service.Dispose);
+        await Task.Yield();
+
+        Assert.False(disposeTask.IsCompleted);
+
+        releaseHandler.SetResult();
+        Task completed = await Task.WhenAny(disposeTask, Task.Delay(TimeSpan.FromSeconds(2)));
+        Assert.Same(disposeTask, completed);
+    }
+
     private static LinuxFileLockSingleInstanceService CreateService(RecordingLockFileSystem fileSystem)
     {
         return new LinuxFileLockSingleInstanceService(
@@ -389,6 +527,28 @@ public sealed class LinuxFileLockSingleInstanceServiceTests
         string path = Path.Combine(Path.GetTempPath(), "hourglass-single-instance-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(path);
         return path;
+    }
+
+    private static Task SendRawFrameAsync(string socketPath, byte[] payload)
+    {
+        return SendRawFrameAsync(socketPath, payload.Length, payload);
+    }
+
+    private static async Task SendRawFrameAsync(string socketPath, int declaredLength, byte[] payload)
+    {
+        using var socket = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
+        await socket.ConnectAsync(new UnixDomainSocketEndPoint(socketPath));
+        await using var stream = new NetworkStream(socket, ownsSocket: false);
+        byte[] lengthPrefix = new byte[sizeof(int)];
+        BinaryPrimitives.WriteUInt32BigEndian(lengthPrefix, (uint)declaredLength);
+        await stream.WriteAsync(lengthPrefix);
+        if (payload.Length > 0)
+        {
+            await stream.WriteAsync(payload);
+        }
+
+        await stream.FlushAsync();
+        socket.Shutdown(SocketShutdown.Send);
     }
 
     private sealed class RecordingLockFileSystem : LinuxFileLockSingleInstanceService.ILockFileSystem

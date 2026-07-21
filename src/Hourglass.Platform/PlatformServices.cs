@@ -55,6 +55,8 @@ public interface ISessionInhibitor
 
 public interface IAudioAlertService
 {
+    bool IsSupported { get; }
+
     bool IsSoundAvailable(string soundId);
 
     Task<IAsyncDisposable?> PlayAlertAsync(string soundId, CancellationToken cancellationToken = default);
@@ -156,4 +158,13 @@ public interface ISystemPowerService
     bool IsShutdownSupported { get; }
 
     Task RequestShutdownAsync(CancellationToken cancellationToken = default);
+}
+
+public interface IDiagnosticSink
+{
+    void Info(string category, string message);
+
+    void Warning(string category, string message, Exception? exception = null);
+
+    void Error(string category, string message, Exception? exception = null);
 }

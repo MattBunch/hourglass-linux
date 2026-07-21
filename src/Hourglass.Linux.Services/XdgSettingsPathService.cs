@@ -25,18 +25,31 @@ public sealed class XdgSettingsPathService : ISettingsPathService
 
     public string GetSettingsDirectory()
     {
-        string? xdgConfigHome = this.getEnvironmentVariable(XdgConfigHomeVariable);
-        if (!string.IsNullOrWhiteSpace(xdgConfigHome))
+        string? xdgConfigHome = GetAbsolutePathOrNull(this.getEnvironmentVariable(XdgConfigHomeVariable));
+        if (xdgConfigHome != null)
         {
             return Path.Combine(xdgConfigHome, AppDirectoryName);
         }
 
-        string homeDirectory = this.getFolderPath(Environment.SpecialFolder.UserProfile);
-        if (string.IsNullOrWhiteSpace(homeDirectory))
+        string? homeDirectory = GetAbsolutePathOrNull(this.getFolderPath(Environment.SpecialFolder.UserProfile));
+        if (homeDirectory != null)
         {
-            homeDirectory = this.getFolderPath(Environment.SpecialFolder.ApplicationData);
+            return Path.Combine(homeDirectory, ".config", AppDirectoryName);
         }
 
-        return Path.Combine(homeDirectory, ".config", AppDirectoryName);
+        string? applicationDataDirectory = GetAbsolutePathOrNull(this.getFolderPath(Environment.SpecialFolder.ApplicationData));
+        if (applicationDataDirectory != null)
+        {
+            return Path.Combine(applicationDataDirectory, AppDirectoryName);
+        }
+
+        throw new InvalidOperationException("Unable to resolve a safe absolute settings directory.");
+    }
+
+    private static string? GetAbsolutePathOrNull(string? path)
+    {
+        return !string.IsNullOrWhiteSpace(path) && Path.IsPathFullyQualified(path)
+            ? path
+            : null;
     }
 }

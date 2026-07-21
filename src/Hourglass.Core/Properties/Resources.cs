@@ -11,7 +11,7 @@ public static class Resources
 
     public static ResourceManager ResourceManager => Manager;
 
-    public static CultureInfo Culture { get; set; }
+    public static CultureInfo? Culture { get; set; }
 
     public static string TimerStartDefault =>
         Manager.GetString(nameof(TimerStartDefault), Culture) ?? "5 minutes";

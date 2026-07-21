@@ -84,8 +84,8 @@ namespace Hourglass.Extensions
         public static string GetMonthString(int month, IFormatProvider provider)
         {
             IDictionary<int, string> months = GetMonthStrings(provider);
-            
-            string monthString;
+
+            string? monthString;
             if (!months.TryGetValue(month, out monthString))
             {
                 throw new ArgumentOutOfRangeException("month");

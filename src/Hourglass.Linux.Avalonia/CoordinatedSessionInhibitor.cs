@@ -4,9 +4,12 @@ namespace Hourglass.Linux.Avalonia;
 
 internal sealed class CoordinatedSessionInhibitor(ISessionInhibitor inner) : ISessionInhibitor, IAsyncDisposable
 {
-    private readonly object gate = new();
+    private readonly SemaphoreSlim gate = new(1, 1);
     private readonly ISessionInhibitor inner = inner ?? throw new ArgumentNullException(nameof(inner));
+    private Task<IAsyncDisposable?>? acquisitionTask;
     private IAsyncDisposable? sharedLease;
+    private bool backendReady;
+    private bool disposed;
     private int referenceCount;
 
     public async ValueTask<IAsyncDisposable?> InhibitAsync(
@@ -15,51 +18,88 @@ internal sealed class CoordinatedSessionInhibitor(ISessionInhibitor inner) : ISe
         bool inhibitIdle,
         CancellationToken cancellationToken = default)
     {
-        bool shouldAcquire;
-        lock (this.gate)
-        {
-            this.referenceCount++;
-            shouldAcquire = this.referenceCount == 1;
-        }
+        Task<IAsyncDisposable?>? pendingAcquisition = null;
 
-        if (!shouldAcquire)
+        await this.gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
         {
-            return new Lease(this);
+            this.ThrowIfDisposed();
+
+            this.referenceCount++;
+            if (this.backendReady)
+            {
+                return new Lease(this);
+            }
+
+            this.acquisitionTask ??= this.AcquireSharedLeaseAsync(reason, inhibitSuspend, inhibitIdle);
+            pendingAcquisition = this.acquisitionTask;
+        }
+        finally
+        {
+            this.gate.Release();
         }
 
         try
         {
-            IAsyncDisposable? lease = await this.inner.InhibitAsync(
-                reason,
-                inhibitSuspend,
-                inhibitIdle,
-                cancellationToken).ConfigureAwait(false);
-            lock (this.gate)
-            {
-                this.sharedLease = lease;
-            }
+            await pendingAcquisition.WaitAsync(cancellationToken).ConfigureAwait(false);
         }
         catch
         {
-            lock (this.gate)
-            {
-                this.referenceCount--;
-            }
-
+            await this.ReleaseReferenceAfterUnsuccessfulAcquireAsync().ConfigureAwait(false);
             throw;
         }
 
-        return new Lease(this);
+        await this.gate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+        try
+        {
+            if (this.disposed)
+            {
+                await this.ReleaseReferenceAfterUnsuccessfulAcquireCoreAsync().ConfigureAwait(false);
+                throw new ObjectDisposedException(nameof(CoordinatedSessionInhibitor));
+            }
+
+            return new Lease(this);
+        }
+        finally
+        {
+            this.gate.Release();
+        }
     }
 
     public async ValueTask DisposeAsync()
     {
+        Task<IAsyncDisposable?>? pendingAcquisition;
         IAsyncDisposable? lease;
-        lock (this.gate)
+
+        await this.gate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+        try
         {
+            if (this.disposed)
+            {
+                return;
+            }
+
+            this.disposed = true;
             this.referenceCount = 0;
+            pendingAcquisition = this.acquisitionTask;
             lease = this.sharedLease;
             this.sharedLease = null;
+            this.backendReady = false;
+        }
+        finally
+        {
+            this.gate.Release();
+        }
+
+        if (pendingAcquisition != null)
+        {
+            try
+            {
+                await pendingAcquisition.ConfigureAwait(false);
+            }
+            catch
+            {
+            }
         }
 
         if (lease != null)
@@ -68,10 +108,70 @@ internal sealed class CoordinatedSessionInhibitor(ISessionInhibitor inner) : ISe
         }
     }
 
+    private async Task<IAsyncDisposable?> AcquireSharedLeaseAsync(
+        string reason,
+        bool inhibitSuspend,
+        bool inhibitIdle)
+    {
+        IAsyncDisposable? acquiredLease = null;
+        try
+        {
+            acquiredLease = await this.inner.InhibitAsync(
+                reason,
+                inhibitSuspend,
+                inhibitIdle,
+                CancellationToken.None).ConfigureAwait(false);
+        }
+        catch
+        {
+            await this.gate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+            try
+            {
+                this.acquisitionTask = null;
+                this.backendReady = false;
+            }
+            finally
+            {
+                this.gate.Release();
+            }
+
+            throw;
+        }
+
+        IAsyncDisposable? leaseToDispose = null;
+        await this.gate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+        try
+        {
+            this.acquisitionTask = null;
+            if (this.disposed || this.referenceCount == 0)
+            {
+                leaseToDispose = acquiredLease;
+            }
+            else
+            {
+                this.sharedLease = acquiredLease;
+                this.backendReady = true;
+            }
+        }
+        finally
+        {
+            this.gate.Release();
+        }
+
+        if (leaseToDispose != null)
+        {
+            await leaseToDispose.DisposeAsync().ConfigureAwait(false);
+        }
+
+        return acquiredLease;
+    }
+
     private async ValueTask ReleaseAsync()
     {
         IAsyncDisposable? lease = null;
-        lock (this.gate)
+
+        await this.gate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+        try
         {
             if (this.referenceCount <= 0)
             {
@@ -79,16 +179,52 @@ internal sealed class CoordinatedSessionInhibitor(ISessionInhibitor inner) : ISe
             }
 
             this.referenceCount--;
-            if (this.referenceCount == 0)
+            if (this.referenceCount == 0 && this.backendReady)
             {
                 lease = this.sharedLease;
                 this.sharedLease = null;
+                this.backendReady = false;
             }
+        }
+        finally
+        {
+            this.gate.Release();
         }
 
         if (lease != null)
         {
             await lease.DisposeAsync().ConfigureAwait(false);
+        }
+    }
+
+    private async ValueTask ReleaseReferenceAfterUnsuccessfulAcquireAsync()
+    {
+        await this.gate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+        try
+        {
+            await this.ReleaseReferenceAfterUnsuccessfulAcquireCoreAsync().ConfigureAwait(false);
+        }
+        finally
+        {
+            this.gate.Release();
+        }
+    }
+
+    private ValueTask ReleaseReferenceAfterUnsuccessfulAcquireCoreAsync()
+    {
+        if (this.referenceCount > 0)
+        {
+            this.referenceCount--;
+        }
+
+        return ValueTask.CompletedTask;
+    }
+
+    private void ThrowIfDisposed()
+    {
+        if (this.disposed)
+        {
+            throw new ObjectDisposedException(nameof(CoordinatedSessionInhibitor));
         }
     }
 

@@ -21,37 +21,49 @@ public sealed class LinuxAudioAlertService : IAudioAlertService
 
     private readonly IReadOnlyDictionary<string, string> soundPaths;
     private readonly Func<ProcessStartInfo, CancellationToken, Task<int>> runProcessAsync;
+    private readonly AudioPlayerCommand? selectedCommand;
 
     public LinuxAudioAlertService(string soundsDirectory)
-        : this(CreateBuiltInSoundPaths(soundsDirectory), RunProcessAsync)
+        : this(CreateBuiltInSoundPaths(soundsDirectory), RunProcessAsync, IsExecutableAvailable)
     {
     }
 
     internal LinuxAudioAlertService(
         string normalBeepPath,
-        Func<ProcessStartInfo, CancellationToken, Task<int>> runProcessAsync)
+        Func<ProcessStartInfo, CancellationToken, Task<int>> runProcessAsync,
+        Func<string, bool>? isExecutableAvailable = null)
         : this(
             new Dictionary<string, string>(StringComparer.Ordinal)
             {
                 [AudioAlertSoundIds.NormalBeep] = normalBeepPath
             },
-            runProcessAsync)
+            runProcessAsync,
+            isExecutableAvailable)
     {
     }
 
     internal LinuxAudioAlertService(
         IReadOnlyDictionary<string, string> soundPaths,
-        Func<ProcessStartInfo, CancellationToken, Task<int>> runProcessAsync)
+        Func<ProcessStartInfo, CancellationToken, Task<int>> runProcessAsync,
+        Func<string, bool>? isExecutableAvailable = null)
     {
         this.soundPaths = ValidateSoundPaths(soundPaths);
         this.runProcessAsync = runProcessAsync ?? throw new ArgumentNullException(nameof(runProcessAsync));
+        Func<string, bool> executableAvailable = isExecutableAvailable ?? (_ => true);
+        this.selectedCommand = PlayerCommands
+            .Where(command => executableAvailable(command.ExecutableName))
+            .Cast<AudioPlayerCommand?>()
+            .FirstOrDefault();
     }
+
+    public bool IsSupported => this.selectedCommand != null;
 
     public bool IsSoundAvailable(string soundId)
     {
         ArgumentNullException.ThrowIfNull(soundId);
 
-        return this.TryGetSoundPath(soundId, out string? soundPath)
+        return this.IsSupported
+            && this.TryGetSoundPath(soundId, out string? soundPath)
             && File.Exists(soundPath);
     }
 
@@ -171,32 +183,30 @@ public sealed class LinuxAudioAlertService : IAudioAlertService
 
     private async Task<bool> TryPlayOnceAsync(string soundPath, CancellationToken cancellationToken)
     {
-        foreach (AudioPlayerCommand command in PlayerCommands)
+        if (this.selectedCommand is not AudioPlayerCommand command)
         {
-            ProcessStartInfo startInfo = command.CreateStartInfo(soundPath);
-
-            try
-            {
-                int exitCode = await this.runProcessAsync(startInfo, cancellationToken).ConfigureAwait(false);
-
-                if (exitCode == 0)
-                {
-                    return true;
-                }
-            }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-            {
-                throw;
-            }
-            catch (Win32Exception)
-            {
-            }
-            catch (InvalidOperationException)
-            {
-            }
+            return false;
         }
 
-        return false;
+        ProcessStartInfo startInfo = command.CreateStartInfo(soundPath);
+
+        try
+        {
+            int exitCode = await this.runProcessAsync(startInfo, cancellationToken).ConfigureAwait(false);
+            return exitCode == 0;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Win32Exception)
+        {
+            return false;
+        }
+        catch (InvalidOperationException)
+        {
+            return false;
+        }
     }
 
     private static async Task<int> RunProcessAsync(ProcessStartInfo startInfo, CancellationToken cancellationToken)
@@ -239,6 +249,31 @@ public sealed class LinuxAudioAlertService : IAudioAlertService
         catch (Win32Exception)
         {
         }
+    }
+
+    private static bool IsExecutableAvailable(string executableName)
+    {
+        string? path = Environment.GetEnvironmentVariable("PATH");
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return false;
+        }
+
+        foreach (string directory in path.Split(Path.PathSeparator))
+        {
+            if (string.IsNullOrWhiteSpace(directory))
+            {
+                continue;
+            }
+
+            string candidate = Path.Combine(directory, executableName);
+            if (File.Exists(candidate))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private readonly record struct AudioPlayerCommand(string ExecutableName, string? StableArgument = null)

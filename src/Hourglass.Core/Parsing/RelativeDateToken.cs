@@ -46,7 +46,7 @@ namespace Hourglass.Parsing
                 0 /* yearDelta */,
                 0 /* monthDelta */,
                 0 /* dayDelta */),
-                
+
             new RelativeDateDefinition(
                 RelativeDate.Tomorrow,
                 0 /* yearDelta */,
@@ -119,7 +119,8 @@ namespace Hourglass.Parsing
         /// <returns>The <see cref="RelativeDateDefinition"/> object for a <see cref="Match"/>.</returns>
         private static RelativeDateDefinition GetRelativeDateDefinitionForMatch(Match match)
         {
-            return RelativeDates.FirstOrDefault(e => match.Groups[e.MatchGroup].Success);
+            return RelativeDates.FirstOrDefault(e => match.Groups[e.MatchGroup].Success)
+                ?? throw new FormatException();
         }
 
         /// <summary>
@@ -128,7 +129,8 @@ namespace Hourglass.Parsing
         /// <returns>The <see cref="RelativeDateDefinition"/> object for this part.</returns>
         private RelativeDateDefinition GetRelativeDateDefinition()
         {
-            return RelativeDates.FirstOrDefault(e => e.RelativeDate == this.RelativeDate);
+            return RelativeDates.FirstOrDefault(e => e.RelativeDate == this.RelativeDate)
+                ?? throw new InvalidOperationException();
         }
 
         /// <summary>

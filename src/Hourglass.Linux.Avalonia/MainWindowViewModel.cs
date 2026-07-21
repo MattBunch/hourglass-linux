@@ -13,10 +13,10 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private const string InvalidTimerStatusText = "Enter a valid current timer.";
     private const string SessionInhibitionReason = "Hourglass timer is running";
     private const string NotificationBody = "Timer complete";
-    private const string SettingsKey = "app";
     private const string ActiveSessionKey = "active-session";
     private const string CustomThemesKey = "custom-themes";
 
+    private readonly IAppSettingsStore appSettingsStore;
     private readonly IAudioAlertService audioAlertService;
     private readonly CountdownEngine engine;
     private readonly INotificationService notificationService;
@@ -28,6 +28,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private readonly bool statusIconCanRecoverHiddenWindow;
     private readonly bool statusIconSupported;
     private readonly ISystemPowerService systemPowerService;
+    private readonly IUiDispatcher uiDispatcher;
     private readonly Func<DateTime> wallClockNow;
     private IAsyncDisposable? activeAudioPlayback;
     private CancellationTokenSource? audioPreviewCancellation;
@@ -133,6 +134,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             notificationService,
             sessionInhibitor,
             settingsStore,
+            new DirectAppSettingsStore(settingsStore),
             new DirectSavedTimersStore(settingsStore),
             audioAlertService,
             systemPowerService,
@@ -150,6 +152,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         INotificationService notificationService,
         ISessionInhibitor sessionInhibitor,
         ISettingsStore settingsStore,
+        IAppSettingsStore appSettingsStore,
         ISavedTimersStore savedTimersStore,
         IAudioAlertService audioAlertService,
         ISystemPowerService systemPowerService,
@@ -157,16 +160,19 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         bool statusIconCanRecoverHiddenWindow = false,
         string? sessionId = null,
         bool persistActiveSessionDirectly = true,
-        bool restoreActiveSessionOnLoad = true)
+        bool restoreActiveSessionOnLoad = true,
+        IUiDispatcher? uiDispatcher = null)
     {
         this.engine = engine ?? throw new ArgumentNullException(nameof(engine));
         this.wallClockNow = wallClockNow ?? throw new ArgumentNullException(nameof(wallClockNow));
         this.notificationService = notificationService ?? throw new ArgumentNullException(nameof(notificationService));
         this.sessionInhibitor = sessionInhibitor ?? throw new ArgumentNullException(nameof(sessionInhibitor));
         this.settingsStore = settingsStore ?? throw new ArgumentNullException(nameof(settingsStore));
+        this.appSettingsStore = appSettingsStore ?? throw new ArgumentNullException(nameof(appSettingsStore));
         this.savedTimersStore = savedTimersStore ?? throw new ArgumentNullException(nameof(savedTimersStore));
         this.audioAlertService = audioAlertService ?? throw new ArgumentNullException(nameof(audioAlertService));
         this.systemPowerService = systemPowerService ?? throw new ArgumentNullException(nameof(systemPowerService));
+        this.uiDispatcher = uiDispatcher ?? ImmediateUiDispatcher.Instance;
         this.statusIconSupported = statusIconSupported;
         this.statusIconCanRecoverHiddenWindow = statusIconCanRecoverHiddenWindow;
         this.SessionId = string.IsNullOrWhiteSpace(sessionId) ? Guid.NewGuid().ToString("N") : sessionId.Trim();
@@ -357,7 +363,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
                 this.ReplaceViewState(this.viewState with { TimerInput = value, HasValidationError = false });
                 this.RefreshDisplay(this.engine.State == TimerState.Stopped ? TimerViewState.ReadyStatusText : this.StatusText);
                 this.OnPropertyChanged(nameof(this.CanSaveCurrentTimer));
-                this.SaveCurrentTimerCommand.RaiseCanExecuteChanged();
+                this.RaiseCommandCanExecuteChanged(this.SaveCurrentTimerCommand);
                 this.QueueActiveSessionSave();
             }
         }
@@ -572,7 +578,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     public async Task LoadSettingsAsync(CancellationToken cancellationToken = default)
     {
-        LinuxAppSettings loadedSettings = await this.LoadDocumentAsync(SettingsKey, LinuxAppSettings.Default, cancellationToken);
+        LinuxAppSettings loadedSettings = await this.LoadAppSettingsAsync(cancellationToken);
         SavedTimersDocument loadedSavedTimers = await this.LoadSavedTimersAsync(cancellationToken);
         CustomThemesDocument loadedCustomThemes = await this.LoadDocumentAsync(CustomThemesKey, CustomThemesDocument.Empty, cancellationToken);
 
@@ -608,6 +614,22 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         catch (Exception)
         {
             return fallback;
+        }
+    }
+
+    private async Task<LinuxAppSettings> LoadAppSettingsAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await this.appSettingsStore.LoadAsync(cancellationToken).ConfigureAwait(true);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception)
+        {
+            return LinuxAppSettings.Default;
         }
     }
 
@@ -1251,7 +1273,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         var cancellation = new CancellationTokenSource();
         this.audioPreviewCancellation = cancellation;
         this.OnPropertyChanged(nameof(this.IsAudioPreviewActive));
-        this.StopAudioAlertPreviewCommand.RaiseCanExecuteChanged();
+        this.RaiseCommandCanExecuteChanged(this.StopAudioAlertPreviewCommand);
 
         try
         {
@@ -1269,7 +1291,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             {
                 this.audioPreviewCancellation = null;
                 this.OnPropertyChanged(nameof(this.IsAudioPreviewActive));
-                this.StopAudioAlertPreviewCommand.RaiseCanExecuteChanged();
+                this.RaiseCommandCanExecuteChanged(this.StopAudioAlertPreviewCommand);
             }
 
             cancellation.Dispose();
@@ -1466,22 +1488,21 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         this.OnPropertyChanged(nameof(this.HasValidationError));
         this.OnPropertyChanged(nameof(this.HasCompletionEmphasis));
         this.OnPropertyChanged(nameof(this.CanSaveCurrentTimer));
-        this.StartCommand.RaiseCanExecuteChanged();
-        this.PauseResumeCommand.RaiseCanExecuteChanged();
-        this.ResetCommand.RaiseCanExecuteChanged();
-        this.RestartCommand.RaiseCanExecuteChanged();
-        this.CancelEditCommand.RaiseCanExecuteChanged();
-        this.SelectCustomThemeCommand.RaiseCanExecuteChanged();
-        this.DuplicateCustomThemeCommand.RaiseCanExecuteChanged();
-        this.DeleteCustomThemeCommand.RaiseCanExecuteChanged();
-        this.SelectRecentInputCommand.RaiseCanExecuteChanged();
-        this.ClearRecentInputsCommand.RaiseCanExecuteChanged();
-        this.SaveCurrentTimerCommand.RaiseCanExecuteChanged();
-        this.OpenSavedTimerCommand.RaiseCanExecuteChanged();
-        this.RemoveSavedTimerCommand.RaiseCanExecuteChanged();
-        this.ClearSavedTimersCommand.RaiseCanExecuteChanged();
-        this.OpenAllSavedTimersCommand.RaiseCanExecuteChanged();
-        this.OpenAllSavedTimersCommand.RaiseCanExecuteChanged();
+        this.RaiseCommandCanExecuteChanged(this.StartCommand);
+        this.RaiseCommandCanExecuteChanged(this.PauseResumeCommand);
+        this.RaiseCommandCanExecuteChanged(this.ResetCommand);
+        this.RaiseCommandCanExecuteChanged(this.RestartCommand);
+        this.RaiseCommandCanExecuteChanged(this.CancelEditCommand);
+        this.RaiseCommandCanExecuteChanged(this.SelectCustomThemeCommand);
+        this.RaiseCommandCanExecuteChanged(this.DuplicateCustomThemeCommand);
+        this.RaiseCommandCanExecuteChanged(this.DeleteCustomThemeCommand);
+        this.RaiseCommandCanExecuteChanged(this.SelectRecentInputCommand);
+        this.RaiseCommandCanExecuteChanged(this.ClearRecentInputsCommand);
+        this.RaiseCommandCanExecuteChanged(this.SaveCurrentTimerCommand);
+        this.RaiseCommandCanExecuteChanged(this.OpenSavedTimerCommand);
+        this.RaiseCommandCanExecuteChanged(this.RemoveSavedTimerCommand);
+        this.RaiseCommandCanExecuteChanged(this.ClearSavedTimersCommand);
+        this.RaiseCommandCanExecuteChanged(this.OpenAllSavedTimersCommand);
         this.RaiseSettingsCommandCanExecuteChanged();
     }
 
@@ -1512,7 +1533,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         if (!previous.RecentTimerInputs.SequenceEqual(next.RecentTimerInputs, StringComparer.Ordinal))
         {
             this.OnPropertyChanged(nameof(this.RecentInputMenuItems));
-            this.ClearRecentInputsCommand.RaiseCanExecuteChanged();
+            this.RaiseCommandCanExecuteChanged(this.ClearRecentInputsCommand);
         }
 
         if (previous.NotificationsEnabled != next.NotificationsEnabled)
@@ -1528,7 +1549,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             this.OnPropertyChanged(nameof(this.IsNormalBeepSoundSelected));
             this.OnPropertyChanged(nameof(this.IsQuietBeepSoundSelected));
             this.OnPropertyChanged(nameof(this.CanPreviewAudioAlertSound));
-            this.PreviewAudioAlertSoundCommand.RaiseCanExecuteChanged();
+            this.RaiseCommandCanExecuteChanged(this.PreviewAudioAlertSoundCommand);
         }
 
         if (!StringComparer.Ordinal.Equals(previous.AudioAlertSoundId, next.AudioAlertSoundId))
@@ -1539,7 +1560,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             this.OnPropertyChanged(nameof(this.IsNormalBeepSoundSelected));
             this.OnPropertyChanged(nameof(this.IsQuietBeepSoundSelected));
             this.OnPropertyChanged(nameof(this.CanPreviewAudioAlertSound));
-            this.PreviewAudioAlertSoundCommand.RaiseCanExecuteChanged();
+            this.RaiseCommandCanExecuteChanged(this.PreviewAudioAlertSoundCommand);
         }
 
         if (previous.AlwaysOnTop != next.AlwaysOnTop)
@@ -1677,7 +1698,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         SavedTimersDocument previous = this.savedTimers;
         this.savedTimers = next;
         this.OnPropertyChanged(nameof(this.SavedTimerMenuItems));
-        this.ClearSavedTimersCommand.RaiseCanExecuteChanged();
+        this.RaiseCommandCanExecuteChanged(this.ClearSavedTimersCommand);
 
         if (save)
         {
@@ -1790,6 +1811,12 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             return;
         }
 
+        if (!this.uiDispatcher.CheckAccess())
+        {
+            this.uiDispatcher.Post(() => this.PublishSafely(handlers));
+            return;
+        }
+
         foreach (EventHandler handler in handlers.GetInvocationList().Cast<EventHandler>())
         {
             try
@@ -1807,6 +1834,12 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         EventHandler<OpenAllSavedTimersRequestedEventArgs>? handlers = this.OpenAllSavedTimersRequested;
         if (handlers == null)
         {
+            return;
+        }
+
+        if (!this.uiDispatcher.CheckAccess())
+        {
+            this.uiDispatcher.Post(() => this.PublishOpenAllSavedTimersRequested(savedTimersSnapshot));
             return;
         }
 
@@ -1894,7 +1927,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
         this.audioPreviewCancellation = null;
         this.OnPropertyChanged(nameof(this.IsAudioPreviewActive));
-        this.StopAudioAlertPreviewCommand.RaiseCanExecuteChanged();
+        this.RaiseCommandCanExecuteChanged(this.StopAudioAlertPreviewCommand);
 
         try
         {
@@ -2025,15 +2058,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         {
         }
 
-        LinuxAppSettings latestSettings = await this.LoadLatestSettingsForSaveAsync(previousSettings).ConfigureAwait(false);
-        LinuxAppSettings mergedSettings = LinuxSettingsMerger.MergeSettingsChange(
-            previousSettings,
-            requestedSettings,
-            latestSettings);
-
         try
         {
-            await this.settingsStore.SaveAsync(SettingsKey, mergedSettings).ConfigureAwait(false);
+            await this.appSettingsStore.SaveChangeAsync(previousSettings, requestedSettings).ConfigureAwait(false);
         }
         catch (Exception)
         {
@@ -2106,19 +2133,6 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         }
         catch (Exception)
         {
-        }
-    }
-
-    private async Task<LinuxAppSettings> LoadLatestSettingsForSaveAsync(LinuxAppSettings fallback)
-    {
-        try
-        {
-            return await this.settingsStore.LoadAsync<LinuxAppSettings>(SettingsKey).ConfigureAwait(false)
-                ?? fallback;
-        }
-        catch (Exception)
-        {
-            return fallback;
         }
     }
 
@@ -2222,38 +2236,71 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null)
     {
-        this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+        void Publish()
+        {
+            this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+        }
+
+        if (this.uiDispatcher.CheckAccess())
+        {
+            Publish();
+            return;
+        }
+
+        this.uiDispatcher.Post(Publish);
     }
 
     private void RaiseSettingsCommandCanExecuteChanged()
     {
-        this.ToggleNotificationsCommand.RaiseCanExecuteChanged();
-        this.ToggleAudioAlertsCommand.RaiseCanExecuteChanged();
-        this.ToggleAlwaysOnTopCommand.RaiseCanExecuteChanged();
-        this.ToggleShowProgressInTaskbarCommand.RaiseCanExecuteChanged();
-        this.ToggleShowInNotificationAreaCommand.RaiseCanExecuteChanged();
-        this.HideToNotificationAreaCommand.RaiseCanExecuteChanged();
-        this.TogglePopUpWhenExpiredCommand.RaiseCanExecuteChanged();
-        this.TogglePromptOnExitCommand.RaiseCanExecuteChanged();
-        this.ToggleReverseProgressBarCommand.RaiseCanExecuteChanged();
-        this.ToggleShowTimeElapsedCommand.RaiseCanExecuteChanged();
-        this.ToggleLoopTimerCommand.RaiseCanExecuteChanged();
-        this.ToggleLoopSoundCommand.RaiseCanExecuteChanged();
-        this.ToggleCloseWhenExpiredCommand.RaiseCanExecuteChanged();
-        this.ToggleLockInterfaceCommand.RaiseCanExecuteChanged();
-        this.ToggleDoNotKeepComputerAwakeCommand.RaiseCanExecuteChanged();
-        this.ToggleShutDownWhenExpiredCommand.RaiseCanExecuteChanged();
-        this.ToggleRestoreActiveSessionOnStartupCommand.RaiseCanExecuteChanged();
-        this.ToggleOpenSavedTimersOnStartupCommand.RaiseCanExecuteChanged();
-        this.SelectThemePreferenceCommand.RaiseCanExecuteChanged();
-        this.SelectCustomThemeCommand.RaiseCanExecuteChanged();
-        this.DuplicateCustomThemeCommand.RaiseCanExecuteChanged();
-        this.DeleteCustomThemeCommand.RaiseCanExecuteChanged();
-        this.SelectWindowTitleModeCommand.RaiseCanExecuteChanged();
-        this.SelectAudioAlertSoundCommand.RaiseCanExecuteChanged();
-        this.PreviewAudioAlertSoundCommand.RaiseCanExecuteChanged();
-        this.StopAudioAlertPreviewCommand.RaiseCanExecuteChanged();
-        this.NewTimerCommand.RaiseCanExecuteChanged();
+        this.RaiseCommandCanExecuteChanged(this.ToggleNotificationsCommand);
+        this.RaiseCommandCanExecuteChanged(this.ToggleAudioAlertsCommand);
+        this.RaiseCommandCanExecuteChanged(this.ToggleAlwaysOnTopCommand);
+        this.RaiseCommandCanExecuteChanged(this.ToggleShowProgressInTaskbarCommand);
+        this.RaiseCommandCanExecuteChanged(this.ToggleShowInNotificationAreaCommand);
+        this.RaiseCommandCanExecuteChanged(this.HideToNotificationAreaCommand);
+        this.RaiseCommandCanExecuteChanged(this.TogglePopUpWhenExpiredCommand);
+        this.RaiseCommandCanExecuteChanged(this.TogglePromptOnExitCommand);
+        this.RaiseCommandCanExecuteChanged(this.ToggleReverseProgressBarCommand);
+        this.RaiseCommandCanExecuteChanged(this.ToggleShowTimeElapsedCommand);
+        this.RaiseCommandCanExecuteChanged(this.ToggleLoopTimerCommand);
+        this.RaiseCommandCanExecuteChanged(this.ToggleLoopSoundCommand);
+        this.RaiseCommandCanExecuteChanged(this.ToggleCloseWhenExpiredCommand);
+        this.RaiseCommandCanExecuteChanged(this.ToggleLockInterfaceCommand);
+        this.RaiseCommandCanExecuteChanged(this.ToggleDoNotKeepComputerAwakeCommand);
+        this.RaiseCommandCanExecuteChanged(this.ToggleShutDownWhenExpiredCommand);
+        this.RaiseCommandCanExecuteChanged(this.ToggleRestoreActiveSessionOnStartupCommand);
+        this.RaiseCommandCanExecuteChanged(this.ToggleOpenSavedTimersOnStartupCommand);
+        this.RaiseCommandCanExecuteChanged(this.SelectThemePreferenceCommand);
+        this.RaiseCommandCanExecuteChanged(this.SelectCustomThemeCommand);
+        this.RaiseCommandCanExecuteChanged(this.DuplicateCustomThemeCommand);
+        this.RaiseCommandCanExecuteChanged(this.DeleteCustomThemeCommand);
+        this.RaiseCommandCanExecuteChanged(this.SelectWindowTitleModeCommand);
+        this.RaiseCommandCanExecuteChanged(this.SelectAudioAlertSoundCommand);
+        this.RaiseCommandCanExecuteChanged(this.PreviewAudioAlertSoundCommand);
+        this.RaiseCommandCanExecuteChanged(this.StopAudioAlertPreviewCommand);
+        this.RaiseCommandCanExecuteChanged(this.NewTimerCommand);
+    }
+
+    private void RaiseCommandCanExecuteChanged(RelayCommand command)
+    {
+        if (this.uiDispatcher.CheckAccess())
+        {
+            command.RaiseCanExecuteChanged();
+            return;
+        }
+
+        this.uiDispatcher.Post(command.RaiseCanExecuteChanged);
+    }
+
+    private void RaiseCommandCanExecuteChanged<T>(RelayCommand<T> command)
+    {
+        if (this.uiDispatcher.CheckAccess())
+        {
+            command.RaiseCanExecuteChanged();
+            return;
+        }
+
+        this.uiDispatcher.Post(command.RaiseCanExecuteChanged);
     }
 
     private void PublishSettingsChange(bool previous, bool next, string propertyName)
@@ -2277,6 +2324,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private sealed class NoOpAudioAlertService : IAudioAlertService
     {
         public static NoOpAudioAlertService Instance { get; } = new();
+
+        public bool IsSupported => false;
 
         public bool IsSoundAvailable(string soundId)
         {

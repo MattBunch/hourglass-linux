@@ -62,19 +62,28 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
 
     private MainWindow(DefaultMainWindowServices services)
         : this(
-            new MainWindowViewModel(
-                new CountdownEngine(new SystemMonotonicClock()),
-                () => DateTime.Now,
-                new NotifySendNotificationService(),
-                new SystemdSessionInhibitor(),
-                new JsonFileSettingsStore(new XdgSettingsPathService()),
-                new LinuxAudioAlertService(SoundAssetsDirectory),
-                new UnsupportedSystemPowerService(),
-                services.StatusIconService.IsSupported,
-                services.StatusIconService.CanRecoverHiddenWindow),
+            CreateDefaultViewModel(services),
             services.DesktopProgressService,
             services.StatusIconService)
     {
+    }
+
+    private static MainWindowViewModel CreateDefaultViewModel(DefaultMainWindowServices services)
+    {
+        var settingsStore = new JsonFileSettingsStore(new XdgSettingsPathService());
+        return new MainWindowViewModel(
+            new CountdownEngine(new SystemMonotonicClock()),
+            () => DateTime.Now,
+            new NotifySendNotificationService(),
+            new SystemdSessionInhibitor(),
+            settingsStore,
+            new DirectAppSettingsStore(settingsStore),
+            new DirectSavedTimersStore(settingsStore),
+            new LinuxAudioAlertService(SoundAssetsDirectory),
+            new UnsupportedSystemPowerService(),
+            services.StatusIconService.IsSupported,
+            services.StatusIconService.CanRecoverHiddenWindow,
+            uiDispatcher: AvaloniaUiDispatcher.Instance);
     }
 
     internal MainWindow(MainWindowViewModel viewModel)

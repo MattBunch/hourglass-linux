@@ -11,7 +11,8 @@ namespace Hourglass.Parsing
     using System.Text;
     using System.Text.RegularExpressions;
 
-    using Hourglass.Extensions;    using Hourglass.Properties;
+    using Hourglass.Extensions;
+    using Hourglass.Properties;
 
     /// <summary>
     /// Represents the period of an hour.

@@ -30,6 +30,7 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
     private readonly IAudioAlertService audioAlertService;
     private readonly INotificationService notificationService;
     private readonly ISettingsStore settingsStore;
+    private readonly IAppSettingsStore appSettingsStore;
     private readonly ISavedTimersStore savedTimersStore;
     private readonly IStatusIconService statusIconService;
     private readonly ISystemPowerService systemPowerService;
@@ -70,6 +71,7 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
     {
         this.lifetime = lifetime ?? throw new ArgumentNullException(nameof(lifetime));
         this.settingsStore = settingsStore ?? throw new ArgumentNullException(nameof(settingsStore));
+        this.appSettingsStore = new CoordinatedAppSettingsStore(this.settingsStore);
         this.notificationService = notificationService ?? throw new ArgumentNullException(nameof(notificationService));
         this.audioAlertService = audioAlertService ?? throw new ArgumentNullException(nameof(audioAlertService));
         this.sessionInhibitor = sessionInhibitor ?? throw new ArgumentNullException(nameof(sessionInhibitor));
@@ -175,6 +177,7 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
             this.notificationService,
             this.sessionInhibitor,
             this.settingsStore,
+            this.appSettingsStore,
             this.savedTimersStore,
             this.audioAlertService,
             this.systemPowerService,
@@ -182,7 +185,8 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
             this.statusIconService.CanRecoverHiddenWindow,
             sessionId,
             persistActiveSessionDirectly: false,
-            restoreActiveSessionOnLoad: false);
+            restoreActiveSessionOnLoad: false,
+            uiDispatcher: AvaloniaUiDispatcher.Instance);
         var window = new MainWindow(
             viewModel,
             new UnsupportedDesktopProgressService(),
@@ -210,7 +214,6 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
         this.ApplyInitialGeometry(window, session?.WindowGeometry);
         _ = this.LoadWindowAsync(registration, session, savedTimer, launchRequest);
         window.Show();
-        _ = this.QueueSessionSave();
         this.ApplyDesktopProgress();
         this.ApplyStatusIconState();
         this.ApplyWakeAlarm();

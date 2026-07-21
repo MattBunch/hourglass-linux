@@ -1,5 +1,7 @@
 namespace Hourglass.Linux.Services;
 
+using System.Buffers.Binary;
+using System.Collections.Concurrent;
 using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
@@ -9,6 +11,8 @@ public sealed class LinuxFileLockSingleInstanceService : ISingleInstanceService
 {
     private const string ApplicationId = "hourglass-linux";
     private const int IpcTimeoutMilliseconds = 2000;
+    private const int MaxPayloadBytes = 8 * 1024;
+    private const int MaxConcurrentHandlers = 4;
     private const long LockLength = 1;
     private const long LockOffset = 0;
     private const UnixFileMode PrivateDirectoryMode =
@@ -28,6 +32,8 @@ public sealed class LinuxFileLockSingleInstanceService : ISingleInstanceService
     private readonly string lockPath;
     private readonly string socketPath;
     private readonly object syncRoot = new();
+    private readonly ConcurrentDictionary<Task, byte> activeHandlers = [];
+    private readonly SemaphoreSlim handlerGate = new(MaxConcurrentHandlers, MaxConcurrentHandlers);
 
     private CancellationTokenSource? listenerCancellation;
     private ILockFileHandle? lockHandle;
@@ -138,10 +144,8 @@ public sealed class LinuxFileLockSingleInstanceService : ISingleInstanceService
 
         using Socket socket = await this.ConnectWithRetryAsync(timeoutSource.Token).ConfigureAwait(false);
         await using NetworkStream stream = new(socket, ownsSocket: false);
-        await using var writer = new StreamWriter(stream, Utf8NoBom, leaveOpen: true);
         string payload = JsonSerializer.Serialize(ToDto(request));
-        await writer.WriteLineAsync(payload.AsMemory(), timeoutSource.Token).ConfigureAwait(false);
-        await writer.FlushAsync(timeoutSource.Token).ConfigureAwait(false);
+        await WriteFramedPayloadAsync(stream, payload, timeoutSource.Token).ConfigureAwait(false);
         socket.Shutdown(SocketShutdown.Send);
     }
 
@@ -194,7 +198,7 @@ public sealed class LinuxFileLockSingleInstanceService : ISingleInstanceService
 
     public void Dispose()
     {
-        Task? taskToWait = null;
+        Task[] tasksToWait = [];
 
         lock (this.syncRoot)
         {
@@ -205,7 +209,7 @@ public sealed class LinuxFileLockSingleInstanceService : ISingleInstanceService
 
             this.disposed = true;
             this.listenerCancellation?.Cancel();
-            taskToWait = this.listenerTask;
+            tasksToWait = this.GetOwnedTasksSnapshot();
 
             if (this.lockHandle != null)
             {
@@ -223,9 +227,12 @@ public sealed class LinuxFileLockSingleInstanceService : ISingleInstanceService
 
         try
         {
-            taskToWait?.GetAwaiter().GetResult();
+            Task.WaitAll(tasksToWait);
         }
         catch (OperationCanceledException)
+        {
+        }
+        catch (AggregateException exception) when (exception.InnerExceptions.All(inner => inner is OperationCanceledException))
         {
         }
         finally
@@ -286,7 +293,7 @@ public sealed class LinuxFileLockSingleInstanceService : ISingleInstanceService
                 try
                 {
                     accepted = await listener.AcceptAsync(cancellationToken).ConfigureAwait(false);
-                    _ = this.HandleAcceptedSocketAsync(accepted, handleRequestAsync, cancellationToken);
+                    this.TrackHandler(this.HandleAcceptedSocketAsync(accepted, handleRequestAsync, cancellationToken));
                     accepted = null;
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -309,10 +316,16 @@ public sealed class LinuxFileLockSingleInstanceService : ISingleInstanceService
         using (socket)
         await using (var stream = new NetworkStream(socket, ownsSocket: false))
         {
+            bool gateAcquired = false;
             try
             {
-                using var reader = new StreamReader(stream, Utf8NoBom, leaveOpen: true);
-                string? payload = await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false);
+                await this.handlerGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+                gateAcquired = true;
+
+                using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                timeoutSource.CancelAfter(TimeSpan.FromMilliseconds(IpcTimeoutMilliseconds));
+
+                string? payload = await ReadFramedPayloadAsync(stream, timeoutSource.Token).ConfigureAwait(false);
                 if (string.IsNullOrWhiteSpace(payload))
                 {
                     return;
@@ -330,7 +343,99 @@ public sealed class LinuxFileLockSingleInstanceService : ISingleInstanceService
             catch (Exception) when (!cancellationToken.IsCancellationRequested)
             {
             }
+            finally
+            {
+                if (gateAcquired)
+                {
+                    this.handlerGate.Release();
+                }
+            }
         }
+    }
+
+    private void TrackHandler(Task task)
+    {
+        this.activeHandlers.TryAdd(task, 0);
+        task.ContinueWith(
+            completedTask => this.activeHandlers.TryRemove(completedTask, out _),
+            CancellationToken.None,
+            TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
+    }
+
+    private Task[] GetOwnedTasksSnapshot()
+    {
+        List<Task> tasks = [];
+        if (this.listenerTask != null)
+        {
+            tasks.Add(this.listenerTask);
+        }
+
+        tasks.AddRange(this.activeHandlers.Keys);
+        return [.. tasks];
+    }
+
+    private static async Task WriteFramedPayloadAsync(
+        Stream stream,
+        string payload,
+        CancellationToken cancellationToken)
+    {
+        byte[] payloadBytes = Utf8NoBom.GetBytes(payload);
+        if (payloadBytes.Length == 0 || payloadBytes.Length > MaxPayloadBytes)
+        {
+            throw new InvalidOperationException("Single-instance request payload size is invalid.");
+        }
+
+        byte[] lengthPrefix = new byte[sizeof(int)];
+        BinaryPrimitives.WriteUInt32BigEndian(lengthPrefix, (uint)payloadBytes.Length);
+        await stream.WriteAsync(lengthPrefix, cancellationToken).ConfigureAwait(false);
+        await stream.WriteAsync(payloadBytes, cancellationToken).ConfigureAwait(false);
+        await stream.FlushAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    private static async Task<string?> ReadFramedPayloadAsync(
+        Stream stream,
+        CancellationToken cancellationToken)
+    {
+        byte[] lengthPrefix = new byte[sizeof(int)];
+        if (!await ReadExactOrEndAsync(stream, lengthPrefix, cancellationToken).ConfigureAwait(false))
+        {
+            return null;
+        }
+
+        uint payloadLength = BinaryPrimitives.ReadUInt32BigEndian(lengthPrefix);
+        if (payloadLength == 0 || payloadLength > MaxPayloadBytes)
+        {
+            return null;
+        }
+
+        byte[] payloadBytes = new byte[payloadLength];
+        if (!await ReadExactOrEndAsync(stream, payloadBytes, cancellationToken).ConfigureAwait(false))
+        {
+            return null;
+        }
+
+        return Utf8NoBom.GetString(payloadBytes);
+    }
+
+    private static async Task<bool> ReadExactOrEndAsync(
+        Stream stream,
+        byte[] buffer,
+        CancellationToken cancellationToken)
+    {
+        int offset = 0;
+        while (offset < buffer.Length)
+        {
+            int bytesRead = await stream.ReadAsync(buffer.AsMemory(offset), cancellationToken).ConfigureAwait(false);
+            if (bytesRead == 0)
+            {
+                return false;
+            }
+
+            offset += bytesRead;
+        }
+
+        return true;
     }
 
     private static SingleInstanceLaunchRequestDto ToDto(SingleInstanceLaunchRequest request)

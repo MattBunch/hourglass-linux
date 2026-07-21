@@ -382,7 +382,7 @@ public sealed class LinuxAppSettingsTests
     }
 
     [Fact]
-    public void SettingsMergerKeepsCoherentAudioAndLoopOptionGroups()
+    public void SettingsMergerPreservesIndependentAudioAndLoopChanges()
     {
         LinuxAppSettings previous = LinuxAppSettings.Default with
         {
@@ -412,9 +412,36 @@ public sealed class LinuxAppSettingsTests
         LinuxAppSettings merged = LinuxSettingsMerger.MergeSettingsChange(previous, requested, latest);
 
         Assert.True(merged.LoopTimer);
-        Assert.False(merged.LoopSound);
+        Assert.True(merged.LoopSound);
         Assert.False(merged.CloseWhenExpired);
         Assert.False(merged.AudioAlertsEnabled);
         Assert.Equal(BuiltInAudioAlertSounds.None, merged.AudioAlertSoundId);
+    }
+
+    [Fact]
+    public void SettingsMergerResolvesCloseWhenExpiredAgainstLoopChanges()
+    {
+        LinuxAppSettings previous = LinuxAppSettings.Default;
+        LinuxAppSettings requested = previous with { LoopSound = true };
+        LinuxAppSettings latest = previous with { CloseWhenExpired = true };
+
+        LinuxAppSettings merged = LinuxSettingsMerger.MergeSettingsChange(previous, requested, latest);
+
+        Assert.True(merged.LoopSound);
+        Assert.False(merged.CloseWhenExpired);
+    }
+
+    [Fact]
+    public void SettingsMergerCloseWhenExpiredRequestClearsExistingLoopChanges()
+    {
+        LinuxAppSettings previous = LinuxAppSettings.Default;
+        LinuxAppSettings requested = previous with { CloseWhenExpired = true };
+        LinuxAppSettings latest = previous with { LoopTimer = true, LoopSound = true };
+
+        LinuxAppSettings merged = LinuxSettingsMerger.MergeSettingsChange(previous, requested, latest);
+
+        Assert.True(merged.CloseWhenExpired);
+        Assert.False(merged.LoopTimer);
+        Assert.False(merged.LoopSound);
     }
 }
