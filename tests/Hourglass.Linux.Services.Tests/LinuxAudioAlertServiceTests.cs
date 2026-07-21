@@ -86,6 +86,65 @@ public sealed class LinuxAudioAlertServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task NonExecutablePathCandidateDoesNotMaskLaterExecutableBackend()
+    {
+        string soundPath = this.CreateSoundFile();
+        string firstPathDirectory = Path.Combine(this.tempDirectory, "path-1");
+        string secondPathDirectory = Path.Combine(this.tempDirectory, "path-2");
+        Directory.CreateDirectory(firstPathDirectory);
+        Directory.CreateDirectory(secondPathDirectory);
+        File.WriteAllText(Path.Combine(firstPathDirectory, "pw-play"), string.Empty);
+        string paplayPath = Path.Combine(secondPathDirectory, "paplay");
+        File.WriteAllText(paplayPath, string.Empty);
+#pragma warning disable CA1416
+        File.SetUnixFileMode(paplayPath, UnixFileMode.UserRead | UnixFileMode.UserExecute);
+#pragma warning restore CA1416
+        string? previousPath = Environment.GetEnvironmentVariable("PATH");
+        var calls = new List<string>();
+
+        try
+        {
+            Environment.SetEnvironmentVariable("PATH", string.Join(Path.PathSeparator, firstPathDirectory, secondPathDirectory));
+            var service = new LinuxAudioAlertService(
+                soundPath,
+                (startInfo, _) =>
+                {
+                    calls.Add(startInfo.FileName);
+                    return Task.FromResult(0);
+                },
+                LinuxAudioAlertService.IsExecutableAvailable);
+
+            await service.PlayAlertAsync(AudioAlertSoundIds.NormalBeep);
+
+            Assert.True(service.IsSupported);
+            Assert.Equal(["paplay"], calls);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("PATH", previousPath);
+        }
+    }
+
+    [Fact]
+    public void DirectoryPathCandidateIsNotExecutable()
+    {
+        string pathDirectory = Path.Combine(this.tempDirectory, "path");
+        Directory.CreateDirectory(Path.Combine(pathDirectory, "pw-play"));
+        string? previousPath = Environment.GetEnvironmentVariable("PATH");
+
+        try
+        {
+            Environment.SetEnvironmentVariable("PATH", pathDirectory);
+
+            Assert.False(LinuxAudioAlertService.IsExecutableAvailable("pw-play"));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("PATH", previousPath);
+        }
+    }
+
+    [Fact]
     public async Task SelectedBackendFailureReturnsNormally()
     {
         string soundPath = this.CreateSoundFile();

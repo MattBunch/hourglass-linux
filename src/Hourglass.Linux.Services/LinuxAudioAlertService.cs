@@ -251,7 +251,7 @@ public sealed class LinuxAudioAlertService : IAudioAlertService
         }
     }
 
-    private static bool IsExecutableAvailable(string executableName)
+    internal static bool IsExecutableAvailable(string executableName)
     {
         string? path = Environment.GetEnvironmentVariable("PATH");
         if (string.IsNullOrWhiteSpace(path))
@@ -267,13 +267,40 @@ public sealed class LinuxAudioAlertService : IAudioAlertService
             }
 
             string candidate = Path.Combine(directory, executableName);
-            if (File.Exists(candidate))
+            if (IsExecutableFile(candidate))
             {
                 return true;
             }
         }
 
         return false;
+    }
+
+    private static bool IsExecutableFile(string path)
+    {
+        try
+        {
+            var fileInfo = new FileInfo(path);
+            if (!fileInfo.Exists)
+            {
+                return false;
+            }
+
+            FileAttributes attributes = fileInfo.Attributes;
+            if ((attributes & FileAttributes.Directory) != 0)
+            {
+                return false;
+            }
+
+#pragma warning disable CA1416
+            UnixFileMode mode = File.GetUnixFileMode(path);
+#pragma warning restore CA1416
+            return (mode & (UnixFileMode.UserExecute | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute)) != 0;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
     }
 
     private readonly record struct AudioPlayerCommand(string ExecutableName, string? StableArgument = null)

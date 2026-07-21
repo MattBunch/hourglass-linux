@@ -64,7 +64,6 @@ public sealed class RtcWakeAlarmService : IWakeAlarmService
         }
 
         long requestedUnixTime = request.WakeAt.ToUniversalTime().ToUnixTimeSeconds();
-        bool wroteRequestedTimestamp = false;
         if (requestedUnixTime <= this.now().ToUniversalTime().ToUnixTimeSeconds())
         {
             return Unsupported("Wake alarm time must be in the future.");
@@ -84,12 +83,10 @@ public sealed class RtcWakeAlarmService : IWakeAlarmService
                 this.wakeAlarmPath,
                 requestedUnixTime.ToString(CultureInfo.InvariantCulture),
                 cancellationToken).ConfigureAwait(false);
-            wroteRequestedTimestamp = true;
 
             long? verifiedUnixTime = await this.ReadCurrentAlarmAsync(cancellationToken).ConfigureAwait(false);
             if (verifiedUnixTime != requestedUnixTime)
             {
-                await this.RollBackWrittenTimestampAsync(requestedUnixTime).ConfigureAwait(false);
                 return Unsupported(VerificationFailedMessage);
             }
 
@@ -101,20 +98,10 @@ public sealed class RtcWakeAlarmService : IWakeAlarmService
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            if (wroteRequestedTimestamp)
-            {
-                await this.RollBackWrittenTimestampAsync(requestedUnixTime).ConfigureAwait(false);
-            }
-
             throw;
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
-            if (wroteRequestedTimestamp)
-            {
-                await this.RollBackWrittenTimestampAsync(requestedUnixTime).ConfigureAwait(false);
-            }
-
             return Unsupported(exception.Message);
         }
     }
@@ -129,22 +116,6 @@ public sealed class RtcWakeAlarmService : IWakeAlarmService
         }
 
         return unixTime;
-    }
-
-    private async Task RollBackWrittenTimestampAsync(long requestedUnixTime)
-    {
-        try
-        {
-            long? currentUnixTime = await this.ReadCurrentAlarmAsync(CancellationToken.None).ConfigureAwait(false);
-            if (currentUnixTime == requestedUnixTime)
-            {
-                await this.wakeAlarmFile.WriteAllTextAsync(this.wakeAlarmPath, "0", CancellationToken.None)
-                    .ConfigureAwait(false);
-            }
-        }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or OperationCanceledException)
-        {
-        }
     }
 
     private static WakeAlarmScheduleResult Unsupported(string message)

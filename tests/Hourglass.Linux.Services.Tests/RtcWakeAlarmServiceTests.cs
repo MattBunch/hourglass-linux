@@ -97,7 +97,7 @@ public sealed class RtcWakeAlarmServiceTests
     }
 
     [Fact]
-    public async Task CancellationAfterWritingRequestedTimestampRollsBack()
+    public async Task CancellationAfterWritingRequestedTimestampDoesNotClearSharedAlarm()
     {
         var file = new FakeWakeAlarmFile("0");
         using var cancellation = new CancellationTokenSource();
@@ -116,12 +116,14 @@ public sealed class RtcWakeAlarmServiceTests
                 new WakeAlarmRequest(Now.AddMinutes(10), "Timer"),
                 cancellation.Token));
 
-        Assert.Equal("0", file.Value);
+        Assert.Equal(requestedUnixTime.ToString(), file.Value);
+        Assert.DoesNotContain("0", file.Writes.Skip(2));
     }
 
     [Fact]
-    public async Task VerificationMismatchAfterWritingRequestedTimestampRollsBack()
+    public async Task VerificationMismatchAfterWritingRequestedTimestampDoesNotClearSharedAlarm()
     {
+        long requestedUnixTime = Now.AddMinutes(10).ToUnixTimeSeconds();
         var file = new FakeWakeAlarmFile("0")
         {
             VerificationReadValue = Now.AddMinutes(11).ToUnixTimeSeconds().ToString()
@@ -133,12 +135,14 @@ public sealed class RtcWakeAlarmServiceTests
 
         Assert.False(result.Scheduled);
         Assert.Null(result.Lease);
-        Assert.Equal("0", file.Value);
+        Assert.Equal(requestedUnixTime.ToString(), file.Value);
+        Assert.DoesNotContain("0", file.Writes.Skip(2));
     }
 
     [Fact]
-    public async Task VerificationReadFailureAfterWritingRequestedTimestampRollsBack()
+    public async Task VerificationReadFailureAfterWritingRequestedTimestampDoesNotClearSharedAlarm()
     {
+        long requestedUnixTime = Now.AddMinutes(10).ToUnixTimeSeconds();
         var file = new FakeWakeAlarmFile("0") { ThrowOnVerificationRead = true };
         RtcWakeAlarmService service = CreateService(file);
 
@@ -147,11 +151,12 @@ public sealed class RtcWakeAlarmServiceTests
 
         Assert.False(result.Scheduled);
         Assert.Null(result.Lease);
-        Assert.Equal("0", file.Value);
+        Assert.Equal(requestedUnixTime.ToString(), file.Value);
+        Assert.DoesNotContain("0", file.Writes.Skip(2));
     }
 
     [Fact]
-    public async Task RollbackDoesNotClearDifferentNewerTimestamp()
+    public async Task VerificationMismatchDoesNotClearDifferentNewerTimestamp()
     {
         string newerAlarm = Now.AddMinutes(20).ToUnixTimeSeconds().ToString();
         var file = new FakeWakeAlarmFile("0")
@@ -170,12 +175,11 @@ public sealed class RtcWakeAlarmServiceTests
     }
 
     [Fact]
-    public async Task RollbackFailurePreservesPrimaryVerificationFailureResult()
+    public async Task VerificationFailurePreservesPrimaryVerificationFailureResult()
     {
         var file = new FakeWakeAlarmFile("0")
         {
-            VerificationReadValue = Now.AddMinutes(11).ToUnixTimeSeconds().ToString(),
-            ThrowOnRollbackWrite = true
+            VerificationReadValue = Now.AddMinutes(11).ToUnixTimeSeconds().ToString()
         };
         RtcWakeAlarmService service = CreateService(file);
 
@@ -184,6 +188,7 @@ public sealed class RtcWakeAlarmServiceTests
 
         Assert.False(result.Scheduled);
         Assert.Equal("RTC wake alarm could not be verified after scheduling.", result.Message);
+        Assert.DoesNotContain("0", file.Writes.Skip(2));
     }
 
     private static string CreateWakeAlarmFile(string value)
@@ -211,13 +216,13 @@ public sealed class RtcWakeAlarmServiceTests
 
         public string Value { get; private set; } = value;
 
+        public List<string> Writes { get; } = [];
+
         public string? VerificationReadValue { get; init; }
 
         public bool ApplyVerificationReadValueToCurrentAlarm { get; init; }
 
         public bool ThrowOnVerificationRead { get; init; }
-
-        public bool ThrowOnRollbackWrite { get; init; }
 
         public Action<string>? AfterWrite { get; set; }
 
@@ -252,17 +257,13 @@ public sealed class RtcWakeAlarmServiceTests
 
         public Task WriteAllTextAsync(string path, string contents, CancellationToken cancellationToken)
         {
-            if (this.ThrowOnRollbackWrite && contents == "0" && this.readCount > 2)
-            {
-                throw new IOException("Rollback write failed.");
-            }
-
             if (cancellationToken.IsCancellationRequested)
             {
                 return Task.FromCanceled(cancellationToken);
             }
 
             this.Value = contents;
+            this.Writes.Add(contents);
             this.AfterWrite?.Invoke(contents);
             return Task.CompletedTask;
         }
