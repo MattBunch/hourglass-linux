@@ -512,6 +512,37 @@ public sealed class LinuxFileLockSingleInstanceServiceTests
         Assert.Same(disposeTask, completed);
     }
 
+    [Fact]
+    public async Task DisposeAbandonsHandlerThatIgnoresCancellation()
+    {
+        string tempDirectory = CreateTempDirectory();
+        string socketPath = Path.Combine(tempDirectory, "hourglass-linux.sock");
+        var fileSystem = new RecordingLockFileSystem { CreateRealDirectories = true };
+        using var service = new LinuxFileLockSingleInstanceService(
+            Path.Combine(tempDirectory, "hourglass-linux.lock"),
+            socketPath,
+            fileSystem,
+            () => 123,
+            () => new DateTimeOffset(2026, 6, 14, 8, 0, 0, TimeSpan.Zero));
+        var handlerEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var neverReleaseHandler = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        Assert.True(await service.TryAcquireAsync());
+        await service.StartRequestListenerAsync(async (_, _) =>
+        {
+            handlerEntered.SetResult();
+            await neverReleaseHandler.Task;
+        });
+
+        await service.SendLaunchRequestAsync(new SingleInstanceLaunchRequest(SingleInstanceLaunchRequestKind.Activate, []));
+        await handlerEntered.Task;
+
+        Task disposeTask = Task.Run(service.Dispose);
+        Task completed = await Task.WhenAny(disposeTask, Task.Delay(TimeSpan.FromSeconds(2)));
+
+        Assert.Same(disposeTask, completed);
+    }
+
     private static LinuxFileLockSingleInstanceService CreateService(RecordingLockFileSystem fileSystem)
     {
         return new LinuxFileLockSingleInstanceService(

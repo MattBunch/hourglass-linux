@@ -11,6 +11,7 @@ public sealed class LinuxFileLockSingleInstanceService : ISingleInstanceService
 {
     private const string ApplicationId = "hourglass-linux";
     private const int IpcTimeoutMilliseconds = 2000;
+    private const int HandlerShutdownDrainMilliseconds = 250;
     private const int MaxPayloadBytes = 8 * 1024;
     private const int MaxConcurrentHandlers = 4;
     private const long LockLength = 1;
@@ -227,13 +228,7 @@ public sealed class LinuxFileLockSingleInstanceService : ISingleInstanceService
 
         try
         {
-            Task.WaitAll(tasksToWait);
-        }
-        catch (OperationCanceledException)
-        {
-        }
-        catch (AggregateException exception) when (exception.InnerExceptions.All(inner => inner is OperationCanceledException))
-        {
+            DrainOwnedTasks(tasksToWait);
         }
         finally
         {
@@ -357,7 +352,11 @@ public sealed class LinuxFileLockSingleInstanceService : ISingleInstanceService
     {
         this.activeHandlers.TryAdd(task, 0);
         task.ContinueWith(
-            completedTask => this.activeHandlers.TryRemove(completedTask, out _),
+            completedTask =>
+            {
+                this.activeHandlers.TryRemove(completedTask, out _);
+                ObserveCompletion(completedTask);
+            },
             CancellationToken.None,
             TaskContinuationOptions.ExecuteSynchronously,
             TaskScheduler.Default);
@@ -373,6 +372,45 @@ public sealed class LinuxFileLockSingleInstanceService : ISingleInstanceService
 
         tasks.AddRange(this.activeHandlers.Keys);
         return [.. tasks];
+    }
+
+    private static void DrainOwnedTasks(Task[] tasks)
+    {
+        if (tasks.Length == 0)
+        {
+            return;
+        }
+
+        Task allTasks = Task.WhenAll(tasks);
+        try
+        {
+            if (allTasks.Wait(TimeSpan.FromMilliseconds(HandlerShutdownDrainMilliseconds)))
+            {
+                allTasks.GetAwaiter().GetResult();
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (AggregateException exception) when (exception.InnerExceptions.All(inner => inner is OperationCanceledException))
+        {
+        }
+    }
+
+    private static void ObserveCompletion(Task task)
+    {
+        if (!task.IsFaulted)
+        {
+            return;
+        }
+
+        try
+        {
+            task.GetAwaiter().GetResult();
+        }
+        catch
+        {
+        }
     }
 
     private static async Task WriteFramedPayloadAsync(
