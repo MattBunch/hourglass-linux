@@ -2060,7 +2060,12 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
         try
         {
-            await this.appSettingsStore.SaveChangeAsync(previousSettings, requestedSettings).ConfigureAwait(false);
+            LinuxAppSettings mergedSettings = await this.appSettingsStore
+                .SaveChangeAsync(previousSettings, requestedSettings)
+                .ConfigureAwait(false);
+            await this.uiDispatcher
+                .InvokeAsync(() => this.ReplaceSettings(mergedSettings, save: false))
+                .ConfigureAwait(false);
         }
         catch (Exception)
         {

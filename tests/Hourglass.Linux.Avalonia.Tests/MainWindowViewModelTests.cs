@@ -2427,6 +2427,50 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
+    public async Task SettingsSaveAppliesMergedSnapshotReturnedBySharedStore()
+    {
+        var settingsStore = new RecordingSettingsStore
+        {
+            LoadedSettings = LinuxAppSettings.Default
+        };
+        var appSettingsStore = new CoordinatedAppSettingsStore(settingsStore);
+        var firstWindow = CreateViewModel(
+            new ManualMonotonicClock(),
+            settingsStore: settingsStore,
+            appSettingsStore: appSettingsStore);
+        var secondDispatcher = new RecordingUiDispatcher();
+        var secondWindow = CreateViewModel(
+            new ManualMonotonicClock(),
+            settingsStore: settingsStore,
+            appSettingsStore: appSettingsStore,
+            uiDispatcher: secondDispatcher);
+        bool notificationsChangedOnDispatcher = false;
+
+        secondWindow.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(MainWindowViewModel.NotificationsEnabled))
+            {
+                notificationsChangedOnDispatcher = secondDispatcher.IsDispatching;
+            }
+        };
+
+        await firstWindow.LoadSettingsAsync();
+        await secondWindow.LoadSettingsAsync();
+
+        firstWindow.ToggleNotificationsCommand.Execute(null);
+        await firstWindow.PendingSettingsSave;
+        secondWindow.ToggleAlwaysOnTopCommand.Execute(null);
+        await secondWindow.PendingSettingsSave;
+
+        Assert.False(secondWindow.NotificationsEnabled);
+        Assert.True(secondWindow.AlwaysOnTop);
+        Assert.True(notificationsChangedOnDispatcher);
+        Assert.NotNull(settingsStore.SavedSettings);
+        Assert.False(settingsStore.SavedSettings.NotificationsEnabled);
+        Assert.True(settingsStore.SavedSettings.AlwaysOnTop);
+    }
+
+    [Fact]
     public async Task UnsupportedStatusIconMasksPersistedSettingAndDoesNotSaveToggle()
     {
         var settingsStore = new RecordingSettingsStore
@@ -4001,6 +4045,7 @@ public sealed class MainWindowViewModelTests
         INotificationService? notificationService = null,
         ISessionInhibitor? sessionInhibitor = null,
         ISettingsStore? settingsStore = null,
+        IAppSettingsStore? appSettingsStore = null,
         ISavedTimersStore? savedTimersStore = null,
         IAudioAlertService? audioAlertService = null,
         ISystemPowerService? systemPowerService = null,
@@ -4016,7 +4061,7 @@ public sealed class MainWindowViewModelTests
             notificationService ?? new RecordingNotificationService(),
             sessionInhibitor ?? new RecordingSessionInhibitor(),
             resolvedSettingsStore,
-            new DirectAppSettingsStore(resolvedSettingsStore),
+            appSettingsStore ?? new DirectAppSettingsStore(resolvedSettingsStore),
             savedTimersStore ?? new DirectSavedTimersStore(resolvedSettingsStore),
             audioAlertService ?? new RecordingAudioAlertService(),
             systemPowerService ?? new RecordingSystemPowerService(),

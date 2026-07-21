@@ -543,6 +543,45 @@ public sealed class LinuxFileLockSingleInstanceServiceTests
         Assert.Same(disposeTask, completed);
     }
 
+    [Fact]
+    public async Task IdleConnectionsDoNotCreateHandlersBeyondAdmissionLimit()
+    {
+        string tempDirectory = CreateTempDirectory();
+        string socketPath = Path.Combine(tempDirectory, "hourglass-linux.sock");
+        var fileSystem = new RecordingLockFileSystem { CreateRealDirectories = true };
+        using var service = new LinuxFileLockSingleInstanceService(
+            Path.Combine(tempDirectory, "hourglass-linux.lock"),
+            socketPath,
+            fileSystem,
+            () => 123,
+            () => new DateTimeOffset(2026, 6, 14, 8, 0, 0, TimeSpan.Zero));
+        var sockets = new List<Socket>();
+
+        try
+        {
+            Assert.True(await service.TryAcquireAsync());
+            await service.StartRequestListenerAsync((_, _) => Task.CompletedTask);
+
+            for (int i = 0; i < 5; i++)
+            {
+                var socket = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
+                sockets.Add(socket);
+                await socket.ConnectAsync(new UnixDomainSocketEndPoint(socketPath));
+            }
+
+            await WaitUntilAsync(() => service.ActiveHandlerCount == 4);
+
+            Assert.Equal(4, service.ActiveHandlerCount);
+        }
+        finally
+        {
+            foreach (Socket socket in sockets)
+            {
+                socket.Dispose();
+            }
+        }
+    }
+
     private static LinuxFileLockSingleInstanceService CreateService(RecordingLockFileSystem fileSystem)
     {
         return new LinuxFileLockSingleInstanceService(
@@ -558,6 +597,15 @@ public sealed class LinuxFileLockSingleInstanceServiceTests
         string path = Path.Combine(Path.GetTempPath(), "hourglass-single-instance-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(path);
         return path;
+    }
+
+    private static async Task WaitUntilAsync(Func<bool> condition)
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+        while (!condition())
+        {
+            await Task.Delay(TimeSpan.FromMilliseconds(10), timeout.Token);
+        }
     }
 
     private static Task SendRawFrameAsync(string socketPath, byte[] payload)

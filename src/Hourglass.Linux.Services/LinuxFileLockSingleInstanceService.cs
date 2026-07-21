@@ -197,6 +197,8 @@ public sealed class LinuxFileLockSingleInstanceService : ISingleInstanceService
         }
     }
 
+    internal int ActiveHandlerCount => this.activeHandlers.Count;
+
     public void Dispose()
     {
         Task[] tasksToWait = [];
@@ -288,6 +290,7 @@ public sealed class LinuxFileLockSingleInstanceService : ISingleInstanceService
                 try
                 {
                     accepted = await listener.AcceptAsync(cancellationToken).ConfigureAwait(false);
+                    await this.handlerGate.WaitAsync(cancellationToken).ConfigureAwait(false);
                     this.TrackHandler(this.HandleAcceptedSocketAsync(accepted, handleRequestAsync, cancellationToken));
                     accepted = null;
                 }
@@ -311,12 +314,8 @@ public sealed class LinuxFileLockSingleInstanceService : ISingleInstanceService
         using (socket)
         await using (var stream = new NetworkStream(socket, ownsSocket: false))
         {
-            bool gateAcquired = false;
             try
             {
-                await this.handlerGate.WaitAsync(cancellationToken).ConfigureAwait(false);
-                gateAcquired = true;
-
                 using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                 timeoutSource.CancelAfter(TimeSpan.FromMilliseconds(IpcTimeoutMilliseconds));
 
@@ -340,10 +339,7 @@ public sealed class LinuxFileLockSingleInstanceService : ISingleInstanceService
             }
             finally
             {
-                if (gateAcquired)
-                {
-                    this.handlerGate.Release();
-                }
+                this.handlerGate.Release();
             }
         }
     }
