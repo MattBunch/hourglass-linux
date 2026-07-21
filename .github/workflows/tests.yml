@@ -4,6 +4,13 @@ on:
   push:
   pull_request:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 env:
   DOTNET_CLI_TELEMETRY_OPTOUT: "1"
   DOTNET_NOLOGO: "1"
@@ -15,10 +22,12 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        # actions/checkout v4.2.2
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v4
+        # actions/setup-dotnet v4.3.1
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9
         with:
           dotnet-version: 10.0.x
 
@@ -26,10 +35,13 @@ jobs:
         run: dotnet restore Hourglass.Linux.sln
 
       - name: Build
-        run: dotnet build Hourglass.Linux.sln --configuration Release --no-restore
+        run: dotnet build Hourglass.Linux.sln --configuration Release --no-restore -warnaserror
 
       - name: Test
         run: dotnet test Hourglass.Linux.sln --configuration Release --no-build --verbosity normal
+
+      - name: Verify formatting
+        run: dotnet format Hourglass.Linux.sln --verify-no-changes --no-restore --verbosity minimal
 
   packaging:
     name: Build Linux package artifacts
@@ -38,10 +50,12 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        # actions/checkout v4.2.2
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v4
+        # actions/setup-dotnet v4.3.1
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9
         with:
           dotnet-version: 10.0.x
 
@@ -68,13 +82,15 @@ jobs:
         run: tar -C /tmp -czf /tmp/hourglass-linux-AppDir.tar.gz hourglass-linux.AppDir
 
       - name: Upload publish artifact
-        uses: actions/upload-artifact@v4
+        # actions/upload-artifact v4.6.2
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: hourglass-linux-linux-x64
           path: /tmp/hourglass-linux-linux-x64.tar.gz
 
       - name: Upload AppDir artifact
-        uses: actions/upload-artifact@v4
+        # actions/upload-artifact v4.6.2
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: hourglass-linux-AppDir
           path: /tmp/hourglass-linux-AppDir.tar.gz

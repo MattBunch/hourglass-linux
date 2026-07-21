@@ -34,7 +34,7 @@ namespace Hourglass.Parsing
         /// <param name="str">A string.</param>
         /// <returns>A <see cref="TimerStartToken"/> for the specified string, or <c>null</c> if the string is not a
         /// supported representation of a <see cref="TimerStartToken"/>.</returns>
-        public static TimerStartToken FromString(string str)
+        public static TimerStartToken? FromString(string str)
         {
             return FromString(str, CultureInfo.CurrentCulture);
         }
@@ -47,7 +47,7 @@ namespace Hourglass.Parsing
         /// <param name="provider">An <see cref="IFormatProvider"/>.</param>
         /// <returns>A <see cref="TimerStartToken"/> for the specified string, or <c>null</c> if the string is not a
         /// supported representation of a <see cref="TimerStartToken"/>.</returns>
-        public static TimerStartToken FromString(string str, IFormatProvider provider)
+        public static TimerStartToken? FromString(string str, IFormatProvider provider)
         {
             str = str.Trim();
 
@@ -56,7 +56,8 @@ namespace Hourglass.Parsing
                 return null;
             }
 
-            string preferDateTimePattern = Resources.ResourceManager.GetString("TimerStartTokenUseDateTimeParserPattern", provider);
+            string preferDateTimePattern = Resources.ResourceManager.GetString("TimerStartTokenUseDateTimeParserPattern", provider)
+                ?? string.Empty;
             if (Regex.IsMatch(str, preferDateTimePattern, Parser.RegexOptions))
             {
                 str = Regex.Replace(str, preferDateTimePattern, string.Empty, Parser.RegexOptions);
@@ -128,9 +129,9 @@ namespace Hourglass.Parsing
         /// <param name="str">A string.</param>
         /// <returns>A <see cref="TimerStartToken"/> for the specified string, or <c>null</c> if the string is not a
         /// supported representation of a <see cref="DateTimeToken"/>.</returns>
-        private static TimerStartToken FromDateTime(string str)
+        private static TimerStartToken? FromDateTime(string str)
         {
-            TimerStartToken timerStartToken;
+            TimerStartToken? timerStartToken;
 
             if (DateTimeToken.Parser.Instance.TryParse(str, out timerStartToken))
             {
@@ -148,9 +149,9 @@ namespace Hourglass.Parsing
         /// <param name="str">A string.</param>
         /// <returns>A <see cref="TimerStartToken"/> for the specified string, or <c>null</c> if the string is not a
         /// supported representation of a <see cref="TimerStartToken"/>.</returns>
-        private static TimerStartToken FromTimeSpanOrDateTimeString(string str)
+        private static TimerStartToken? FromTimeSpanOrDateTimeString(string str)
         {
-            TimerStartToken timerStartToken;
+            TimerStartToken? timerStartToken;
 
             if (TimeSpanToken.Parser.Instance.TryParse(str, out timerStartToken))
             {
@@ -232,7 +233,7 @@ namespace Hourglass.Parsing
             /// if the string is not a supported representation of a <see cref="TimerStartToken"/>.</param>
             /// <returns><c>true</c> if the <see cref="TimerStartToken"/> was successfully parsed from <paramref
             /// name="str"/>, or <c>false</c> otherwise.</returns>
-            public bool TryParse(string str, out TimerStartToken timerStartToken)
+            public bool TryParse(string str, out TimerStartToken? timerStartToken)
             {
                 return this.TryParse(str, CultureInfo.CurrentCulture, out timerStartToken);
             }
@@ -246,7 +247,7 @@ namespace Hourglass.Parsing
             /// if the string is not a supported representation of a <see cref="TimerStartToken"/>.</param>
             /// <returns><c>true</c> if the <see cref="TimerStartToken"/> was successfully parsed from <paramref
             /// name="str"/>, or <c>false</c> otherwise.</returns>
-            public bool TryParse(string str, IFormatProvider provider, out TimerStartToken timerStartToken)
+            public bool TryParse(string str, IFormatProvider provider, out TimerStartToken? timerStartToken)
             {
                 try
                 {

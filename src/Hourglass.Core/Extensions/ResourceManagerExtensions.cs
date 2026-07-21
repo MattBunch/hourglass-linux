@@ -23,7 +23,7 @@ namespace Hourglass.Extensions
         /// resources.</returns>
         public static IFormatProvider GetEffectiveProvider(this ResourceManager resourceManager)
         {
-            string cultureName = resourceManager.GetString("CultureName");
+            string? cultureName = resourceManager.GetString("CultureName");
             return !string.IsNullOrEmpty(cultureName) ? CultureInfo.GetCultureInfo(cultureName) : CultureInfo.InvariantCulture;
         }
 
@@ -37,7 +37,7 @@ namespace Hourglass.Extensions
         /// for the culture specified by <paramref name="provider"/>.</returns>
         public static IFormatProvider GetEffectiveProvider(this ResourceManager resourceManager, IFormatProvider provider)
         {
-            string cultureName = resourceManager.GetString("CultureName", (CultureInfo)provider);
+            string? cultureName = resourceManager.GetString("CultureName", (CultureInfo)provider);
             return !string.IsNullOrEmpty(cultureName) ? CultureInfo.GetCultureInfo(cultureName) : CultureInfo.InvariantCulture;
         }
 
@@ -52,7 +52,7 @@ namespace Hourglass.Extensions
         /// name="name"/> cannot be found in a resource set.</returns>
         public static string GetString(this ResourceManager resourceManager, string name, IFormatProvider provider)
         {
-            return resourceManager.GetString(name, (CultureInfo)provider);
+            return resourceManager.GetString(name, (CultureInfo)provider) ?? string.Empty;
         }
     }
 }

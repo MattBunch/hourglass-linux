@@ -32,6 +32,15 @@ A stale lock file is harmless because the operating-system lock is released when
 
 The owner process removes any stale socket file only after it owns the lock, then binds a Unix domain socket. Secondary launches never delete the socket file. Requests are local to the same user/session namespace; no TCP listener is opened.
 
+The IPC protocol is length-prefixed UTF-8 JSON:
+
+```text
+4-byte unsigned big-endian payload length
+UTF-8 JSON payload
+```
+
+The maximum payload is 8 KiB. Zero-length, oversized, truncated, malformed JSON, unsupported request kinds, and `StartTimer` requests without timer input are rejected without invoking the application handler. Each accepted connection has a short read timeout, active handlers are tracked, and disposal cancels the listener and waits for handlers that are already running.
+
 Supported command forms:
 
 ```bash

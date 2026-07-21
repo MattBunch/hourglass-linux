@@ -63,7 +63,7 @@ namespace Hourglass.Timing
                 throw new ArgumentNullException("timerStartInfo");
             }
 
-            this.timerStartToken = timerStartInfo.TimerStartToken;
+            this.timerStartToken = timerStartInfo.TimerStartToken ?? throw new ArgumentException("Timer start token is required.", "timerStartInfo");
         }
 
         /// <summary>
@@ -71,7 +71,7 @@ namespace Hourglass.Timing
         /// </summary>
         public static TimerStart Default
         {
-            get { return TimerStart.FromString(Resources.TimerStartDefault); }
+            get { return TimerStart.FromString(Resources.TimerStartDefault) ?? throw new FormatException(); }
         }
 
         /// <summary>
@@ -79,7 +79,7 @@ namespace Hourglass.Timing
         /// </summary>
         public static TimerStart Zero
         {
-            get { return TimerStart.FromString(Resources.TimerStartZero); }
+            get { return TimerStart.FromString(Resources.TimerStartZero) ?? throw new FormatException(); }
         }
 
         /// <summary>
@@ -117,9 +117,9 @@ namespace Hourglass.Timing
         /// <param name="str">A string.</param>
         /// <returns>The <see cref="TimerStart"/> for the string, or <c>null</c> if the string is not a supported
         /// representation of a <see cref="TimerStart"/>.</returns>
-        public static TimerStart FromString(string str)
+        public static TimerStart? FromString(string str)
         {
-            TimerStartToken timerStartToken = TimerStartToken.FromString(str);
+            TimerStartToken? timerStartToken = TimerStartToken.FromString(str);
 
             if (timerStartToken == null)
             {
@@ -134,7 +134,7 @@ namespace Hourglass.Timing
         /// </summary>
         /// <param name="timerStartInfo">A <see cref="TimerStartInfo"/>.</param>
         /// <returns>The <see cref="TimerStart"/> for the <see cref="TimerStartInfo"/>.</returns>
-        public static TimerStart FromTimerStartInfo(TimerStartInfo timerStartInfo)
+        public static TimerStart? FromTimerStartInfo(TimerStartInfo? timerStartInfo)
         {
             if (timerStartInfo == null)
             {

@@ -66,54 +66,122 @@ public sealed class LinuxAudioAlertServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task MissingPwPlayFallsBackToPaplay()
+    public async Task SelectedBackendIsUsedWithoutPerPlaybackFallbackProbe()
     {
         string soundPath = this.CreateSoundFile();
         var calls = new List<string>();
-        var service = new LinuxAudioAlertService(soundPath, (startInfo, _) =>
-        {
-            calls.Add(startInfo.FileName);
-            return startInfo.FileName == "pw-play"
-                ? throw new Win32Exception()
-                : Task.FromResult(0);
-        });
+        var service = new LinuxAudioAlertService(
+            soundPath,
+            (startInfo, _) =>
+            {
+                calls.Add(startInfo.FileName);
+                return Task.FromResult(0);
+            },
+            executable => executable == "paplay");
 
         await service.PlayAlertAsync(AudioAlertSoundIds.NormalBeep);
 
-        Assert.Equal(["pw-play", "paplay"], calls);
+        Assert.True(service.IsSupported);
+        Assert.Equal(["paplay"], calls);
     }
 
     [Fact]
-    public async Task NonZeroPwPlayExitFallsBackToPaplay()
+    public async Task NonExecutablePathCandidateDoesNotMaskLaterExecutableBackend()
+    {
+        string soundPath = this.CreateSoundFile();
+        string firstPathDirectory = Path.Combine(this.tempDirectory, "path-1");
+        string secondPathDirectory = Path.Combine(this.tempDirectory, "path-2");
+        Directory.CreateDirectory(firstPathDirectory);
+        Directory.CreateDirectory(secondPathDirectory);
+        File.WriteAllText(Path.Combine(firstPathDirectory, "pw-play"), string.Empty);
+        string paplayPath = Path.Combine(secondPathDirectory, "paplay");
+        File.WriteAllText(paplayPath, string.Empty);
+#pragma warning disable CA1416
+        File.SetUnixFileMode(paplayPath, UnixFileMode.UserRead | UnixFileMode.UserExecute);
+#pragma warning restore CA1416
+        string? previousPath = Environment.GetEnvironmentVariable("PATH");
+        var calls = new List<string>();
+
+        try
+        {
+            Environment.SetEnvironmentVariable("PATH", string.Join(Path.PathSeparator, firstPathDirectory, secondPathDirectory));
+            var service = new LinuxAudioAlertService(
+                soundPath,
+                (startInfo, _) =>
+                {
+                    calls.Add(startInfo.FileName);
+                    return Task.FromResult(0);
+                },
+                LinuxAudioAlertService.IsExecutableAvailable);
+
+            await service.PlayAlertAsync(AudioAlertSoundIds.NormalBeep);
+
+            Assert.True(service.IsSupported);
+            Assert.Equal(["paplay"], calls);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("PATH", previousPath);
+        }
+    }
+
+    [Fact]
+    public void DirectoryPathCandidateIsNotExecutable()
+    {
+        string pathDirectory = Path.Combine(this.tempDirectory, "path");
+        Directory.CreateDirectory(Path.Combine(pathDirectory, "pw-play"));
+        string? previousPath = Environment.GetEnvironmentVariable("PATH");
+
+        try
+        {
+            Environment.SetEnvironmentVariable("PATH", pathDirectory);
+
+            Assert.False(LinuxAudioAlertService.IsExecutableAvailable("pw-play"));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("PATH", previousPath);
+        }
+    }
+
+    [Fact]
+    public async Task SelectedBackendFailureReturnsNormally()
     {
         string soundPath = this.CreateSoundFile();
         var calls = new List<string>();
-        var service = new LinuxAudioAlertService(soundPath, (startInfo, _) =>
-        {
-            calls.Add(startInfo.FileName);
-            return Task.FromResult(startInfo.FileName == "pw-play" ? 1 : 0);
-        });
+        var service = new LinuxAudioAlertService(
+            soundPath,
+            (startInfo, _) =>
+            {
+                calls.Add(startInfo.FileName);
+                return Task.FromResult(1);
+            },
+            executable => executable == "pw-play");
 
         await service.PlayAlertAsync(AudioAlertSoundIds.NormalBeep);
 
-        Assert.Equal(["pw-play", "paplay"], calls);
+        Assert.Equal(["pw-play"], calls);
     }
 
     [Fact]
-    public async Task PaplayFailureFallsBackToAplay()
+    public async Task AplayBackendUsesQuietArgument()
     {
         string soundPath = this.CreateSoundFile();
         var calls = new List<ProcessStartInfo>();
-        var service = new LinuxAudioAlertService(soundPath, (startInfo, _) =>
-        {
-            calls.Add(startInfo);
-            return Task.FromResult(startInfo.FileName == "aplay" ? 0 : 1);
-        });
+        var service = new LinuxAudioAlertService(
+            soundPath,
+            (startInfo, _) =>
+            {
+                calls.Add(startInfo);
+                return Task.FromResult(0);
+            },
+            executable => executable == "aplay");
 
         await service.PlayAlertAsync(AudioAlertSoundIds.NormalBeep);
 
-        Assert.Equal(["pw-play", "paplay", "aplay"], calls.Select(call => call.FileName));
-        Assert.Equal(["--quiet", soundPath], calls[2].ArgumentList);
+        ProcessStartInfo call = Assert.Single(calls);
+        Assert.Equal("aplay", call.FileName);
+        Assert.Equal(["--quiet", soundPath], call.ArgumentList);
     }
 
     [Fact]
@@ -196,7 +264,7 @@ public sealed class LinuxAudioAlertServiceTests : IDisposable
     }
 
     [Fact]
-    public void IsSoundAvailableReportsExistingBuiltInAssets()
+    public void IsSoundAvailableRequiresAssetAndBackend()
     {
         string soundPath = this.CreateSoundFile("BeepLoud.wav");
         var service = new LinuxAudioAlertService(
@@ -205,11 +273,23 @@ public sealed class LinuxAudioAlertServiceTests : IDisposable
                 [AudioAlertSoundIds.LoudBeep] = soundPath,
                 [AudioAlertSoundIds.NormalBeep] = Path.Combine(this.tempDirectory, "missing.wav")
             },
-            (_, _) => Task.FromResult(0));
+            (_, _) => Task.FromResult(0),
+            executable => executable == "pw-play");
 
+        Assert.True(service.IsSupported);
         Assert.True(service.IsSoundAvailable(AudioAlertSoundIds.LoudBeep));
         Assert.False(service.IsSoundAvailable(AudioAlertSoundIds.NormalBeep));
         Assert.False(service.IsSoundAvailable(AudioAlertSoundIds.None));
+    }
+
+    [Fact]
+    public void IsSoundAvailableReportsFalseWhenBackendIsMissing()
+    {
+        string soundPath = this.CreateSoundFile();
+        var service = new LinuxAudioAlertService(soundPath, (_, _) => Task.FromResult(0), _ => false);
+
+        Assert.False(service.IsSupported);
+        Assert.False(service.IsSoundAvailable(AudioAlertSoundIds.NormalBeep));
     }
 
     [Fact]
@@ -259,17 +339,12 @@ public sealed class LinuxAudioAlertServiceTests : IDisposable
         var service = new LinuxAudioAlertService(soundPath, (startInfo, _) =>
         {
             calls.Add(startInfo.FileName);
-            if (calls.Count < 3)
-            {
-                throw (Exception)Activator.CreateInstance(exceptionType)!;
-            }
-
-            return Task.FromResult(0);
-        });
+            throw (Exception)Activator.CreateInstance(exceptionType)!;
+        }, executable => executable == "pw-play");
 
         await service.PlayAlertAsync(AudioAlertSoundIds.NormalBeep);
 
-        Assert.Equal(["pw-play", "paplay", "aplay"], calls);
+        Assert.Equal(["pw-play"], calls);
     }
 
     public void Dispose()

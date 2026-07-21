@@ -120,7 +120,7 @@ namespace Hourglass.Parsing
                     string formatString = provider.IsMonthFirst()
                         ? Resources.ResourceManager.GetString("NormalDateTokenMonthAndDayFormatString", provider)
                         : Resources.ResourceManager.GetString("NormalDateTokenDayAndMonthFormatString", provider);
-                    
+
                     return string.Format(
                         Resources.ResourceManager.GetEffectiveProvider(provider),
                         formatString,

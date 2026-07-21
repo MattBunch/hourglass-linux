@@ -46,6 +46,122 @@ public sealed class Milestone6CoordinatorTests
     }
 
     [Fact]
+    public async Task CoordinatedSessionInhibitorConcurrentAcquisitionsSharePendingBackendLease()
+    {
+        var inner = new RecordingSessionInhibitor { DeferAcquire = true };
+        await using var coordinator = new CoordinatedSessionInhibitor(inner);
+
+        ValueTask<IAsyncDisposable?> firstValue = coordinator.InhibitAsync(
+            "Timer one",
+            inhibitSuspend: true,
+            inhibitIdle: true);
+        ValueTask<IAsyncDisposable?> secondValue = coordinator.InhibitAsync(
+            "Timer two",
+            inhibitSuspend: true,
+            inhibitIdle: true);
+        Task<IAsyncDisposable?> first = firstValue.AsTask();
+        Task<IAsyncDisposable?> second = secondValue.AsTask();
+
+        Assert.Equal(1, inner.AcquireCount);
+        Assert.False(first.IsCompleted);
+        Assert.False(second.IsCompleted);
+
+        inner.CompleteAcquire();
+        IAsyncDisposable? firstLease = await first;
+        IAsyncDisposable? secondLease = await second;
+
+        Assert.NotNull(firstLease);
+        Assert.NotNull(secondLease);
+        Assert.Equal(1, inner.AcquireCount);
+
+        await firstLease.DisposeAsync();
+        Assert.Equal(0, inner.ReleaseCount);
+        await secondLease.DisposeAsync();
+        Assert.Equal(1, inner.ReleaseCount);
+    }
+
+    [Fact]
+    public async Task CoordinatedSessionInhibitorDisposeDuringAcquireDisposesEventualBackendLease()
+    {
+        var inner = new RecordingSessionInhibitor { DeferAcquire = true };
+        await using var coordinator = new CoordinatedSessionInhibitor(inner);
+
+        Task<IAsyncDisposable?> pending = coordinator.InhibitAsync(
+            "Timer",
+            inhibitSuspend: true,
+            inhibitIdle: true).AsTask();
+        Task disposal = coordinator.DisposeAsync().AsTask();
+
+        Assert.False(disposal.IsCompleted);
+
+        inner.CompleteAcquire();
+
+        await disposal;
+        await Assert.ThrowsAsync<ObjectDisposedException>(async () => await pending);
+        Assert.Equal(1, inner.ReleaseCount);
+    }
+
+    [Fact]
+    public async Task CoordinatedSessionInhibitorThrowsAfterDisposal()
+    {
+        var inner = new RecordingSessionInhibitor();
+        await using var coordinator = new CoordinatedSessionInhibitor(inner);
+
+        await coordinator.DisposeAsync();
+
+        await Assert.ThrowsAsync<ObjectDisposedException>(async () =>
+            await coordinator.InhibitAsync("Timer", inhibitSuspend: true, inhibitIdle: true));
+    }
+
+    [Fact]
+    public async Task CoordinatedSessionInhibitorFailedAcquireCanBeRetried()
+    {
+        var inner = new RecordingSessionInhibitor { ThrowOnAcquire = true };
+        await using var coordinator = new CoordinatedSessionInhibitor(inner);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+            await coordinator.InhibitAsync("Timer", inhibitSuspend: true, inhibitIdle: true));
+
+        inner.ThrowOnAcquire = false;
+        IAsyncDisposable? lease = await coordinator.InhibitAsync(
+            "Timer",
+            inhibitSuspend: true,
+            inhibitIdle: true);
+
+        Assert.NotNull(lease);
+        Assert.Equal(2, inner.AcquireCount);
+        await lease.DisposeAsync();
+        Assert.Equal(1, inner.ReleaseCount);
+    }
+
+    [Fact]
+    public async Task CoordinatedSessionInhibitorNullBackendLeaseUsesLogicalLeaseSafely()
+    {
+        var inner = new RecordingSessionInhibitor { ReturnNullLease = true };
+        await using var coordinator = new CoordinatedSessionInhibitor(inner);
+
+        IAsyncDisposable? first = await coordinator.InhibitAsync(
+            "Timer one",
+            inhibitSuspend: true,
+            inhibitIdle: true);
+        IAsyncDisposable? second = await coordinator.InhibitAsync(
+            "Timer two",
+            inhibitSuspend: true,
+            inhibitIdle: true);
+
+        Assert.NotNull(first);
+        Assert.NotNull(second);
+        Assert.Equal(1, inner.AcquireCount);
+
+        await first.DisposeAsync();
+        await first.DisposeAsync();
+        await second.DisposeAsync();
+        await coordinator.DisposeAsync();
+
+        Assert.Equal(0, inner.ReleaseCount);
+    }
+
+    [Fact]
     public void CoordinatorOwnedWindowsUseSingleSettingsLoadPath()
     {
         string coordinator = File.ReadAllText(FindRepositoryFile("src/Hourglass.Linux.Avalonia/TimerWindowCoordinator.cs"));
@@ -287,9 +403,17 @@ public sealed class Milestone6CoordinatorTests
 
     private sealed class RecordingSessionInhibitor : ISessionInhibitor
     {
+        private TaskCompletionSource<IAsyncDisposable?>? deferredAcquire;
+
         public int AcquireCount { get; private set; }
 
         public int ReleaseCount { get; private set; }
+
+        public bool DeferAcquire { get; init; }
+
+        public bool ReturnNullLease { get; init; }
+
+        public bool ThrowOnAcquire { get; set; }
 
         public ValueTask<IAsyncDisposable?> InhibitAsync(
             string reason,
@@ -298,7 +422,26 @@ public sealed class Milestone6CoordinatorTests
             CancellationToken cancellationToken = default)
         {
             this.AcquireCount++;
-            return ValueTask.FromResult<IAsyncDisposable?>(new Lease(this));
+            if (this.ThrowOnAcquire)
+            {
+                throw new InvalidOperationException("Acquire failed.");
+            }
+
+            IAsyncDisposable? lease = this.ReturnNullLease ? null : new Lease(this);
+            if (!this.DeferAcquire)
+            {
+                return ValueTask.FromResult(lease);
+            }
+
+            this.deferredAcquire = new TaskCompletionSource<IAsyncDisposable?>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            return new ValueTask<IAsyncDisposable?>(this.deferredAcquire.Task);
+        }
+
+        public void CompleteAcquire()
+        {
+            Assert.NotNull(this.deferredAcquire);
+            this.deferredAcquire.SetResult(this.ReturnNullLease ? null : new Lease(this));
         }
 
         private sealed class Lease(RecordingSessionInhibitor owner) : IAsyncDisposable

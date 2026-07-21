@@ -96,6 +96,101 @@ public sealed class RtcWakeAlarmServiceTests
         Assert.Equal("0", File.ReadAllText(path));
     }
 
+    [Fact]
+    public async Task CancellationAfterWritingRequestedTimestampDoesNotClearSharedAlarm()
+    {
+        var file = new FakeWakeAlarmFile("0");
+        using var cancellation = new CancellationTokenSource();
+        long requestedUnixTime = Now.AddMinutes(10).ToUnixTimeSeconds();
+        file.AfterWrite = value =>
+        {
+            if (value == requestedUnixTime.ToString())
+            {
+                cancellation.Cancel();
+            }
+        };
+        RtcWakeAlarmService service = CreateService(file);
+
+        await Assert.ThrowsAsync<TaskCanceledException>(async () =>
+            await service.TryScheduleWakeAsync(
+                new WakeAlarmRequest(Now.AddMinutes(10), "Timer"),
+                cancellation.Token));
+
+        Assert.Equal(requestedUnixTime.ToString(), file.Value);
+        Assert.DoesNotContain("0", file.Writes.Skip(2));
+    }
+
+    [Fact]
+    public async Task VerificationMismatchAfterWritingRequestedTimestampDoesNotClearSharedAlarm()
+    {
+        long requestedUnixTime = Now.AddMinutes(10).ToUnixTimeSeconds();
+        var file = new FakeWakeAlarmFile("0")
+        {
+            VerificationReadValue = Now.AddMinutes(11).ToUnixTimeSeconds().ToString()
+        };
+        RtcWakeAlarmService service = CreateService(file);
+
+        WakeAlarmScheduleResult result = await service.TryScheduleWakeAsync(
+            new WakeAlarmRequest(Now.AddMinutes(10), "Timer"));
+
+        Assert.False(result.Scheduled);
+        Assert.Null(result.Lease);
+        Assert.Equal(requestedUnixTime.ToString(), file.Value);
+        Assert.DoesNotContain("0", file.Writes.Skip(2));
+    }
+
+    [Fact]
+    public async Task VerificationReadFailureAfterWritingRequestedTimestampDoesNotClearSharedAlarm()
+    {
+        long requestedUnixTime = Now.AddMinutes(10).ToUnixTimeSeconds();
+        var file = new FakeWakeAlarmFile("0") { ThrowOnVerificationRead = true };
+        RtcWakeAlarmService service = CreateService(file);
+
+        WakeAlarmScheduleResult result = await service.TryScheduleWakeAsync(
+            new WakeAlarmRequest(Now.AddMinutes(10), "Timer"));
+
+        Assert.False(result.Scheduled);
+        Assert.Null(result.Lease);
+        Assert.Equal(requestedUnixTime.ToString(), file.Value);
+        Assert.DoesNotContain("0", file.Writes.Skip(2));
+    }
+
+    [Fact]
+    public async Task VerificationMismatchDoesNotClearDifferentNewerTimestamp()
+    {
+        string newerAlarm = Now.AddMinutes(20).ToUnixTimeSeconds().ToString();
+        var file = new FakeWakeAlarmFile("0")
+        {
+            VerificationReadValue = newerAlarm,
+            ApplyVerificationReadValueToCurrentAlarm = true
+        };
+        RtcWakeAlarmService service = CreateService(file);
+
+        WakeAlarmScheduleResult result = await service.TryScheduleWakeAsync(
+            new WakeAlarmRequest(Now.AddMinutes(10), "Timer"));
+
+        Assert.False(result.Scheduled);
+        Assert.Null(result.Lease);
+        Assert.Equal(newerAlarm, file.Value);
+    }
+
+    [Fact]
+    public async Task VerificationFailurePreservesPrimaryVerificationFailureResult()
+    {
+        var file = new FakeWakeAlarmFile("0")
+        {
+            VerificationReadValue = Now.AddMinutes(11).ToUnixTimeSeconds().ToString()
+        };
+        RtcWakeAlarmService service = CreateService(file);
+
+        WakeAlarmScheduleResult result = await service.TryScheduleWakeAsync(
+            new WakeAlarmRequest(Now.AddMinutes(10), "Timer"));
+
+        Assert.False(result.Scheduled);
+        Assert.Equal("RTC wake alarm could not be verified after scheduling.", result.Message);
+        Assert.DoesNotContain("0", file.Writes.Skip(2));
+    }
+
     private static string CreateWakeAlarmFile(string value)
     {
         string directory = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
@@ -103,5 +198,74 @@ public sealed class RtcWakeAlarmServiceTests
         string path = Path.Combine(directory, "wakealarm");
         File.WriteAllText(path, value);
         return path;
+    }
+
+    private static RtcWakeAlarmService CreateService(FakeWakeAlarmFile file)
+    {
+        return RtcWakeAlarmService.CreateForTests(
+            "/tmp/hourglass-test-wakealarm",
+            () => Now,
+            file.ReadAllTextAsync,
+            file.WriteAllTextAsync,
+            _ => true);
+    }
+
+    private sealed class FakeWakeAlarmFile(string value)
+    {
+        private int readCount;
+
+        public string Value { get; private set; } = value;
+
+        public List<string> Writes { get; } = [];
+
+        public string? VerificationReadValue { get; init; }
+
+        public bool ApplyVerificationReadValueToCurrentAlarm { get; init; }
+
+        public bool ThrowOnVerificationRead { get; init; }
+
+        public Action<string>? AfterWrite { get; set; }
+
+        public Task<string> ReadAllTextAsync(string path, CancellationToken cancellationToken)
+        {
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return Task.FromCanceled<string>(cancellationToken);
+            }
+
+            this.readCount++;
+            if (this.readCount == 2)
+            {
+                if (this.ThrowOnVerificationRead)
+                {
+                    throw new IOException("Verification read failed.");
+                }
+
+                if (this.VerificationReadValue != null)
+                {
+                    if (this.ApplyVerificationReadValueToCurrentAlarm)
+                    {
+                        this.Value = this.VerificationReadValue;
+                    }
+
+                    return Task.FromResult(this.VerificationReadValue);
+                }
+            }
+
+            return Task.FromResult(this.Value);
+        }
+
+        public Task WriteAllTextAsync(string path, string contents, CancellationToken cancellationToken)
+        {
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return Task.FromCanceled(cancellationToken);
+            }
+
+            this.Value = contents;
+            this.Writes.Add(contents);
+            this.AfterWrite?.Invoke(contents);
+            return Task.CompletedTask;
+        }
     }
 }

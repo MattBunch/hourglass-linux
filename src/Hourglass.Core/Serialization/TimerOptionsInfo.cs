@@ -16,7 +16,7 @@ namespace Hourglass.Serialization
         /// <summary>
         /// Gets or sets a user-specified title for the timer.
         /// </summary>
-        public string Title { get; set; }
+        public string? Title { get; set; }
 
         /// <summary>
         /// Gets or sets a value indicating whether the timer window should always be displayed on top of other windows.
@@ -73,13 +73,13 @@ namespace Hourglass.Serialization
         /// <summary>
         /// Gets or sets the identifier of the theme of the timer window.
         /// </summary>
-        public string ThemeIdentifier { get; set; }
+        public string? ThemeIdentifier { get; set; }
 
         /// <summary>
         /// Gets or sets the identifier of the sound to play when the timer expires, or <c>null</c> if no sound is to
         /// be played.
         /// </summary>
-        public string SoundIdentifier { get; set; }
+        public string? SoundIdentifier { get; set; }
 
         /// <summary>
         /// Gets or sets a value indicating whether the sound that plays when the timer expires should be looped until
@@ -95,7 +95,7 @@ namespace Hourglass.Serialization
         /// <summary>
         /// Gets or sets the size, position, and state of the timer window.
         /// </summary>
-        public WindowSizeInfo WindowSize { get; set; }
+        public WindowSizeInfo? WindowSize { get; set; }
 
         /// <summary>
         /// Gets or sets a value indicating whether the user interface should be locked, preventing the user from taking

@@ -9,7 +9,7 @@ namespace Hourglass.Extensions
     using System;
     using System.Globalization;
     using System.Text.RegularExpressions;
-    
+
     /// <summary>
     /// Provides extensions methods for the <see cref="CultureInfo"/> class and the related <see
     /// cref="IFormatProvider"/> interface.
@@ -25,7 +25,8 @@ namespace Hourglass.Extensions
         /// ordering in date representations.</returns>
         public static bool IsMonthFirst(this IFormatProvider provider)
         {
-            DateTimeFormatInfo formatInfo = (DateTimeFormatInfo)provider.GetFormat(typeof(DateTimeFormatInfo));
+            DateTimeFormatInfo formatInfo = (DateTimeFormatInfo?)provider.GetFormat(typeof(DateTimeFormatInfo))
+                ?? CultureInfo.InvariantCulture.DateTimeFormat;
             return Regex.IsMatch(formatInfo.ShortDatePattern, @"^.*M.*d.*y.*$");
         }
 
@@ -38,7 +39,8 @@ namespace Hourglass.Extensions
         /// ordering in date representations.</returns>
         public static bool IsYearFirst(this IFormatProvider provider)
         {
-            DateTimeFormatInfo formatInfo = (DateTimeFormatInfo)provider.GetFormat(typeof(DateTimeFormatInfo));
+            DateTimeFormatInfo formatInfo = (DateTimeFormatInfo?)provider.GetFormat(typeof(DateTimeFormatInfo))
+                ?? CultureInfo.InvariantCulture.DateTimeFormat;
             return Regex.IsMatch(formatInfo.ShortDatePattern, @"^.*y.*M.*d.*$");
         }
     }

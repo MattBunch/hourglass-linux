@@ -6,10 +6,13 @@ Stage 8 stores Linux MVP settings through `Hourglass.Platform.ISettingsStore` an
 
 Settings are stored below the XDG config directory:
 
-- `$XDG_CONFIG_HOME/hourglass-linux` when `XDG_CONFIG_HOME` is set.
-- `~/.config/hourglass-linux` otherwise.
+- `$XDG_CONFIG_HOME/hourglass-linux` when `XDG_CONFIG_HOME` is set to an absolute fully qualified path.
+- `~/.config/hourglass-linux` when the user home directory is absolute.
+- The platform application-data folder only when it is absolute.
 
-The first settings file is `app.json`.
+Relative or whitespace-only XDG paths are ignored so settings are never written relative to the current working directory. If no safe absolute directory can be resolved, startup fails with a clear configuration error instead of creating files in an unsafe location.
+
+The first settings file is `app.json`. Settings keys are still validated before file access, so document names cannot escape the selected Hourglass settings directory.
 
 ## Stored Data
 
@@ -38,8 +41,22 @@ Runtime code should prefer focused immutable snapshots from `Hourglass.Core.Sett
 
 The persisted active-session documents remain the compatibility shapes for `active-session` and `active-sessions`, while runtime code maps them into focused snapshots before restoring timer state. New setting groups should be added to the focused model first, with explicit mapping back to the persisted compatibility document.
 
+## Concurrent Saves
+
+`app.json` is global application state shared by every timer window. Windows created by `TimerWindowCoordinator` use one shared `CoordinatedAppSettingsStore` so load/merge/write transactions are serialized across windows. The coordinator reloads the latest persisted snapshot under the same gate, merges the requesting window's previous/requested settings against that latest snapshot, writes one full document, and returns the actual persisted result.
+
+`LinuxSettingsMerger` merges independently changed fields first, then applies invariants once to the merged result. For example, notification and always-on-top changes do not overwrite each other, loop timer and loop sound changes are preserved unless close-on-expiry requires resolution, and audio enabled state remains coherent with the selected sound. When two requests directly conflict on an invariant, the later serialized request wins for that invariant only.
+
+Recent timer inputs remain ordered, unique, and bounded during merges.
+
+## Active Sessions
+
+Active timer sessions are per-window state stored separately from `app.json`. Startup restoration applies restored sessions, saved timers, or command-line timer requests before queueing the first replacement active-session document. If restored sessions are invalid, they are pruned only after startup initialization has completed.
+
 ## Privacy
 
 The Linux port does not create or migrate Windows updater UUIDs or other persistent tracking identifiers. Settings are local user configuration only.
 
 Malformed or missing settings files are treated as absent settings. The app should keep starting with defaults rather than failing startup because of local configuration data.
+
+Nullable reference analysis is enabled for the modern Core project and the Linux solution. Mutable serialization DTOs keep nullable annotations that match legacy-compatible JSON and XML shapes.

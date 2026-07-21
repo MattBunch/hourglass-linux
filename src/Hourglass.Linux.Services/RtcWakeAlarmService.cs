@@ -14,6 +14,7 @@ public sealed class RtcWakeAlarmService : IWakeAlarmService
     private const string ScheduledMessage = "RTC wake alarm scheduled.";
 
     private readonly string wakeAlarmPath;
+    private readonly IRtcWakeAlarmFile wakeAlarmFile;
     private readonly Func<DateTimeOffset> now;
 
     public RtcWakeAlarmService()
@@ -24,11 +25,30 @@ public sealed class RtcWakeAlarmService : IWakeAlarmService
     }
 
     internal RtcWakeAlarmService(string wakeAlarmPath, Func<DateTimeOffset> now)
+        : this(wakeAlarmPath, new RtcWakeAlarmFile(), now)
+    {
+    }
+
+    private RtcWakeAlarmService(string wakeAlarmPath, IRtcWakeAlarmFile wakeAlarmFile, Func<DateTimeOffset> now)
     {
         this.wakeAlarmPath = string.IsNullOrWhiteSpace(wakeAlarmPath)
             ? throw new ArgumentException("Wake alarm path is required.", nameof(wakeAlarmPath))
             : wakeAlarmPath;
+        this.wakeAlarmFile = wakeAlarmFile ?? throw new ArgumentNullException(nameof(wakeAlarmFile));
         this.now = now ?? throw new ArgumentNullException(nameof(now));
+    }
+
+    internal static RtcWakeAlarmService CreateForTests(
+        string wakeAlarmPath,
+        Func<DateTimeOffset> now,
+        Func<string, CancellationToken, Task<string>> readAllTextAsync,
+        Func<string, string, CancellationToken, Task> writeAllTextAsync,
+        Func<string, bool> exists)
+    {
+        return new RtcWakeAlarmService(
+            wakeAlarmPath,
+            new DelegateRtcWakeAlarmFile(readAllTextAsync, writeAllTextAsync, exists),
+            now);
     }
 
     public async Task<WakeAlarmScheduleResult> TryScheduleWakeAsync(
@@ -38,7 +58,7 @@ public sealed class RtcWakeAlarmService : IWakeAlarmService
         ArgumentNullException.ThrowIfNull(request);
         cancellationToken.ThrowIfCancellationRequested();
 
-        if (!File.Exists(this.wakeAlarmPath))
+        if (!this.wakeAlarmFile.Exists(this.wakeAlarmPath))
         {
             return Unsupported(UnsupportedMessage);
         }
@@ -58,8 +78,8 @@ public sealed class RtcWakeAlarmService : IWakeAlarmService
                 return Unsupported(OccupiedMessage);
             }
 
-            await File.WriteAllTextAsync(this.wakeAlarmPath, "0", cancellationToken).ConfigureAwait(false);
-            await File.WriteAllTextAsync(
+            await this.wakeAlarmFile.WriteAllTextAsync(this.wakeAlarmPath, "0", cancellationToken).ConfigureAwait(false);
+            await this.wakeAlarmFile.WriteAllTextAsync(
                 this.wakeAlarmPath,
                 requestedUnixTime.ToString(CultureInfo.InvariantCulture),
                 cancellationToken).ConfigureAwait(false);
@@ -74,7 +94,7 @@ public sealed class RtcWakeAlarmService : IWakeAlarmService
                 Supported: true,
                 Scheduled: true,
                 Message: ScheduledMessage,
-                Lease: new RtcWakeAlarmLease(this.wakeAlarmPath, requestedUnixTime));
+                Lease: new RtcWakeAlarmLease(this.wakeAlarmPath, this.wakeAlarmFile, requestedUnixTime));
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -88,7 +108,7 @@ public sealed class RtcWakeAlarmService : IWakeAlarmService
 
     private async Task<long?> ReadCurrentAlarmAsync(CancellationToken cancellationToken)
     {
-        string value = await File.ReadAllTextAsync(this.wakeAlarmPath, cancellationToken).ConfigureAwait(false);
+        string value = await this.wakeAlarmFile.ReadAllTextAsync(this.wakeAlarmPath, cancellationToken).ConfigureAwait(false);
         if (!long.TryParse(value.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out long unixTime)
             || unixTime <= 0)
         {
@@ -107,7 +127,10 @@ public sealed class RtcWakeAlarmService : IWakeAlarmService
             Lease: null);
     }
 
-    private sealed class RtcWakeAlarmLease(string wakeAlarmPath, long scheduledUnixTime) : IWakeAlarmLease
+    private sealed class RtcWakeAlarmLease(
+        string wakeAlarmPath,
+        IRtcWakeAlarmFile wakeAlarmFile,
+        long scheduledUnixTime) : IWakeAlarmLease
     {
         private int disposed;
 
@@ -120,16 +143,64 @@ public sealed class RtcWakeAlarmService : IWakeAlarmService
 
             try
             {
-                string value = await File.ReadAllTextAsync(wakeAlarmPath).ConfigureAwait(false);
+                string value = await wakeAlarmFile.ReadAllTextAsync(wakeAlarmPath, CancellationToken.None).ConfigureAwait(false);
                 if (long.TryParse(value.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out long currentUnixTime)
                     && currentUnixTime == scheduledUnixTime)
                 {
-                    await File.WriteAllTextAsync(wakeAlarmPath, "0").ConfigureAwait(false);
+                    await wakeAlarmFile.WriteAllTextAsync(wakeAlarmPath, "0", CancellationToken.None).ConfigureAwait(false);
                 }
             }
             catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
             {
             }
+        }
+    }
+
+    private interface IRtcWakeAlarmFile
+    {
+        bool Exists(string path);
+
+        Task<string> ReadAllTextAsync(string path, CancellationToken cancellationToken);
+
+        Task WriteAllTextAsync(string path, string contents, CancellationToken cancellationToken);
+    }
+
+    private sealed class RtcWakeAlarmFile : IRtcWakeAlarmFile
+    {
+        public bool Exists(string path)
+        {
+            return File.Exists(path);
+        }
+
+        public Task<string> ReadAllTextAsync(string path, CancellationToken cancellationToken)
+        {
+            return File.ReadAllTextAsync(path, cancellationToken);
+        }
+
+        public Task WriteAllTextAsync(string path, string contents, CancellationToken cancellationToken)
+        {
+            return File.WriteAllTextAsync(path, contents, cancellationToken);
+        }
+    }
+
+    private sealed class DelegateRtcWakeAlarmFile(
+        Func<string, CancellationToken, Task<string>> readAllTextAsync,
+        Func<string, string, CancellationToken, Task> writeAllTextAsync,
+        Func<string, bool> exists) : IRtcWakeAlarmFile
+    {
+        public bool Exists(string path)
+        {
+            return exists(path);
+        }
+
+        public Task<string> ReadAllTextAsync(string path, CancellationToken cancellationToken)
+        {
+            return readAllTextAsync(path, cancellationToken);
+        }
+
+        public Task WriteAllTextAsync(string path, string contents, CancellationToken cancellationToken)
+        {
+            return writeAllTextAsync(path, contents, cancellationToken);
         }
     }
 }

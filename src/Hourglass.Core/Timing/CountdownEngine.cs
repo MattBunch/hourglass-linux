@@ -92,13 +92,27 @@ public sealed class CountdownEngine
 
     public bool Restart(DateTime wallClockStart)
     {
-        CountdownTransition transition = CountdownTransitions.Restart(this.state, wallClockStart, this.clock.Elapsed);
-        if (!transition.Succeeded)
+        if (!this.state.SupportsRestart)
         {
             return false;
         }
 
-        this.Apply(transition);
+        CountdownState current = this.state;
+        TimeSpan monotonicNow = this.clock.Elapsed;
+        CountdownTransition startTransition = current.TimerStart != null
+            ? CountdownTransitions.Start(CountdownState.Stopped, current.TimerStart, wallClockStart, monotonicNow)
+            : CountdownTransitions.StartDuration(
+                CountdownState.Stopped,
+                current.RestartDuration ?? current.TotalTime ?? TimeSpan.Zero,
+                wallClockStart,
+                monotonicNow);
+        if (!startTransition.Succeeded)
+        {
+            return false;
+        }
+
+        this.Apply(CountdownTransitions.Stop(current));
+        this.Apply(startTransition);
         return true;
     }
 

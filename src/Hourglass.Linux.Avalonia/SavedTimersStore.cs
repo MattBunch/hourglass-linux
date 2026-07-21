@@ -5,6 +5,106 @@ using Hourglass.Settings;
 
 namespace Hourglass.Linux.Avalonia;
 
+internal interface IAppSettingsStore
+{
+    Task<LinuxAppSettings> LoadAsync(CancellationToken cancellationToken = default);
+
+    Task<LinuxAppSettings> SaveChangeAsync(
+        LinuxAppSettings previous,
+        LinuxAppSettings requested,
+        CancellationToken cancellationToken = default);
+}
+
+internal sealed class DirectAppSettingsStore : IAppSettingsStore
+{
+    private const string SettingsKey = "app";
+
+    private readonly ISettingsStore settingsStore;
+
+    public DirectAppSettingsStore(ISettingsStore settingsStore)
+    {
+        this.settingsStore = settingsStore ?? throw new ArgumentNullException(nameof(settingsStore));
+    }
+
+    public async Task<LinuxAppSettings> LoadAsync(CancellationToken cancellationToken = default)
+    {
+        return await this.settingsStore.LoadAsync<LinuxAppSettings>(SettingsKey, cancellationToken)
+            ?? LinuxAppSettings.Default;
+    }
+
+    public async Task<LinuxAppSettings> SaveChangeAsync(
+        LinuxAppSettings previous,
+        LinuxAppSettings requested,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(previous);
+        ArgumentNullException.ThrowIfNull(requested);
+
+        LinuxAppSettings latest = await this.LoadAsync(cancellationToken);
+        LinuxAppSettings merged = LinuxSettingsMerger.MergeSettingsChange(previous, requested, latest);
+        await this.settingsStore.SaveAsync(SettingsKey, merged, cancellationToken);
+        return merged;
+    }
+}
+
+internal sealed class CoordinatedAppSettingsStore : IAppSettingsStore
+{
+    private const string SettingsKey = "app";
+
+    private readonly SemaphoreSlim gate = new(1, 1);
+    private readonly ISettingsStore settingsStore;
+    private LinuxAppSettings? latestSnapshot;
+
+    public CoordinatedAppSettingsStore(ISettingsStore settingsStore)
+    {
+        this.settingsStore = settingsStore ?? throw new ArgumentNullException(nameof(settingsStore));
+    }
+
+    public async Task<LinuxAppSettings> LoadAsync(CancellationToken cancellationToken = default)
+    {
+        await this.gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            this.latestSnapshot = await this.LoadLatestAsync(cancellationToken).ConfigureAwait(false);
+            return this.latestSnapshot;
+        }
+        finally
+        {
+            this.gate.Release();
+        }
+    }
+
+    public async Task<LinuxAppSettings> SaveChangeAsync(
+        LinuxAppSettings previous,
+        LinuxAppSettings requested,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(previous);
+        ArgumentNullException.ThrowIfNull(requested);
+
+        await this.gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            LinuxAppSettings latest = await this.LoadLatestAsync(cancellationToken).ConfigureAwait(false);
+            LinuxAppSettings merged = LinuxSettingsMerger.MergeSettingsChange(previous, requested, latest);
+            await this.settingsStore.SaveAsync(SettingsKey, merged, cancellationToken).ConfigureAwait(false);
+            this.latestSnapshot = merged;
+            return merged;
+        }
+        finally
+        {
+            this.gate.Release();
+        }
+    }
+
+    private async Task<LinuxAppSettings> LoadLatestAsync(CancellationToken cancellationToken)
+    {
+        return await this.settingsStore.LoadAsync<LinuxAppSettings>(SettingsKey, cancellationToken).ConfigureAwait(false)
+            ?? this.latestSnapshot
+            ?? LinuxAppSettings.Default;
+    }
+}
+
 internal interface ISavedTimersStore
 {
     Task<SavedTimersDocument> LoadAsync(CancellationToken cancellationToken = default);

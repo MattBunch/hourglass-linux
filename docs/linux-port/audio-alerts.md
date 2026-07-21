@@ -14,13 +14,21 @@ The WAV files are copied into the modern Avalonia project so installed Linux bui
 
 ## Playback Backend
 
-`LinuxAudioAlertService` tries command-line players in this order:
+`LinuxAudioAlertService` distinguishes three states:
+
+- the packaged sound asset exists;
+- a supported playback executable is available;
+- a playback attempt succeeds.
+
+Sound selection and preview require both a sound asset and a selected backend, except `None`, which remains selectable without a backend.
+
+At service construction the native backend probe selects the first available command-line player in this order:
 
 1. `pw-play`
 2. `paplay`
 3. `aplay --quiet`
 
-Playback stops after the first successful exit. Missing executables, missing audio devices, muted sessions, unavailable audio servers, non-zero exits, and missing sound files are treated as best-effort failures and do not crash the app.
+Playback uses that selected backend rather than probing every command on every alert. Missing executables, missing audio devices, muted sessions, unavailable audio servers, non-zero exits, and missing sound files are treated as best-effort failures and do not crash the app.
 
 Cancellation from the service cancellation token is still propagated as `OperationCanceledException`.
 
@@ -38,7 +46,7 @@ Desktop mute state, per-application volume, missing output devices, and session 
 
 AppImage builds copy the full publish directory, including every packaged WAV under `Assets/Sounds/`.
 
-The Flatpak prototype installs the bundled WAV files, but command-based playback inside a Flatpak sandbox is not guaranteed. A production Flatpak may need a portal-aware audio implementation or explicit runtime dependency review before audio can be considered fully supported.
+The Flatpak prototype installs the bundled WAV files, but copied assets alone do not prove audio support. Command-based playback inside a Flatpak sandbox depends on the selected command existing in the runtime and on sandbox access to the host audio service. Until that runtime dependency and permission set are validated, Flatpak audio support must be treated as best-effort/unsupported when no backend is detected.
 
 ## Settings
 

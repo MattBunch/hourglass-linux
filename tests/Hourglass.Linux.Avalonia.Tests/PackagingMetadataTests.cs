@@ -89,7 +89,8 @@ public sealed class PackagingMetadataTests
         Assert.Contains("HOURGLASS_REQUIRE_PACKAGE_VALIDATORS: \"true\"", workflow, StringComparison.Ordinal);
         Assert.Contains("Build Linux package artifacts", workflow, StringComparison.Ordinal);
         Assert.Contains("scripts/validate-linux-packaging.sh /tmp/hourglass-linux-publish /tmp/hourglass-linux.AppDir", workflow, StringComparison.Ordinal);
-        Assert.Contains("actions/upload-artifact@v4", workflow, StringComparison.Ordinal);
+        Assert.Contains("actions/upload-artifact v4.6.2", workflow, StringComparison.Ordinal);
+        Assert.Contains("ea165f8d65b6e75b540449e92b4886f43607fa02", workflow, StringComparison.Ordinal);
     }
 
     private static string FindRepositoryFile(string relativePath)

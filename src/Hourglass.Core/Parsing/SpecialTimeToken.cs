@@ -121,7 +121,8 @@ namespace Hourglass.Parsing
         /// <returns>The <see cref="SpecialTimeDefinition"/> object for the <see cref="Match"/>.</returns>
         private static SpecialTimeDefinition GetSpecialTimeDefinitionForMatch(Match match)
         {
-            return SpecialTimes.FirstOrDefault(e => match.Groups[e.MatchGroup].Success);
+            return SpecialTimes.FirstOrDefault(e => match.Groups[e.MatchGroup].Success)
+                ?? throw new FormatException();
         }
 
         /// <summary>
@@ -130,7 +131,8 @@ namespace Hourglass.Parsing
         /// <returns>The <see cref="SpecialTimeDefinition"/> object for this part.</returns>
         private SpecialTimeDefinition GetSpecialTimeDefinition()
         {
-            return SpecialTimes.FirstOrDefault(e => e.SpecialTime == this.SpecialTime);
+            return SpecialTimes.FirstOrDefault(e => e.SpecialTime == this.SpecialTime)
+                ?? throw new InvalidOperationException();
         }
 
         /// <summary>

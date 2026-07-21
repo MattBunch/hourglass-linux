@@ -39,12 +39,12 @@ namespace Hourglass.Parsing
         /// <summary>
         /// Gets or sets the date part of the date and time represented by this token.
         /// </summary>
-        public DateToken DateToken { get; set; }
+        public DateToken? DateToken { get; set; }
 
         /// <summary>
         /// Gets or sets the time part of the date and time represented by this token.
         /// </summary>
-        public TimeToken TimeToken { get; set; }
+        public TimeToken? TimeToken { get; set; }
 
         /// <summary>
         /// Gets a value indicating whether the token is valid.
@@ -67,13 +67,15 @@ namespace Hourglass.Parsing
         {
             this.ThrowIfNotValid();
 
-            DateTime datePart = this.DateToken.ToDateTime(startTime, true /* inclusive */);
-            DateTime dateTime = this.TimeToken.ToDateTime(startTime, datePart);
+            DateToken dateToken = this.DateToken ?? throw new InvalidOperationException();
+            TimeToken timeToken = this.TimeToken ?? throw new InvalidOperationException();
+            DateTime datePart = dateToken.ToDateTime(startTime, true /* inclusive */);
+            DateTime dateTime = timeToken.ToDateTime(startTime, datePart);
 
             if (dateTime <= startTime)
             {
-                datePart = this.DateToken.ToDateTime(startTime, false /* inclusive */);
-                dateTime = this.TimeToken.ToDateTime(startTime, datePart);
+                datePart = dateToken.ToDateTime(startTime, false /* inclusive */);
+                dateTime = timeToken.ToDateTime(startTime, datePart);
             }
 
             if (dateTime < startTime)
@@ -95,8 +97,10 @@ namespace Hourglass.Parsing
             {
                 this.ThrowIfNotValid();
 
-                string datePart = this.DateToken.ToString(provider);
-                string timePart = this.TimeToken.ToString(provider);
+                DateToken dateToken = this.DateToken ?? throw new InvalidOperationException();
+                TimeToken timeToken = this.TimeToken ?? throw new InvalidOperationException();
+                string datePart = dateToken.ToString(provider);
+                string timePart = timeToken.ToString(provider);
 
                 // Date and time
                 if (!string.IsNullOrWhiteSpace(datePart) && !string.IsNullOrWhiteSpace(timePart))

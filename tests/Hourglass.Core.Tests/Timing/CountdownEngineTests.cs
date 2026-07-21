@@ -112,6 +112,42 @@ public sealed class CountdownEngineTests
     }
 
     [Fact]
+    public void RestartPublishesStatesThatMatchEvents()
+    {
+        var clock = new ManualMonotonicClock();
+        var engine = new CountdownEngine(clock);
+        var observed = new List<(string EventName, TimerState State)>();
+        engine.Stopped += (_, _) => observed.Add(("Stopped", engine.State));
+        engine.Started += (_, _) => observed.Add(("Started", engine.State));
+        engine.Tick += (_, _) => observed.Add(("Tick", engine.State));
+
+        engine.Start(TimeSpan.FromSeconds(10), new DateTime(2026, 6, 8, 10, 0, 0));
+        observed.Clear();
+
+        Assert.True(engine.Restart(new DateTime(2026, 6, 8, 10, 1, 0)));
+
+        Assert.Equal(
+            [
+                ("Stopped", TimerState.Stopped),
+                ("Started", TimerState.Running),
+                ("Tick", TimerState.Running)
+            ],
+            observed);
+    }
+
+    [Fact]
+    public void FailedRestartDoesNotStopTimer()
+    {
+        var engine = new CountdownEngine(new ManualMonotonicClock());
+        var start = new DateTime(2026, 6, 8, 10, 0, 0);
+        engine.Start(start, start.AddSeconds(10));
+
+        Assert.False(engine.Restart(start.AddSeconds(1)));
+
+        Assert.Equal(TimerState.Running, engine.State);
+    }
+
+    [Fact]
     public void RestartIsRejectedForAbsoluteTimers()
     {
         var engine = new CountdownEngine(new ManualMonotonicClock());

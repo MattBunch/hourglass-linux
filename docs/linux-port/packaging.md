@@ -58,9 +58,13 @@ Linux packages must not reuse the legacy Windows in-app updater or its persisten
 
 ## CI Artifacts
 
-The test workflow builds release packaging artifacts for pull requests and pushes. It uploads:
+The test workflow builds release packaging artifacts for pull requests and pushes after restore, Release build, full tests, and `dotnet format --verify-no-changes` succeed. Modern Linux builds run with warnings treated as errors in CI. GitHub Actions are pinned to immutable SHAs with comments showing the corresponding action release tag.
+
+The packaging job uploads:
 
 - a self-contained `linux-x64` publish tarball;
 - an AppDir tarball assembled from that publish output.
 
 CI artifacts are validation outputs, not public releases.
+
+CI package validation checks static publish/AppDir layout, desktop metadata, and AppStream metadata. It does not validate a real desktop session, Flatpak runtime audio capability, notification delivery, status notifier availability, system suspend, or RTC hardware behavior.
