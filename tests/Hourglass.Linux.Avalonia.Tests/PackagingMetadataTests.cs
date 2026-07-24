@@ -87,6 +87,9 @@ public sealed class PackagingMetadataTests
         string workflow = File.ReadAllText(FindRepositoryFile(".github/workflows/tests.yml"));
 
         Assert.Contains("--runtime linux-x64", publishScript, StringComparison.Ordinal);
+        Assert.Contains("git -C \"$repo_root\" rev-parse --is-inside-work-tree", publishScript, StringComparison.Ordinal);
+        Assert.Contains("git -C \"$repo_root\" status --porcelain", publishScript, StringComparison.Ordinal);
+        Assert.Contains("Cannot publish a release with uncommitted changes.", publishScript, StringComparison.Ordinal);
         Assert.Contains("source_revision=$(git -C \"$repo_root\" rev-parse --verify HEAD", publishScript, StringComparison.Ordinal);
         Assert.Contains("dotnet publish \"${publish_args[@]}\"", publishScript, StringComparison.Ordinal);
         Assert.Contains("-p:SourceRevisionId=$source_revision", publishScript, StringComparison.Ordinal);
