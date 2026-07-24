@@ -36,6 +36,7 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
     private readonly ISavedTimersStore savedTimersStore;
     private readonly IStatusIconService statusIconService;
     private readonly ISystemPowerService systemPowerService;
+    private readonly Func<IWindowAttentionTarget, IWindowAttentionService> createWindowAttentionService;
     private readonly CoordinatedSessionInhibitor sessionInhibitor;
     private readonly HashSet<MainWindow> closingWindows = [];
     private readonly List<WindowRegistration> windows = [];
@@ -53,7 +54,7 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
             new NotifySendNotificationService(),
             new LinuxAudioAlertService(SoundAssetsDirectory),
             new CoordinatedSessionInhibitor(new SystemdSessionInhibitor()),
-            new UnsupportedSystemPowerService(),
+            UnsupportedSystemPowerService.Instance,
             new RtcWakeAlarmService(),
             LinuxDesktopProgressServiceFactory.CreateDefault(),
             CreateStatusIconService(),
@@ -73,7 +74,8 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
         IDesktopProgressService desktopProgressService,
         IStatusIconService statusIconService,
         ApplicationInfoProvider? applicationInfoProvider = null,
-        IExternalUriLauncher? externalUriLauncher = null)
+        IExternalUriLauncher? externalUriLauncher = null,
+        Func<IWindowAttentionTarget, IWindowAttentionService>? createWindowAttentionService = null)
     {
         this.lifetime = lifetime ?? throw new ArgumentNullException(nameof(lifetime));
         this.settingsStore = settingsStore ?? throw new ArgumentNullException(nameof(settingsStore));
@@ -91,6 +93,7 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
         this.statusIconService = statusIconService ?? throw new ArgumentNullException(nameof(statusIconService));
         this.applicationInfoProvider = applicationInfoProvider ?? new ApplicationInfoProvider();
         this.externalUriLauncher = externalUriLauncher ?? new LinuxExternalUriLauncher();
+        this.createWindowAttentionService = createWindowAttentionService ?? CreateWindowAttentionService;
         this.statusIconService.ActionRequested += this.StatusIconActionRequested;
     }
 
@@ -197,10 +200,11 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
             uiDispatcher: AvaloniaUiDispatcher.Instance);
         var window = new MainWindow(
             viewModel,
-            new UnsupportedDesktopProgressService(),
+            UnsupportedDesktopProgressService.Instance,
             UnsupportedStatusIconService.Instance,
             this.applicationInfoProvider,
             this.externalUriLauncher,
+            this.createWindowAttentionService,
             loadSettingsOnOpened: false,
             prepareCoordinatorClose: this.PrepareWindowCloseAsync,
             requestApplicationExit: this.CloseAllWindowsAsync);
@@ -483,7 +487,7 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
 
         if (target != null)
         {
-            new WindowAttentionController(target.Window).RequestAttention();
+            target.Window.RequestAttention();
         }
     }
 
@@ -504,7 +508,7 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
         switch (action)
         {
             case StatusIconAction.ShowWindow:
-                new WindowAttentionController(target.Window).RequestAttention();
+                target.Window.RequestAttention();
                 break;
             case StatusIconAction.HideWindow:
                 target.ViewModel.HideToNotificationAreaCommand.Execute(null);
@@ -543,7 +547,7 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
             if (snapshot.Any(registration => registration.Window.RequiresExitConfirmation))
             {
                 WindowRegistration owner = this.GetStatusIconTarget() ?? snapshot[0];
-                new WindowAttentionController(owner.Window).RequestAttention();
+                owner.Window.RequestAttention();
 
                 var dialog = new ExitConfirmationWindow();
                 bool approved = await dialog.ShowDialog<bool>(owner.Window).ConfigureAwait(true);
@@ -560,7 +564,7 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
                     continue;
                 }
 
-                new WindowAttentionController(registration.Window).RequestAttention();
+                registration.Window.RequestAttention();
                 registration.Window.CloseWithPreapprovedExit();
             }
         }
@@ -725,6 +729,11 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
         {
             return UnsupportedStatusIconService.Instance;
         }
+    }
+
+    private static IWindowAttentionService CreateWindowAttentionService(IWindowAttentionTarget target)
+    {
+        return new WindowAttentionController(target);
     }
 
     private readonly record struct LoadDocumentResult<T>(bool Found, T? Value);

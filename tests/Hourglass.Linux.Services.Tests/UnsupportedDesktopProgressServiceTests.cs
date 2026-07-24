@@ -9,7 +9,7 @@ public sealed class UnsupportedDesktopProgressServiceTests
     [Fact]
     public async Task UnsupportedBackendReportsUnavailableAndAcceptsProgressCalls()
     {
-        var service = new UnsupportedDesktopProgressService();
+        UnsupportedDesktopProgressService service = UnsupportedDesktopProgressService.Instance;
 
         await service.SetProgressAsync(0.5, DesktopProgressState.Normal);
         await service.ClearAsync();

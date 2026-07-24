@@ -1570,10 +1570,10 @@ public sealed class MainWindowViewModelTests
         Assert.DoesNotContain("PendingSettingsSave", exitHandler, StringComparison.Ordinal);
         Assert.Contains("this.requestApplicationExit = requestApplicationExit ?? this.RequestLocalExitAsync;", codeBehind, StringComparison.Ordinal);
         Assert.Contains("private Task RequestLocalExitAsync()", codeBehind, StringComparison.Ordinal);
-        Assert.Contains("this.windowAttentionController?.RequestAttention();", statusIconExit, StringComparison.Ordinal);
+        Assert.Contains("this.RequestAttention();", statusIconExit, StringComparison.Ordinal);
         Assert.Contains("this.Close();", statusIconExit, StringComparison.Ordinal);
         Assert.True(
-            statusIconExit.IndexOf("this.windowAttentionController?.RequestAttention();", StringComparison.Ordinal)
+            statusIconExit.IndexOf("this.RequestAttention();", StringComparison.Ordinal)
             < statusIconExit.IndexOf("this.Close();", StringComparison.Ordinal));
         Assert.Contains("this.Closing += this.WindowClosing;", codeBehind, StringComparison.Ordinal);
         Assert.Contains("e.Cancel = this.closeCoordinator.RequestClose();", codeBehind, StringComparison.Ordinal);

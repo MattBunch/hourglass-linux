@@ -829,6 +829,8 @@ This section is intentionally not Milestone 11. These workstreams cut across imp
 
 **Goal:** Make every optional Linux integration explicit, injectable, and safe to run when unsupported.
 
+**Status:** Implemented for shared unsupported platform-service fallbacks, Linux backend selection, Avalonia window-attention routing, and source/test coverage that keeps `Hourglass.Core` free of desktop side effects.
+
 **Implementation plan:**
 
 1. Audit all optional effects: notifications, controllable audio, session inhibition, desktop progress, status icon, single-instance IPC, window attention, wake alarms, system power actions, and future startup/autostart.
@@ -985,8 +987,8 @@ Create one focused issue or Codex task for each of the following rather than att
 2. Implemented: Extract timer defaults and global application preferences from `LinuxAppSettings`.
 3. Implemented: Extract active-session and window-placement persistence models with legacy JSON compatibility.
 4. Implemented: Move settings merge behavior into pure core functions and cover concurrent-save scenarios.
-5. Audit platform service boundaries and relocate no-op implementations that represent real platform behavior.
-6. Add or tighten unsupported-backend tests for every optional desktop integration.
+5. Implemented: Audit platform service boundaries and relocate no-op implementations that represent real platform behavior.
+6. Implemented: Add or tighten unsupported-backend tests for every optional desktop integration.
 7. Define the optional-effect failure taxonomy and align service diagnostics with it.
 8. Add regression tests for timer continuity after optional integration failures.
 9. Run keyboard/focus/accessibility characterization for the main timer window and dialogs.
