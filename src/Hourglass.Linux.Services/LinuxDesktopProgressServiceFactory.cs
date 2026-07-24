@@ -36,10 +36,10 @@ public sealed class LinuxDesktopProgressServiceFactory
 
         return backendOverride switch
         {
-            DesktopProgressBackendOverride.None => new UnsupportedDesktopProgressService(),
+            DesktopProgressBackendOverride.None => UnsupportedDesktopProgressService.Instance,
             DesktopProgressBackendOverride.Unity => this.CreateUnityOrUnsupported(),
             _ when environment.IsUnityLauncherEntryCompatible => this.CreateUnityOrUnsupported(),
-            _ => new UnsupportedDesktopProgressService()
+            _ => UnsupportedDesktopProgressService.Instance
         };
     }
 
@@ -47,7 +47,7 @@ public sealed class LinuxDesktopProgressServiceFactory
     {
         return this.unitySenderFactory.TryCreate(out IUnityLauncherEntrySender sender)
             ? new UnityLauncherDesktopProgressService(sender)
-            : new UnsupportedDesktopProgressService();
+            : UnsupportedDesktopProgressService.Instance;
     }
 
     private static DesktopProgressBackendOverride ParseBackendOverride(string? value)

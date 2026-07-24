@@ -39,7 +39,7 @@ public sealed class Milestone7CoordinatorTests
         Assert.Contains("this.ActivateMostRelevantWindow();", handleMethod, StringComparison.Ordinal);
         Assert.Contains("WindowRegistration? target = this.GetStatusIconTarget();", activateMethod, StringComparison.Ordinal);
         Assert.Contains("target = this.CreateWindow() == null ? null : this.mostRecentWindow;", activateMethod, StringComparison.Ordinal);
-        Assert.Contains("new WindowAttentionController(target.Window).RequestAttention();", activateMethod, StringComparison.Ordinal);
+        Assert.Contains("target.Window.RequestAttention();", activateMethod, StringComparison.Ordinal);
     }
 
     [Fact]

@@ -48,7 +48,7 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
     private readonly Func<MainWindow, Task> prepareCoordinatorClose;
     private readonly bool loadSettingsOnOpened;
     private readonly MainWindowViewModel viewModel;
-    private readonly WindowAttentionController? windowAttentionController;
+    private readonly IWindowAttentionService windowAttentionService;
     private int expiryFlashGeneration;
     private AboutWindow? aboutWindow;
     private bool closeApprovalPreapproved;
@@ -85,7 +85,7 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
             new DirectAppSettingsStore(settingsStore),
             new DirectSavedTimersStore(settingsStore),
             new LinuxAudioAlertService(SoundAssetsDirectory),
-            new UnsupportedSystemPowerService(),
+            UnsupportedSystemPowerService.Instance,
             services.StatusIconService.IsSupported,
             services.StatusIconService.CanRecoverHiddenWindow,
             uiDispatcher: AvaloniaUiDispatcher.Instance);
@@ -94,7 +94,7 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
     internal MainWindow(MainWindowViewModel viewModel)
         : this(
             viewModel,
-            new UnsupportedDesktopProgressService(),
+            UnsupportedDesktopProgressService.Instance,
             UnsupportedStatusIconService.Instance,
             new ApplicationInfoProvider(),
             new LinuxExternalUriLauncher())
@@ -117,6 +117,7 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
         IStatusIconService statusIconService,
         ApplicationInfoProvider applicationInfoProvider,
         IExternalUriLauncher externalUriLauncher,
+        Func<IWindowAttentionTarget, IWindowAttentionService>? createWindowAttentionService = null,
         bool loadSettingsOnOpened = true,
         Func<MainWindow, Task>? prepareCoordinatorClose = null,
         Func<Task>? requestApplicationExit = null)
@@ -133,7 +134,7 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
         this.prepareCoordinatorClose = prepareCoordinatorClose ?? (_ => Task.CompletedTask);
         this.requestApplicationExit = requestApplicationExit ?? this.RequestLocalExitAsync;
         this.DataContext = this.viewModel;
-        this.windowAttentionController = new WindowAttentionController(this);
+        this.windowAttentionService = (createWindowAttentionService ?? CreateWindowAttentionService)(this);
         this.fullScreenController = new WindowFullScreenController(this);
         this.windowGeometryController = new WindowGeometryController(
             this,
@@ -198,6 +199,11 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
 
     internal WindowGeometrySnapshot? CurrentWindowGeometry => this.windowGeometryController.CurrentGeometry;
 
+    internal void RequestAttention()
+    {
+        this.windowAttentionService.RequestAttention();
+    }
+
     internal void ApplyWindowGeometry(WindowGeometrySnapshot? geometry)
     {
         this.windowGeometryController.Apply(geometry);
@@ -258,7 +264,7 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
 
         if (change.Property == WindowStateProperty)
         {
-            this.windowAttentionController?.RecordWindowState(this.WindowState);
+            this.windowAttentionService.RecordWindowState(this.WindowState);
             this.fullScreenController?.RecordWindowState(this.WindowState);
             this.windowGeometryController?.RecordChange();
 
@@ -1154,7 +1160,7 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
                 ExecuteCommand(this.viewModel.NewTimerCommand);
                 break;
             case StatusIconAction.ShowWindow:
-                this.windowAttentionController?.RequestAttention();
+                this.RequestAttention();
                 break;
             case StatusIconAction.HideWindow:
                 this.HideToNotificationArea();
@@ -1169,7 +1175,7 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
                 ExecuteCommand(this.viewModel.RestartCommand);
                 break;
             case StatusIconAction.Exit:
-                this.windowAttentionController?.RequestAttention();
+                this.RequestAttention();
                 this.Close();
                 break;
         }
@@ -1181,7 +1187,7 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
         {
             if (!this.isClosed)
             {
-                this.windowAttentionController?.RequestAttention();
+                this.RequestAttention();
             }
         });
     }
@@ -1297,6 +1303,11 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
         // Avalonia 12 does not expose a reliable cross-desktop reduced-motion preference.
         // Keep feedback short and single-pass until a dependable platform signal is available.
         return true;
+    }
+
+    private static IWindowAttentionService CreateWindowAttentionService(IWindowAttentionTarget target)
+    {
+        return new WindowAttentionController(target);
     }
 
     private sealed record DefaultMainWindowServices(

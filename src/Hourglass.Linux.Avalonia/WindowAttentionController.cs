@@ -15,7 +15,14 @@ internal interface IWindowAttentionTarget
     void Activate();
 }
 
-internal sealed class WindowAttentionController(IWindowAttentionTarget target)
+internal interface IWindowAttentionService
+{
+    void RecordWindowState(WindowState state);
+
+    void RequestAttention();
+}
+
+internal sealed class WindowAttentionController(IWindowAttentionTarget target) : IWindowAttentionService
 {
     private readonly IWindowAttentionTarget target = target ?? throw new ArgumentNullException(nameof(target));
     private WindowState restoreWindowState = WindowState.Normal;

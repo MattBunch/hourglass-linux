@@ -47,11 +47,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         : this(
             new CountdownEngine(new SystemMonotonicClock()),
             () => DateTime.Now,
-            NoOpNotificationService.Instance,
-            NoOpSessionInhibitor.Instance,
+            UnsupportedNotificationService.Instance,
+            UnsupportedSessionInhibitor.Instance,
             NoOpSettingsStore.Instance,
-            NoOpAudioAlertService.Instance,
-            NoOpSystemPowerService.Instance)
+            UnsupportedAudioAlertService.Instance,
+            UnsupportedSystemPowerService.Instance)
     {
     }
 
@@ -59,11 +59,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         : this(
             engine,
             wallClockNow,
-            NoOpNotificationService.Instance,
-            NoOpSessionInhibitor.Instance,
+            UnsupportedNotificationService.Instance,
+            UnsupportedSessionInhibitor.Instance,
             NoOpSettingsStore.Instance,
-            NoOpAudioAlertService.Instance,
-            NoOpSystemPowerService.Instance)
+            UnsupportedAudioAlertService.Instance,
+            UnsupportedSystemPowerService.Instance)
     {
     }
 
@@ -75,10 +75,10 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             engine,
             wallClockNow,
             notificationService,
-            NoOpSessionInhibitor.Instance,
+            UnsupportedSessionInhibitor.Instance,
             NoOpSettingsStore.Instance,
-            NoOpAudioAlertService.Instance,
-            NoOpSystemPowerService.Instance)
+            UnsupportedAudioAlertService.Instance,
+            UnsupportedSystemPowerService.Instance)
     {
     }
 
@@ -91,10 +91,10 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             engine,
             wallClockNow,
             notificationService,
-            NoOpSessionInhibitor.Instance,
+            UnsupportedSessionInhibitor.Instance,
             settingsStore,
-            NoOpAudioAlertService.Instance,
-            NoOpSystemPowerService.Instance)
+            UnsupportedAudioAlertService.Instance,
+            UnsupportedSystemPowerService.Instance)
     {
     }
 
@@ -110,8 +110,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             notificationService,
             sessionInhibitor,
             settingsStore,
-            NoOpAudioAlertService.Instance,
-            NoOpSystemPowerService.Instance)
+            UnsupportedAudioAlertService.Instance,
+            UnsupportedSystemPowerService.Instance)
     {
     }
 
@@ -249,7 +249,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             sessionInhibitor,
             settingsStore,
             audioAlertService,
-            NoOpSystemPowerService.Instance)
+            UnsupportedSystemPowerService.Instance)
     {
     }
 
@@ -2313,64 +2313,6 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         if (previous != next)
         {
             this.OnPropertyChanged(propertyName);
-        }
-    }
-
-    private sealed class NoOpNotificationService : INotificationService
-    {
-        public static NoOpNotificationService Instance { get; } = new();
-
-        public Task ShowTimerExpiredAsync(string title, string body, CancellationToken cancellationToken = default)
-        {
-            return Task.CompletedTask;
-        }
-    }
-
-    private sealed class NoOpAudioAlertService : IAudioAlertService
-    {
-        public static NoOpAudioAlertService Instance { get; } = new();
-
-        public bool IsSupported => false;
-
-        public bool IsSoundAvailable(string soundId)
-        {
-            return false;
-        }
-
-        public Task<IAsyncDisposable?> PlayAlertAsync(string soundId, CancellationToken cancellationToken = default)
-        {
-            return Task.FromResult<IAsyncDisposable?>(null);
-        }
-
-        public Task<IAsyncDisposable?> PlayAlertLoopingAsync(string soundId, CancellationToken cancellationToken = default)
-        {
-            return Task.FromResult<IAsyncDisposable?>(null);
-        }
-    }
-
-    private sealed class NoOpSystemPowerService : ISystemPowerService
-    {
-        public static NoOpSystemPowerService Instance { get; } = new();
-
-        public bool IsShutdownSupported => false;
-
-        public Task RequestShutdownAsync(CancellationToken cancellationToken = default)
-        {
-            return Task.CompletedTask;
-        }
-    }
-
-    private sealed class NoOpSessionInhibitor : ISessionInhibitor
-    {
-        public static NoOpSessionInhibitor Instance { get; } = new();
-
-        public ValueTask<IAsyncDisposable?> InhibitAsync(
-            string reason,
-            bool inhibitSuspend,
-            bool inhibitIdle,
-            CancellationToken cancellationToken = default)
-        {
-            return ValueTask.FromResult<IAsyncDisposable?>(null);
         }
     }
 
