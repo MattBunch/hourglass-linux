@@ -1376,9 +1376,93 @@ public sealed class MainWindowViewModelTests
         Assert.Equal(
             "{Binding HideToNotificationAreaCommand}",
             menuItems["Hide to notification area"].Attribute("Command")?.Value);
+        Assert.Null(menuItems["About Hourglass"].Attribute("Command"));
+        Assert.Equal("AboutMenuItemClick", menuItems["About Hourglass"].Attribute("Click")?.Value);
         Assert.Equal("CheckBox", menuItems["Full screen"].Attribute("ToggleType")?.Value);
         Assert.Equal("FullScreenMenuItemClick", menuItems["Full screen"].Attribute("Click")?.Value);
         Assert.Equal("ExitMenuItemClick", menuItems["Exit"].Attribute("Click")?.Value);
+    }
+
+    [Fact]
+    public void ContextMenuPlacesAboutBeforeExit()
+    {
+        XNamespace avalonia = "https://github.com/avaloniaui";
+        XNamespace xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
+        XDocument document = XDocument.Load(FindRepositoryFile("src/Hourglass.Linux.Avalonia/MainWindow.axaml"));
+        XElement rootGrid = Assert.Single(
+            document.Descendants(avalonia + "Grid"),
+            element => element.Attribute(xaml + "Name")?.Value == "RootGrid");
+        XElement contextMenu = Assert.Single(
+            rootGrid.Element(avalonia + "Grid.ContextMenu")?.Elements(avalonia + "ContextMenu") ?? []);
+        XElement[] elements = contextMenu.Elements().ToArray();
+        string[] headers = elements
+            .Where(element => element.Name == avalonia + "MenuItem")
+            .Select(element => element.Attribute("Header")?.Value)
+            .OfType<string>()
+            .ToArray();
+
+        Assert.True(
+            Array.IndexOf(headers, "About Hourglass") < Array.IndexOf(headers, "Exit"),
+            "About Hourglass should appear before Exit.");
+
+        int hideIndex = Array.FindIndex(
+            elements,
+            element => element.Name == avalonia + "MenuItem"
+                && element.Attribute("Header")?.Value == "Hide to notification area");
+        Assert.True(hideIndex >= 0);
+        Assert.Equal(avalonia + "Separator", elements[hideIndex + 1].Name);
+        Assert.Equal("About Hourglass", elements[hideIndex + 2].Attribute("Header")?.Value);
+        Assert.Equal("Exit", elements[hideIndex + 3].Attribute("Header")?.Value);
+    }
+
+    [Fact]
+    public void AboutDialogContainsApplicationMetadataAndActions()
+    {
+        XNamespace avalonia = "https://github.com/avaloniaui";
+        XNamespace xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
+        XDocument document = XDocument.Load(FindRepositoryFile("src/Hourglass.Linux.Avalonia/AboutWindow.axaml"));
+        XElement window = Assert.IsType<XElement>(document.Root);
+        Dictionary<string, XElement> buttons = document
+            .Descendants(avalonia + "Button")
+            .ToDictionary(element => element.Attribute("Content")?.Value ?? string.Empty, StringComparer.Ordinal);
+        string[] namedTextBlocks = document
+            .Descendants(avalonia + "TextBlock")
+            .Select(element => element.Attribute(xaml + "Name")?.Value)
+            .OfType<string>()
+            .ToArray();
+
+        Assert.Equal("About Hourglass", window.Attribute("Title")?.Value);
+        Assert.Equal("/Assets/hourglass.png", window.Attribute("Icon")?.Value);
+        Assert.Equal("False", window.Attribute("CanResize")?.Value);
+        Assert.Equal("False", window.Attribute("ShowInTaskbar")?.Value);
+        Assert.Equal("CenterOwner", window.Attribute("WindowStartupLocation")?.Value);
+        Assert.Contains("ProductNameText", namedTextBlocks);
+        Assert.Contains("VersionText", namedTextBlocks);
+        Assert.Contains("BuildText", namedTextBlocks);
+        Assert.Contains("CommitText", namedTextBlocks);
+        Assert.Contains("RuntimeText", namedTextBlocks);
+        Assert.Contains("PlatformText", namedTextBlocks);
+        Assert.Contains("DeveloperText", namedTextBlocks);
+        Assert.Contains("LicenseText", namedTextBlocks);
+        Assert.Contains("GitHub Repository", buttons.Keys);
+        Assert.Contains("Developer Website", buttons.Keys);
+        Assert.Contains("Original Hourglass Project", buttons.Keys);
+        Assert.Contains("Copy build information", buttons.Keys);
+        Assert.Equal("True", buttons["Close"].Attribute("IsCancel")?.Value);
+    }
+
+    [Fact]
+    public void AboutDialogIsMainWindowShellBehavior()
+    {
+        string codeBehind = File.ReadAllText(FindRepositoryFile("src/Hourglass.Linux.Avalonia/MainWindow.axaml.cs"));
+        string aboutHandler = ExtractMethod(codeBehind, "private async void AboutMenuItemClick");
+
+        Assert.Contains("private AboutWindow? aboutWindow;", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("this.applicationInfoProvider.GetApplicationInfo()", aboutHandler, StringComparison.Ordinal);
+        Assert.Contains("await dialog.ShowDialog(this).ConfigureAwait(true);", aboutHandler, StringComparison.Ordinal);
+        Assert.Contains("this.aboutWindow.Activate();", aboutHandler, StringComparison.Ordinal);
+        Assert.DoesNotContain("viewModel.", aboutHandler, StringComparison.Ordinal);
+        Assert.DoesNotContain("Command.Execute", aboutHandler, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -4005,6 +4089,35 @@ public sealed class MainWindowViewModelTests
         }
 
         throw new FileNotFoundException($"Could not find repository file '{relativePath}'.", relativePath);
+    }
+
+    private static string ExtractMethod(string source, string methodPrefix)
+    {
+        int start = source.IndexOf(methodPrefix, StringComparison.Ordinal);
+        Assert.True(start >= 0, $"Could not find method prefix '{methodPrefix}'.");
+
+        int bodyStart = source.IndexOf('{', start);
+        Assert.True(bodyStart >= 0, $"Could not find method body for '{methodPrefix}'.");
+
+        int depth = 0;
+        for (int index = bodyStart; index < source.Length; index++)
+        {
+            char character = source[index];
+            if (character == '{')
+            {
+                depth++;
+            }
+            else if (character == '}')
+            {
+                depth--;
+                if (depth == 0)
+                {
+                    return source[start..(index + 1)];
+                }
+            }
+        }
+
+        throw new InvalidOperationException($"Could not extract method '{methodPrefix}'.");
     }
 
     private static CountdownState CreateCountdownState(TimerState state)

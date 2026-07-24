@@ -46,6 +46,7 @@ fi
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 repo_root=$(cd -- "$script_dir/.." && pwd)
 project="$repo_root/src/Hourglass.Linux.Avalonia/Hourglass.Linux.Avalonia.csproj"
+source_revision=$(git -C "$repo_root" rev-parse --verify HEAD 2>/dev/null || true)
 
 case "$runtime" in
   linux-x64)
@@ -63,10 +64,18 @@ dotnet restore "$project" \
   --runtime "$runtime" \
   --verbosity normal
 
-dotnet publish "$project" \
-  --configuration Release \
-  --runtime "$runtime" \
-  --self-contained true \
-  --no-restore \
-  --output "$output" \
+publish_args=(
+  "$project"
+  --configuration Release
+  --runtime "$runtime"
+  --self-contained true
+  --no-restore
+  --output "$output"
   --verbosity normal
+)
+
+if [[ -n "$source_revision" ]]; then
+  publish_args+=("-p:SourceRevisionId=$source_revision")
+fi
+
+dotnet publish "${publish_args[@]}"

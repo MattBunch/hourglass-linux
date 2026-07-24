@@ -7,6 +7,11 @@ public interface INotificationService
     Task ShowTimerExpiredAsync(string title, string body, CancellationToken cancellationToken = default);
 }
 
+public interface IExternalUriLauncher
+{
+    Task<bool> OpenAsync(Uri uri, CancellationToken cancellationToken = default);
+}
+
 public enum StatusIconAction
 {
     NewTimer,

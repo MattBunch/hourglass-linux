@@ -19,6 +19,8 @@
 
 The Linux MVP should not promise complete feature parity. It should prioritize a reliable native timer experience with notifications, sound, settings, and testable timing behavior.
 
+The right-click menu includes **About Hourglass** near the exit command. It opens an owned shell dialog with executable version/build/runtime details, GitHub and developer links, original-project attribution, MIT license information, and copyable diagnostic metadata. This dialog is application-shell behavior and does not pause, save, or mutate timer state.
+
 The **Pop up when expired** context-menu option is enabled by default and persists across restarts. On expiry, Hourglass shows a short visual flash, retains a completion border until the timer is dismissed, and makes one best-effort request to show, restore, and activate the window. If the first restore request is refused, the Avalonia shell performs one hide/show remap before activating; it does not loop or alter the persisted always-on-top setting. Wayland compositors may still reject application-initiated activation or focus changes; notification, sound, and visual completion behavior continue independently when that happens.
 
 Invalid timer submissions preserve the entered expression, keep the editor active, and replay a brief validation treatment on every attempt. Avalonia 12 does not currently expose a dependable cross-desktop reduced-motion preference, so these effects are deliberately short, conservative, and non-repeating, with durable static error and completion states.
