@@ -379,6 +379,9 @@
         <MenuItem Header="Hide to notification area"
                   IsEnabled="{Binding CanHideToNotificationArea}"
                   Command="{Binding HideToNotificationAreaCommand}" />
+        <Separator />
+        <MenuItem Header="About Hourglass"
+                  Click="AboutMenuItemClick" />
         <MenuItem Header="Exit"
                   Click="ExitMenuItemClick" />
       </ContextMenu>

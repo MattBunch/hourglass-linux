@@ -25,6 +25,7 @@ public sealed class PackagingMetadataTests
     public void AppStreamMetadataMatchesDesktopApplication()
     {
         XDocument document = XDocument.Load(FindRepositoryFile($"packaging/linux/{AppId}.metainfo.xml"));
+        string projectVersion = ReadAvaloniaProjectVersion();
         XElement component = Assert.IsType<XElement>(document.Root);
 
         Assert.Equal("component", component.Name.LocalName);
@@ -32,9 +33,16 @@ public sealed class PackagingMetadataTests
         Assert.Equal(AppId, component.Element("id")?.Value);
         Assert.Equal($"{AppId}.desktop", component.Element("launchable")?.Value);
         Assert.Equal(Command, component.Element("provides")?.Element("binary")?.Value);
+        Assert.Equal("https://mattbunch.dev", component.Elements("url").Single(element => element.Attribute("type")?.Value == "homepage").Value);
+        Assert.Equal(
+            "https://github.com/MattBunch/hourglass-linux",
+            component.Elements("url").Single(element => element.Attribute("type")?.Value == "vcs-browser").Value);
+        Assert.Equal(
+            "https://github.com/MattBunch/hourglass-linux/issues",
+            component.Elements("url").Single(element => element.Attribute("type")?.Value == "bugtracker").Value);
 
         XElement release = Assert.Single(component.Element("releases")?.Elements("release") ?? []);
-        Assert.Equal("0.1.0", release.Attribute("version")?.Value);
+        Assert.Equal(projectVersion, release.Attribute("version")?.Value);
         Assert.Equal("2026-07-18", release.Attribute("date")?.Value);
     }
 
@@ -79,7 +87,12 @@ public sealed class PackagingMetadataTests
         string workflow = File.ReadAllText(FindRepositoryFile(".github/workflows/tests.yml"));
 
         Assert.Contains("--runtime linux-x64", publishScript, StringComparison.Ordinal);
-        Assert.Contains("dotnet publish \"$project\"", publishScript, StringComparison.Ordinal);
+        Assert.Contains("git -C \"$repo_root\" rev-parse --is-inside-work-tree", publishScript, StringComparison.Ordinal);
+        Assert.Contains("git -C \"$repo_root\" status --porcelain", publishScript, StringComparison.Ordinal);
+        Assert.Contains("Cannot publish a release with uncommitted changes.", publishScript, StringComparison.Ordinal);
+        Assert.Contains("source_revision=$(git -C \"$repo_root\" rev-parse --verify HEAD", publishScript, StringComparison.Ordinal);
+        Assert.Contains("dotnet publish \"${publish_args[@]}\"", publishScript, StringComparison.Ordinal);
+        Assert.Contains("-p:SourceRevisionId=$source_revision", publishScript, StringComparison.Ordinal);
         Assert.Contains("--self-contained true", publishScript, StringComparison.Ordinal);
         Assert.DoesNotContain("cp -a -- \"$build_output/.\"", publishScript, StringComparison.Ordinal);
         Assert.Contains("desktop-file-validate", validateScript, StringComparison.Ordinal);
@@ -108,6 +121,19 @@ public sealed class PackagingMetadataTests
         }
 
         throw new FileNotFoundException($"Could not find {relativePath} from {AppContext.BaseDirectory}.");
+    }
+
+    private static string ReadAvaloniaProjectVersion()
+    {
+        XDocument project = XDocument.Load(
+            FindRepositoryFile("src/Hourglass.Linux.Avalonia/Hourglass.Linux.Avalonia.csproj"));
+        string? version = project
+            .Descendants("Version")
+            .SingleOrDefault()
+            ?.Value;
+
+        Assert.False(string.IsNullOrWhiteSpace(version));
+        return version;
     }
 
     private static string FindRepositoryDirectory(string relativePath)

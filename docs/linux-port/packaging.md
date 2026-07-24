@@ -20,6 +20,8 @@ scripts/validate-linux-packaging.sh /tmp/hourglass-linux-publish /tmp/hourglass-
 
 The publish output is generated content and should not be committed.
 
+Release publishes pass the current Git commit to the Avalonia project as `SourceRevisionId` when the source tree is inside a Git repository. About dialog diagnostics display that revision for packaged builds and fall back to `Local build` for source archives or non-Git local builds.
+
 ## Package Strategy
 
 - Flatpak is the primary future package format because it provides cross-distro delivery and portal-oriented desktop integration.

@@ -5,8 +5,33 @@
     <AssemblyName>hourglass-linux</AssemblyName>
     <RootNamespace>Hourglass.Linux.Avalonia</RootNamespace>
     <Version>0.1.0</Version>
+    <AssemblyTitle>Hourglass</AssemblyTitle>
+    <Product>Hourglass Linux</Product>
+    <Description>Simple countdown timer for Linux</Description>
+    <Company>Matt Bunch</Company>
+    <RepositoryUrl>https://github.com/MattBunch/hourglass-linux</RepositoryUrl>
     <RuntimeIdentifiers>linux-x64</RuntimeIdentifiers>
   </PropertyGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>DeveloperWebsite</_Parameter1>
+      <_Parameter2>https://mattbunch.dev</_Parameter2>
+    </AssemblyAttribute>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>OriginalProject</_Parameter1>
+      <_Parameter2>http://chris.dziemborowicz.com/apps/hourglass/</_Parameter2>
+    </AssemblyAttribute>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>BuildConfiguration</_Parameter1>
+      <_Parameter2>$(Configuration)</_Parameter2>
+    </AssemblyAttribute>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute"
+                       Condition="'$(SourceRevisionId)' != ''">
+      <_Parameter1>SourceRevision</_Parameter1>
+      <_Parameter2>$(SourceRevisionId)</_Parameter2>
+    </AssemblyAttribute>
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Avalonia" Version="12.0.4" />

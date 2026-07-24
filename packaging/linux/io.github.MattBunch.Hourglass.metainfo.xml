@@ -11,7 +11,9 @@
   <developer id="io.github.mattbunch">
     <name>Matt Bunch</name>
   </developer>
-  <url type="homepage">https://github.com/MattBunch/hourglass-linux</url>
+  <url type="homepage">https://mattbunch.dev</url>
+  <url type="vcs-browser">https://github.com/MattBunch/hourglass-linux</url>
+  <url type="bugtracker">https://github.com/MattBunch/hourglass-linux/issues</url>
   <launchable type="desktop-id">io.github.MattBunch.Hourglass.desktop</launchable>
   <provides>
     <binary>hourglass-linux</binary>

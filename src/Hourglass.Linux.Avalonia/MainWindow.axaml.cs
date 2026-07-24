@@ -37,6 +37,8 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
     private readonly DispatcherTimer completionCloseTimer;
     private readonly DesktopProgressController desktopProgressController;
     private readonly DispatcherTimer expiryFlashTimer;
+    private readonly ApplicationInfoProvider applicationInfoProvider;
+    private readonly IExternalUriLauncher externalUriLauncher;
     private readonly DispatcherTimer refreshTimer;
     private readonly IStatusIconService statusIconService;
     private readonly DispatcherTimer validationFeedbackTimer;
@@ -48,6 +50,7 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
     private readonly MainWindowViewModel viewModel;
     private readonly WindowAttentionController? windowAttentionController;
     private int expiryFlashGeneration;
+    private AboutWindow? aboutWindow;
     private bool closeApprovalPreapproved;
     private bool focusWithinContent;
     private bool isClosed;
@@ -64,7 +67,9 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
         : this(
             CreateDefaultViewModel(services),
             services.DesktopProgressService,
-            services.StatusIconService)
+            services.StatusIconService,
+            services.ApplicationInfoProvider,
+            services.ExternalUriLauncher)
     {
     }
 
@@ -87,12 +92,22 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
     }
 
     internal MainWindow(MainWindowViewModel viewModel)
-        : this(viewModel, new UnsupportedDesktopProgressService(), UnsupportedStatusIconService.Instance)
+        : this(
+            viewModel,
+            new UnsupportedDesktopProgressService(),
+            UnsupportedStatusIconService.Instance,
+            new ApplicationInfoProvider(),
+            new LinuxExternalUriLauncher())
     {
     }
 
     internal MainWindow(MainWindowViewModel viewModel, IDesktopProgressService desktopProgressService)
-        : this(viewModel, desktopProgressService, UnsupportedStatusIconService.Instance)
+        : this(
+            viewModel,
+            desktopProgressService,
+            UnsupportedStatusIconService.Instance,
+            new ApplicationInfoProvider(),
+            new LinuxExternalUriLauncher())
     {
     }
 
@@ -100,6 +115,8 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
         MainWindowViewModel viewModel,
         IDesktopProgressService desktopProgressService,
         IStatusIconService statusIconService,
+        ApplicationInfoProvider applicationInfoProvider,
+        IExternalUriLauncher externalUriLauncher,
         bool loadSettingsOnOpened = true,
         Func<MainWindow, Task>? prepareCoordinatorClose = null,
         Func<Task>? requestApplicationExit = null)
@@ -110,6 +127,8 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
         this.desktopProgressController = new DesktopProgressController(
             desktopProgressService ?? throw new ArgumentNullException(nameof(desktopProgressService)));
         this.statusIconService = statusIconService ?? throw new ArgumentNullException(nameof(statusIconService));
+        this.applicationInfoProvider = applicationInfoProvider ?? throw new ArgumentNullException(nameof(applicationInfoProvider));
+        this.externalUriLauncher = externalUriLauncher ?? throw new ArgumentNullException(nameof(externalUriLauncher));
         this.loadSettingsOnOpened = loadSettingsOnOpened;
         this.prepareCoordinatorClose = prepareCoordinatorClose ?? (_ => Task.CompletedTask);
         this.requestApplicationExit = requestApplicationExit ?? this.RequestLocalExitAsync;
@@ -215,7 +234,9 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
 
         return new DefaultMainWindowServices(
             LinuxDesktopProgressServiceFactory.CreateDefault(),
-            statusIconService);
+            statusIconService,
+            new ApplicationInfoProvider(),
+            new LinuxExternalUriLauncher());
     }
 
     private static IStatusIconService CreateAvaloniaStatusIconService()
@@ -370,6 +391,32 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
     private void ExitMenuItemClick(object? sender, RoutedEventArgs e)
     {
         _ = this.requestApplicationExit();
+    }
+
+    private async void AboutMenuItemClick(object? sender, RoutedEventArgs e)
+    {
+        if (this.aboutWindow != null)
+        {
+            this.aboutWindow.Activate();
+            return;
+        }
+
+        var dialog = new AboutWindow(
+            this.applicationInfoProvider.GetApplicationInfo(),
+            this.externalUriLauncher);
+        this.aboutWindow = dialog;
+
+        try
+        {
+            await dialog.ShowDialog(this).ConfigureAwait(true);
+        }
+        finally
+        {
+            if (ReferenceEquals(this.aboutWindow, dialog))
+            {
+                this.aboutWindow = null;
+            }
+        }
     }
 
     private void FullScreenMenuItemClick(object? sender, RoutedEventArgs e)
@@ -1254,5 +1301,7 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
 
     private sealed record DefaultMainWindowServices(
         IDesktopProgressService DesktopProgressService,
-        IStatusIconService StatusIconService);
+        IStatusIconService StatusIconService,
+        ApplicationInfoProvider ApplicationInfoProvider,
+        IExternalUriLauncher ExternalUriLauncher);
 }

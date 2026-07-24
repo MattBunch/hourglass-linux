@@ -29,6 +29,8 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
     private readonly IClassicDesktopStyleApplicationLifetime lifetime;
     private readonly IAudioAlertService audioAlertService;
     private readonly INotificationService notificationService;
+    private readonly ApplicationInfoProvider applicationInfoProvider;
+    private readonly IExternalUriLauncher externalUriLauncher;
     private readonly ISettingsStore settingsStore;
     private readonly IAppSettingsStore appSettingsStore;
     private readonly ISavedTimersStore savedTimersStore;
@@ -54,7 +56,9 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
             new UnsupportedSystemPowerService(),
             new RtcWakeAlarmService(),
             LinuxDesktopProgressServiceFactory.CreateDefault(),
-            CreateStatusIconService())
+            CreateStatusIconService(),
+            new ApplicationInfoProvider(),
+            new LinuxExternalUriLauncher())
     {
     }
 
@@ -67,7 +71,9 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
         ISystemPowerService systemPowerService,
         IWakeAlarmService wakeAlarmService,
         IDesktopProgressService desktopProgressService,
-        IStatusIconService statusIconService)
+        IStatusIconService statusIconService,
+        ApplicationInfoProvider? applicationInfoProvider = null,
+        IExternalUriLauncher? externalUriLauncher = null)
     {
         this.lifetime = lifetime ?? throw new ArgumentNullException(nameof(lifetime));
         this.settingsStore = settingsStore ?? throw new ArgumentNullException(nameof(settingsStore));
@@ -83,6 +89,8 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
         this.desktopProgressController = new DesktopProgressController(
             desktopProgressService ?? throw new ArgumentNullException(nameof(desktopProgressService)));
         this.statusIconService = statusIconService ?? throw new ArgumentNullException(nameof(statusIconService));
+        this.applicationInfoProvider = applicationInfoProvider ?? new ApplicationInfoProvider();
+        this.externalUriLauncher = externalUriLauncher ?? new LinuxExternalUriLauncher();
         this.statusIconService.ActionRequested += this.StatusIconActionRequested;
     }
 
@@ -191,6 +199,8 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
             viewModel,
             new UnsupportedDesktopProgressService(),
             UnsupportedStatusIconService.Instance,
+            this.applicationInfoProvider,
+            this.externalUriLauncher,
             loadSettingsOnOpened: false,
             prepareCoordinatorClose: this.PrepareWindowCloseAsync,
             requestApplicationExit: this.CloseAllWindowsAsync);

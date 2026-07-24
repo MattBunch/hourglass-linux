@@ -46,6 +46,16 @@ fi
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 repo_root=$(cd -- "$script_dir/.." && pwd)
 project="$repo_root/src/Hourglass.Linux.Avalonia/Hourglass.Linux.Avalonia.csproj"
+source_revision=
+
+if git -C "$repo_root" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  if [[ -n "$(git -C "$repo_root" status --porcelain)" ]]; then
+    printf 'Cannot publish a release with uncommitted changes. Commit, stash, or discard changes first.\n' >&2
+    exit 1
+  fi
+
+  source_revision=$(git -C "$repo_root" rev-parse --verify HEAD 2>/dev/null || true)
+fi
 
 case "$runtime" in
   linux-x64)
@@ -63,10 +73,18 @@ dotnet restore "$project" \
   --runtime "$runtime" \
   --verbosity normal
 
-dotnet publish "$project" \
-  --configuration Release \
-  --runtime "$runtime" \
-  --self-contained true \
-  --no-restore \
-  --output "$output" \
+publish_args=(
+  "$project"
+  --configuration Release
+  --runtime "$runtime"
+  --self-contained true
+  --no-restore
+  --output "$output"
   --verbosity normal
+)
+
+if [[ -n "$source_revision" ]]; then
+  publish_args+=("-p:SourceRevisionId=$source_revision")
+fi
+
+dotnet publish "${publish_args[@]}"

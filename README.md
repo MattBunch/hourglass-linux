@@ -31,6 +31,8 @@ dotnet run --project src/Hourglass.Linux.Avalonia/Hourglass.Linux.Avalonia.cspro
 ```
 
 Right-click the timer surface to open timer actions and persistent notification, sound, and always-on-top options.
+The **About Hourglass** item shows version/build details, repository and developer links, original Hourglass
+attribution, MIT license information, and copyable diagnostic metadata for support reports.
 Settings are stored in `hourglass-linux/app.json` under `$XDG_CONFIG_HOME`, or under `~/.config` when
 `XDG_CONFIG_HOME` is not set. Always-on-top uses Avalonia's standard `Topmost` window hint; some Wayland
 compositors may ignore that hint.

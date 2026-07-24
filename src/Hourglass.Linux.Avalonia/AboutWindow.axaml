@@ -1,0 +1,114 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="Hourglass.Linux.Avalonia.AboutWindow"
+        Title="About Hourglass"
+        Icon="/Assets/hourglass.png"
+        Width="460"
+        Height="430"
+        MinWidth="420"
+        MinHeight="390"
+        CanResize="False"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner">
+  <Grid Margin="20"
+        RowDefinitions="Auto,*,Auto">
+    <StackPanel Orientation="Horizontal"
+                Spacing="14">
+      <Image Source="/Assets/hourglass.png"
+             Width="56"
+             Height="56"
+             VerticalAlignment="Top" />
+      <StackPanel Spacing="2">
+        <TextBlock x:Name="ProductNameText"
+                   FontSize="22"
+                   FontWeight="SemiBold"
+                   TextWrapping="Wrap" />
+        <TextBlock x:Name="DescriptionText"
+                   TextWrapping="Wrap" />
+      </StackPanel>
+    </StackPanel>
+
+    <ScrollViewer Grid.Row="1"
+                  Margin="0,18,0,14"
+                  VerticalScrollBarVisibility="Auto">
+      <StackPanel Spacing="12">
+        <Grid ColumnDefinitions="Auto,*"
+              RowDefinitions="Auto,Auto,Auto,Auto,Auto"
+              ColumnSpacing="16"
+              RowSpacing="5">
+          <TextBlock Text="Version" />
+          <TextBlock Grid.Column="1"
+                     x:Name="VersionText"
+                     TextWrapping="Wrap" />
+
+          <TextBlock Grid.Row="1"
+                     Text="Build" />
+          <TextBlock Grid.Row="1"
+                     Grid.Column="1"
+                     x:Name="BuildText"
+                     TextWrapping="Wrap" />
+
+          <TextBlock Grid.Row="2"
+                     Text="Commit" />
+          <TextBlock Grid.Row="2"
+                     Grid.Column="1"
+                     x:Name="CommitText"
+                     TextWrapping="Wrap" />
+
+          <TextBlock Grid.Row="3"
+                     Text="Runtime" />
+          <TextBlock Grid.Row="3"
+                     Grid.Column="1"
+                     x:Name="RuntimeText"
+                     TextWrapping="Wrap" />
+
+          <TextBlock Grid.Row="4"
+                     Text="Platform" />
+          <TextBlock Grid.Row="4"
+                     Grid.Column="1"
+                     x:Name="PlatformText"
+                     TextWrapping="Wrap" />
+        </Grid>
+
+        <TextBlock x:Name="DeveloperText"
+                   TextWrapping="Wrap" />
+
+        <StackPanel Spacing="6">
+          <Button Content="GitHub Repository"
+                  HorizontalAlignment="Left"
+                  Click="RepositoryButtonClick" />
+          <Button Content="Developer Website"
+                  HorizontalAlignment="Left"
+                  Click="DeveloperWebsiteButtonClick" />
+          <Button Content="Original Hourglass Project"
+                  HorizontalAlignment="Left"
+                  Click="OriginalProjectButtonClick" />
+          <TextBlock x:Name="LinkStatusText"
+                     Foreground="{DynamicResource ThemeForegroundLowBrush}"
+                     TextWrapping="Wrap" />
+        </StackPanel>
+
+        <TextBlock x:Name="LicenseText"
+                   TextWrapping="Wrap" />
+      </StackPanel>
+    </ScrollViewer>
+
+    <Grid Grid.Row="2"
+          ColumnDefinitions="*,Auto"
+          ColumnSpacing="8">
+      <StackPanel Orientation="Horizontal"
+                  VerticalAlignment="Center"
+                  Spacing="10">
+        <Button Content="Copy build information"
+                Click="CopyBuildInformationButtonClick" />
+        <TextBlock x:Name="CopyStatusText"
+                   VerticalAlignment="Center"
+                   TextWrapping="Wrap" />
+      </StackPanel>
+      <Button Grid.Column="1"
+              Content="Close"
+              IsCancel="True"
+              Click="CloseButtonClick" />
+    </Grid>
+  </Grid>
+</Window>
