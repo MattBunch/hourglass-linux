@@ -2,6 +2,7 @@ namespace Hourglass.Linux.Services.Tests;
 
 using System.ComponentModel;
 using System.Diagnostics;
+using Hourglass.Platform;
 using Xunit;
 
 public sealed class SystemdSessionInhibitorTests
@@ -45,11 +46,16 @@ public sealed class SystemdSessionInhibitorTests
     [Fact]
     public async Task MissingSystemdInhibitReturnsNull()
     {
-        var service = new SystemdSessionInhibitor(_ => throw new Win32Exception());
+        var diagnostics = new RecordingDiagnosticSink();
+        var service = new SystemdSessionInhibitor(_ => throw new Win32Exception(), diagnosticSink: diagnostics);
 
         IAsyncDisposable? lease = await service.InhibitAsync("Hourglass timer is running", inhibitSuspend: true, inhibitIdle: true);
 
         Assert.Null(lease);
+        DiagnosticEvent diagnostic = Assert.Single(diagnostics.Events);
+        Assert.Equal(DiagnosticFailureClass.BestEffort, diagnostic.FailureClass);
+        Assert.Equal("session-inhibition", diagnostic.Category);
+        Assert.Equal("systemd-inhibit", diagnostic.Backend);
     }
 
     [Fact]

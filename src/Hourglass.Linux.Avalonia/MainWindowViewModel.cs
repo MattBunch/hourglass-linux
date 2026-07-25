@@ -19,6 +19,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private readonly IAppSettingsStore appSettingsStore;
     private readonly IAudioAlertService audioAlertService;
     private readonly CountdownEngine engine;
+    private readonly IDiagnosticSink diagnosticSink;
     private readonly INotificationService notificationService;
     private readonly ISavedTimersStore savedTimersStore;
     private readonly ISessionInhibitor sessionInhibitor;
@@ -161,7 +162,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         string? sessionId = null,
         bool persistActiveSessionDirectly = true,
         bool restoreActiveSessionOnLoad = true,
-        IUiDispatcher? uiDispatcher = null)
+        IUiDispatcher? uiDispatcher = null,
+        IDiagnosticSink? diagnosticSink = null)
     {
         this.engine = engine ?? throw new ArgumentNullException(nameof(engine));
         this.wallClockNow = wallClockNow ?? throw new ArgumentNullException(nameof(wallClockNow));
@@ -173,6 +175,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         this.audioAlertService = audioAlertService ?? throw new ArgumentNullException(nameof(audioAlertService));
         this.systemPowerService = systemPowerService ?? throw new ArgumentNullException(nameof(systemPowerService));
         this.uiDispatcher = uiDispatcher ?? ImmediateUiDispatcher.Instance;
+        this.diagnosticSink = diagnosticSink ?? NoOpDiagnosticSink.Instance;
         this.statusIconSupported = statusIconSupported;
         this.statusIconCanRecoverHiddenWindow = statusIconCanRecoverHiddenWindow;
         this.SessionId = string.IsNullOrWhiteSpace(sessionId) ? Guid.NewGuid().ToString("N") : sessionId.Trim();
@@ -611,8 +614,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         {
             throw;
         }
-        catch (Exception)
+        catch (Exception exception)
         {
+            this.RecordDataRecovery("load", key, "Document load failed; using fallback.", exception);
             return fallback;
         }
     }
@@ -627,8 +631,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         {
             throw;
         }
-        catch (Exception)
+        catch (Exception exception)
         {
+            this.RecordDataRecovery("load", "app", "Application settings load failed; using defaults.", exception);
             return LinuxAppSettings.Default;
         }
     }
@@ -643,8 +648,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         {
             throw;
         }
-        catch (Exception)
+        catch (Exception exception)
         {
+            this.RecordDataRecovery("load", "saved-timers", "Saved timers load failed; using an empty document.", exception);
             return SavedTimersDocument.Empty;
         }
     }
@@ -661,8 +667,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         {
             throw;
         }
-        catch (Exception)
+        catch (Exception exception)
         {
+            this.RecordDataRecovery("load", ActiveSessionKey, "Active session load failed; using no active session.", exception);
             session = null;
         }
 
@@ -1823,8 +1830,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             {
                 handler.Invoke(this, EventArgs.Empty);
             }
-            catch (Exception)
+            catch (Exception exception)
             {
+                this.RecordBestEffort("event", "publish", "handler", "Event handler failed.", exception);
             }
         }
     }
@@ -1850,8 +1858,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             {
                 handler.Invoke(this, args);
             }
-            catch (Exception)
+            catch (Exception exception)
             {
+                this.RecordBestEffort("event", "publish-open-all-saved-timers", "handler", "Event handler failed.", exception);
             }
         }
     }
@@ -1873,8 +1882,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
                 string.Empty);
             await this.notificationService.ShowTimerExpiredAsync(notificationTitle, NotificationBody).ConfigureAwait(false);
         }
-        catch (Exception)
+        catch (Exception exception)
         {
+            this.RecordBestEffort("notifications", "show-expired", this.notificationService.GetType().Name, "Timer expiry notification failed.", exception);
         }
     }
 
@@ -1893,8 +1903,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
                 ? await this.audioAlertService.PlayAlertLoopingAsync(this.settings.AudioAlertSoundId).ConfigureAwait(false)
                 : await this.audioAlertService.PlayAlertAsync(this.settings.AudioAlertSoundId).ConfigureAwait(false);
         }
-        catch (Exception)
+        catch (Exception exception)
         {
+            this.RecordBestEffort("audio-alerts", "play-expired", this.audioAlertService.GetType().Name, "Timer expiry audio failed.", exception);
         }
     }
 
@@ -1912,8 +1923,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         {
             await playback.DisposeAsync().ConfigureAwait(false);
         }
-        catch (Exception)
+        catch (Exception exception)
         {
+            this.RecordBestEffort("audio-alerts", "stop-active", this.audioAlertService.GetType().Name, "Active audio playback disposal failed.", exception);
         }
     }
 
@@ -1944,8 +1956,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         {
             await this.systemPowerService.RequestShutdownAsync().ConfigureAwait(false);
         }
-        catch (Exception)
+        catch (Exception exception)
         {
+            this.RecordUserRequested("system-power", "shutdown", this.systemPowerService.GetType().Name, "Shutdown request failed.", exception);
         }
     }
 
@@ -1983,9 +1996,10 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
                 inhibitSuspend: true,
                 inhibitIdle: true).ConfigureAwait(false);
         }
-        catch (Exception)
+        catch (Exception exception)
         {
             this.inhibitionLease = null;
+            this.RecordBestEffort("session-inhibition", "acquire", this.sessionInhibitor.GetType().Name, "Session inhibition acquire failed.", exception);
         }
     }
 
@@ -2003,8 +2017,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         {
             await lease.DisposeAsync().ConfigureAwait(false);
         }
-        catch (Exception)
+        catch (Exception exception)
         {
+            this.RecordBestEffort("session-inhibition", "release", this.sessionInhibitor.GetType().Name, "Session inhibition release failed.", exception);
         }
     }
 
@@ -2054,8 +2069,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         {
             await previousSave.ConfigureAwait(false);
         }
-        catch (Exception)
+        catch (Exception exception)
         {
+            this.RecordDataRecovery("save", "app", "Previous settings save failed before a queued save.", exception);
         }
 
         try
@@ -2067,8 +2083,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
                 .InvokeAsync(() => this.ReplaceSettings(mergedSettings, save: false))
                 .ConfigureAwait(false);
         }
-        catch (Exception)
+        catch (Exception exception)
         {
+            this.RecordDataRecovery("save", "app", "Settings save failed.", exception);
         }
     }
 
@@ -2078,16 +2095,18 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         {
             await previousSave.ConfigureAwait(false);
         }
-        catch (Exception)
+        catch (Exception exception)
         {
+            this.RecordDataRecovery("save", key, "Previous document save failed before a queued save.", exception);
         }
 
         try
         {
             await this.settingsStore.SaveAsync(key, document).ConfigureAwait(false);
         }
-        catch (Exception)
+        catch (Exception exception)
         {
+            this.RecordDataRecovery("save", key, "Document save failed.", exception);
         }
     }
 
@@ -2100,16 +2119,18 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         {
             await previousSave.ConfigureAwait(false);
         }
-        catch (Exception)
+        catch (Exception exception)
         {
+            this.RecordDataRecovery("save", "saved-timers", "Previous saved timers save failed before a queued save.", exception);
         }
 
         try
         {
             await this.savedTimersStore.SaveAsync(previousSavedTimers, requestedSavedTimers).ConfigureAwait(false);
         }
-        catch (Exception)
+        catch (Exception exception)
         {
+            this.RecordDataRecovery("save", "saved-timers", "Saved timers save failed.", exception);
         }
     }
 
@@ -2122,8 +2143,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         {
             await previousSave.ConfigureAwait(false);
         }
-        catch (Exception)
+        catch (Exception exception)
         {
+            this.RecordDataRecovery("save", CustomThemesKey, "Previous custom themes save failed before a queued save.", exception);
         }
 
         CustomThemesDocument latestCustomThemes = await this.LoadLatestCustomThemesForSaveAsync(previousCustomThemes).ConfigureAwait(false);
@@ -2136,8 +2158,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         {
             await this.settingsStore.SaveAsync(CustomThemesKey, mergedCustomThemes).ConfigureAwait(false);
         }
-        catch (Exception)
+        catch (Exception exception)
         {
+            this.RecordDataRecovery("save", CustomThemesKey, "Custom themes save failed.", exception);
         }
     }
 
@@ -2148,8 +2171,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             return await this.settingsStore.LoadAsync<CustomThemesDocument>(CustomThemesKey).ConfigureAwait(false)
                 ?? fallback;
         }
-        catch (Exception)
+        catch (Exception exception)
         {
+            this.RecordDataRecovery("load", CustomThemesKey, "Latest custom themes load failed before save; using fallback.", exception);
             return fallback;
         }
     }
@@ -2314,6 +2338,71 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         {
             this.OnPropertyChanged(propertyName);
         }
+    }
+
+    private void RecordBestEffort(
+        string category,
+        string operation,
+        string backend,
+        string message,
+        Exception exception)
+    {
+        this.RecordDiagnostic(
+            DiagnosticFailureClass.BestEffort,
+            category,
+            operation,
+            backend,
+            message,
+            exception);
+    }
+
+    private void RecordUserRequested(
+        string category,
+        string operation,
+        string backend,
+        string message,
+        Exception exception)
+    {
+        this.RecordDiagnostic(
+            DiagnosticFailureClass.UserRequested,
+            category,
+            operation,
+            backend,
+            message,
+            exception);
+    }
+
+    private void RecordDataRecovery(
+        string operation,
+        string documentKey,
+        string message,
+        Exception exception)
+    {
+        this.RecordDiagnostic(
+            DiagnosticFailureClass.DataRecovery,
+            "settings",
+            operation,
+            documentKey,
+            message,
+            exception);
+    }
+
+    private void RecordDiagnostic(
+        DiagnosticFailureClass failureClass,
+        string category,
+        string operation,
+        string backend,
+        string message,
+        Exception exception)
+    {
+        this.diagnosticSink.TryRecord(new DiagnosticEvent(
+            DiagnosticSeverity.Warning,
+            failureClass,
+            category,
+            operation,
+            backend,
+            message,
+            exception));
     }
 
     private sealed class NoOpSettingsStore : ISettingsStore

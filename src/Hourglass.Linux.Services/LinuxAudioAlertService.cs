@@ -20,35 +20,49 @@ public sealed class LinuxAudioAlertService : IAudioAlertService
     ];
 
     private readonly IReadOnlyDictionary<string, string> soundPaths;
+    private readonly IDiagnosticSink diagnosticSink;
     private readonly Func<ProcessStartInfo, CancellationToken, Task<int>> runProcessAsync;
     private readonly AudioPlayerCommand? selectedCommand;
 
     public LinuxAudioAlertService(string soundsDirectory)
-        : this(CreateBuiltInSoundPaths(soundsDirectory), RunProcessAsync, IsExecutableAvailable)
+        : this(CreateBuiltInSoundPaths(soundsDirectory), RunProcessAsync, IsExecutableAvailable, NoOpDiagnosticSink.Instance)
+    {
+    }
+
+    public LinuxAudioAlertService(string soundsDirectory, IDiagnosticSink diagnosticSink)
+        : this(
+            CreateBuiltInSoundPaths(soundsDirectory),
+            RunProcessAsync,
+            IsExecutableAvailable,
+            diagnosticSink ?? throw new ArgumentNullException(nameof(diagnosticSink)))
     {
     }
 
     internal LinuxAudioAlertService(
         string normalBeepPath,
         Func<ProcessStartInfo, CancellationToken, Task<int>> runProcessAsync,
-        Func<string, bool>? isExecutableAvailable = null)
+        Func<string, bool>? isExecutableAvailable = null,
+        IDiagnosticSink? diagnosticSink = null)
         : this(
             new Dictionary<string, string>(StringComparer.Ordinal)
             {
                 [AudioAlertSoundIds.NormalBeep] = normalBeepPath
             },
             runProcessAsync,
-            isExecutableAvailable)
+            isExecutableAvailable,
+            diagnosticSink)
     {
     }
 
     internal LinuxAudioAlertService(
         IReadOnlyDictionary<string, string> soundPaths,
         Func<ProcessStartInfo, CancellationToken, Task<int>> runProcessAsync,
-        Func<string, bool>? isExecutableAvailable = null)
+        Func<string, bool>? isExecutableAvailable = null,
+        IDiagnosticSink? diagnosticSink = null)
     {
         this.soundPaths = ValidateSoundPaths(soundPaths);
         this.runProcessAsync = runProcessAsync ?? throw new ArgumentNullException(nameof(runProcessAsync));
+        this.diagnosticSink = diagnosticSink ?? NoOpDiagnosticSink.Instance;
         Func<string, bool> executableAvailable = isExecutableAvailable ?? (_ => true);
         this.selectedCommand = PlayerCommands
             .Where(command => executableAvailable(command.ExecutableName))
@@ -69,6 +83,7 @@ public sealed class LinuxAudioAlertService : IAudioAlertService
 
     public async Task<IAsyncDisposable?> PlayAlertAsync(string soundId, CancellationToken cancellationToken = default)
     {
+        this.ResetFailureSuppression();
         string? soundPath = this.GetSoundPath(soundId, cancellationToken);
         if (soundPath == null)
         {
@@ -81,6 +96,7 @@ public sealed class LinuxAudioAlertService : IAudioAlertService
 
     public Task<IAsyncDisposable?> PlayAlertLoopingAsync(string soundId, CancellationToken cancellationToken = default)
     {
+        this.ResetFailureSuppression();
         string? soundPath = this.GetSoundPath(soundId, cancellationToken);
         if (soundPath == null)
         {
@@ -139,8 +155,23 @@ public sealed class LinuxAudioAlertService : IAudioAlertService
             throw new ArgumentException($"Unsupported audio alert sound ID: {soundId}", nameof(soundId));
         }
 
+        if (this.selectedCommand == null)
+        {
+            this.RecordFailure(
+                "select-sound",
+                "none",
+                "No supported audio player command was available.",
+                null);
+            return null;
+        }
+
         if (!File.Exists(soundPath))
         {
+            this.RecordFailure(
+                "select-sound",
+                this.selectedCommand.Value.ExecutableName,
+                "Selected audio alert sound file was not available.",
+                null);
             return null;
         }
 
@@ -193,18 +224,29 @@ public sealed class LinuxAudioAlertService : IAudioAlertService
         try
         {
             int exitCode = await this.runProcessAsync(startInfo, cancellationToken).ConfigureAwait(false);
+            if (exitCode != 0)
+            {
+                this.RecordFailure(
+                    "play",
+                    command.ExecutableName,
+                    $"Audio player exited with code {exitCode}.",
+                    null);
+            }
+
             return exitCode == 0;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             throw;
         }
-        catch (Win32Exception)
+        catch (Win32Exception exception)
         {
+            this.RecordFailure("play", command.ExecutableName, "Audio player could not be started.", exception);
             return false;
         }
-        catch (InvalidOperationException)
+        catch (InvalidOperationException exception)
         {
+            this.RecordFailure("play", command.ExecutableName, "Audio player failed before completion.", exception);
             return false;
         }
     }
@@ -301,6 +343,27 @@ public sealed class LinuxAudioAlertService : IAudioAlertService
         {
             return false;
         }
+    }
+
+    private void RecordFailure(
+        string operation,
+        string backend,
+        string message,
+        Exception? exception)
+    {
+        this.diagnosticSink.TryRecord(new DiagnosticEvent(
+            DiagnosticSeverity.Warning,
+            DiagnosticFailureClass.BestEffort,
+            "audio-alerts",
+            operation,
+            backend,
+            message,
+            exception));
+    }
+
+    private void ResetFailureSuppression()
+    {
+        this.diagnosticSink.ResetDuplicateSuppression("audio-alerts");
     }
 
     private readonly record struct AudioPlayerCommand(string ExecutableName, string? StableArgument = null)

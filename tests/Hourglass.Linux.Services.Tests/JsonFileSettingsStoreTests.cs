@@ -68,11 +68,16 @@ public sealed class JsonFileSettingsStoreTests : IDisposable
     {
         Directory.CreateDirectory(this.settingsDirectory);
         await File.WriteAllTextAsync(Path.Combine(this.settingsDirectory, "app.json"), "{not json");
-        var store = this.CreateStore();
+        var diagnostics = new RecordingDiagnosticSink();
+        var store = this.CreateStore(diagnostics);
 
         LinuxAppSettings? loaded = await store.LoadAsync<LinuxAppSettings>("app");
 
         Assert.Null(loaded);
+        DiagnosticEvent diagnostic = Assert.Single(diagnostics.Events);
+        Assert.Equal(DiagnosticFailureClass.DataRecovery, diagnostic.FailureClass);
+        Assert.Equal("settings", diagnostic.Category);
+        Assert.Equal("app", diagnostic.Backend);
     }
 
     [Fact]
@@ -134,9 +139,9 @@ public sealed class JsonFileSettingsStoreTests : IDisposable
         }
     }
 
-    private JsonFileSettingsStore CreateStore()
+    private JsonFileSettingsStore CreateStore(IDiagnosticSink? diagnosticSink = null)
     {
-        return new JsonFileSettingsStore(new FixedSettingsPathService(this.settingsDirectory));
+        return new JsonFileSettingsStore(new FixedSettingsPathService(this.settingsDirectory), diagnosticSink);
     }
 
     private sealed class FixedSettingsPathService(string settingsDirectory) : ISettingsPathService

@@ -5,12 +5,14 @@ namespace Hourglass.Linux.Avalonia;
 
 internal sealed class WakeAlarmController(
     IWakeAlarmService wakeAlarmService,
-    Func<DateTimeOffset> wallClockNow) : IAsyncDisposable
+    Func<DateTimeOffset> wallClockNow,
+    IDiagnosticSink? diagnosticSink = null) : IAsyncDisposable
 {
     private const string WakeAlarmReason = "Hourglass timer is running";
     private static readonly TimeSpan WakeLeadTime = TimeSpan.FromSeconds(15);
     private static readonly TimeSpan MinimumFutureWakeDelay = TimeSpan.FromSeconds(15);
 
+    private readonly IDiagnosticSink diagnosticSink = diagnosticSink ?? NoOpDiagnosticSink.Instance;
     private readonly IWakeAlarmService wakeAlarmService = wakeAlarmService ?? throw new ArgumentNullException(nameof(wakeAlarmService));
     private readonly Func<DateTimeOffset> wallClockNow = wallClockNow ?? throw new ArgumentNullException(nameof(wallClockNow));
     private readonly SemaphoreSlim gate = new(1, 1);
@@ -45,6 +47,7 @@ internal sealed class WakeAlarmController(
             WakeAlarmScheduleResult result;
             try
             {
+                this.diagnosticSink.ResetDuplicateSuppression("wake-alarm", "schedule", this.wakeAlarmService.GetType().Name);
                 result = await this.wakeAlarmService.TryScheduleWakeAsync(
                     new WakeAlarmRequest(nextWakeAt.Value, WakeAlarmReason),
                     cancellationToken).ConfigureAwait(false);
@@ -53,12 +56,19 @@ internal sealed class WakeAlarmController(
             {
                 throw;
             }
-            catch (Exception)
+            catch (Exception exception)
             {
+                this.RecordFailure("schedule", "Wake alarm scheduling failed.", exception);
                 return;
             }
 
-            if (result.Scheduled && result.Lease != null)
+            if (!result.Scheduled)
+            {
+                this.RecordFailure("schedule", result.Message, null);
+                return;
+            }
+
+            if (result.Lease != null)
             {
                 this.lease = result.Lease;
                 this.scheduledWakeAt = nextWakeAt;
@@ -128,9 +138,22 @@ internal sealed class WakeAlarmController(
         {
             await currentLease.DisposeAsync().ConfigureAwait(false);
         }
-        catch (Exception)
+        catch (Exception exception)
         {
+            this.RecordFailure("release", "Wake alarm release failed.", exception);
         }
+    }
+
+    private void RecordFailure(string operation, string message, Exception? exception)
+    {
+        this.diagnosticSink.TryRecord(new DiagnosticEvent(
+            DiagnosticSeverity.Warning,
+            DiagnosticFailureClass.UserRequested,
+            "wake-alarm",
+            operation,
+            this.wakeAlarmService.GetType().Name,
+            message,
+            exception));
     }
 }
 

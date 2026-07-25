@@ -850,6 +850,8 @@ This section is intentionally not Milestone 11. These workstreams cut across imp
 
 **Goal:** Make optional-integration failures predictable and diagnosable without corrupting timers or overwhelming users.
 
+**Status:** Implemented for structured diagnostic events, default Trace-based runtime diagnostics, in-memory duplicate suppression, and representative best-effort/data-recovery/user-requested failure coverage across platform service boundaries and Avalonia shell controllers.
+
 **Implementation plan:**
 
 1. Classify failures as best-effort, user-requested, startup/configuration, or data-corruption recovery.
@@ -989,8 +991,8 @@ Create one focused issue or Codex task for each of the following rather than att
 4. Implemented: Move settings merge behavior into pure core functions and cover concurrent-save scenarios.
 5. Implemented: Audit platform service boundaries and relocate no-op implementations that represent real platform behavior.
 6. Implemented: Add or tighten unsupported-backend tests for every optional desktop integration.
-7. Define the optional-effect failure taxonomy and align service diagnostics with it.
-8. Add regression tests for timer continuity after optional integration failures.
+7. Implemented: Define the optional-effect failure taxonomy and align service diagnostics with it.
+8. Implemented: Add regression tests for timer continuity after optional integration failures.
 9. Run keyboard/focus/accessibility characterization for the main timer window and dialogs.
 10. Add accessible names and checked-state coverage where Avalonia defaults are insufficient.
 11. Inventory direct user-facing Linux UI strings and choose the runtime resource structure.

@@ -11,21 +11,29 @@ public sealed class SystemdSessionInhibitor : ISessionInhibitor
     private const string SleepDuration = "infinity";
 
     private readonly string executableName;
+    private readonly IDiagnosticSink diagnosticSink;
     private readonly Func<ProcessStartInfo, Process?> startProcess;
 
     public SystemdSessionInhibitor()
-        : this(StartProcess, DefaultExecutableName)
+        : this(StartProcess, DefaultExecutableName, NoOpDiagnosticSink.Instance)
+    {
+    }
+
+    public SystemdSessionInhibitor(IDiagnosticSink diagnosticSink)
+        : this(StartProcess, DefaultExecutableName, diagnosticSink ?? throw new ArgumentNullException(nameof(diagnosticSink)))
     {
     }
 
     internal SystemdSessionInhibitor(
         Func<ProcessStartInfo, Process?> startProcess,
-        string executableName = DefaultExecutableName)
+        string executableName = DefaultExecutableName,
+        IDiagnosticSink? diagnosticSink = null)
     {
         this.startProcess = startProcess ?? throw new ArgumentNullException(nameof(startProcess));
         this.executableName = string.IsNullOrWhiteSpace(executableName)
             ? throw new ArgumentException("Executable name must not be empty.", nameof(executableName))
             : executableName;
+        this.diagnosticSink = diagnosticSink ?? NoOpDiagnosticSink.Instance;
     }
 
     public ValueTask<IAsyncDisposable?> InhibitAsync(
@@ -48,14 +56,21 @@ public sealed class SystemdSessionInhibitor : ISessionInhibitor
         try
         {
             Process? process = this.startProcess(startInfo);
+            if (process == null)
+            {
+                this.RecordFailure("Session inhibitor command did not return a process.", null);
+            }
+
             return ValueTask.FromResult<IAsyncDisposable?>(process == null ? null : new InhibitionLease(process));
         }
-        catch (Win32Exception)
+        catch (Win32Exception exception)
         {
+            this.RecordFailure("Session inhibitor command could not be started.", exception);
             return ValueTask.FromResult<IAsyncDisposable?>(null);
         }
-        catch (InvalidOperationException)
+        catch (InvalidOperationException exception)
         {
+            this.RecordFailure("Session inhibitor command failed before completion.", exception);
             return ValueTask.FromResult<IAsyncDisposable?>(null);
         }
     }
@@ -95,6 +110,18 @@ public sealed class SystemdSessionInhibitor : ISessionInhibitor
     private static Process? StartProcess(ProcessStartInfo startInfo)
     {
         return Process.Start(startInfo);
+    }
+
+    private void RecordFailure(string message, Exception? exception)
+    {
+        this.diagnosticSink.TryRecord(new DiagnosticEvent(
+            DiagnosticSeverity.Warning,
+            DiagnosticFailureClass.BestEffort,
+            "session-inhibition",
+            "acquire",
+            this.executableName,
+            message,
+            exception));
     }
 
     private sealed class InhibitionLease(Process process) : IAsyncDisposable

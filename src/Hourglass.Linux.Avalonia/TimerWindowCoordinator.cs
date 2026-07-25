@@ -28,6 +28,7 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
     private readonly WakeAlarmController wakeAlarmController;
     private readonly IClassicDesktopStyleApplicationLifetime lifetime;
     private readonly IAudioAlertService audioAlertService;
+    private readonly IDiagnosticSink diagnosticSink;
     private readonly INotificationService notificationService;
     private readonly ApplicationInfoProvider applicationInfoProvider;
     private readonly IExternalUriLauncher externalUriLauncher;
@@ -48,18 +49,27 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
     private WindowRegistration? mostRecentWindow;
 
     public TimerWindowCoordinator(IClassicDesktopStyleApplicationLifetime lifetime)
+        : this(lifetime, CreateDefaultServices())
+    {
+    }
+
+    private TimerWindowCoordinator(
+        IClassicDesktopStyleApplicationLifetime lifetime,
+        DefaultCoordinatorServices services)
         : this(
             lifetime,
-            new JsonFileSettingsStore(new XdgSettingsPathService()),
-            new NotifySendNotificationService(),
-            new LinuxAudioAlertService(SoundAssetsDirectory),
-            new CoordinatedSessionInhibitor(new SystemdSessionInhibitor()),
+            services.SettingsStore,
+            services.NotificationService,
+            services.AudioAlertService,
+            services.SessionInhibitor,
             UnsupportedSystemPowerService.Instance,
             new RtcWakeAlarmService(),
-            LinuxDesktopProgressServiceFactory.CreateDefault(),
-            CreateStatusIconService(),
+            services.DesktopProgressService,
+            services.StatusIconService,
             new ApplicationInfoProvider(),
-            new LinuxExternalUriLauncher())
+            services.ExternalUriLauncher,
+            createWindowAttentionService: target => new WindowAttentionController(target, services.DiagnosticSink),
+            diagnosticSink: services.DiagnosticSink)
     {
     }
 
@@ -75,10 +85,12 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
         IStatusIconService statusIconService,
         ApplicationInfoProvider? applicationInfoProvider = null,
         IExternalUriLauncher? externalUriLauncher = null,
-        Func<IWindowAttentionTarget, IWindowAttentionService>? createWindowAttentionService = null)
+        Func<IWindowAttentionTarget, IWindowAttentionService>? createWindowAttentionService = null,
+        IDiagnosticSink? diagnosticSink = null)
     {
         this.lifetime = lifetime ?? throw new ArgumentNullException(nameof(lifetime));
         this.settingsStore = settingsStore ?? throw new ArgumentNullException(nameof(settingsStore));
+        this.diagnosticSink = diagnosticSink ?? NoOpDiagnosticSink.Instance;
         this.appSettingsStore = new CoordinatedAppSettingsStore(this.settingsStore);
         this.notificationService = notificationService ?? throw new ArgumentNullException(nameof(notificationService));
         this.audioAlertService = audioAlertService ?? throw new ArgumentNullException(nameof(audioAlertService));
@@ -86,10 +98,12 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
         this.systemPowerService = systemPowerService ?? throw new ArgumentNullException(nameof(systemPowerService));
         this.wakeAlarmController = new WakeAlarmController(
             wakeAlarmService ?? throw new ArgumentNullException(nameof(wakeAlarmService)),
-            () => DateTimeOffset.Now);
+            () => DateTimeOffset.Now,
+            this.diagnosticSink);
         this.savedTimersStore = new CoordinatedSavedTimersStore(this.settingsStore);
         this.desktopProgressController = new DesktopProgressController(
-            desktopProgressService ?? throw new ArgumentNullException(nameof(desktopProgressService)));
+            desktopProgressService ?? throw new ArgumentNullException(nameof(desktopProgressService)),
+            this.diagnosticSink);
         this.statusIconService = statusIconService ?? throw new ArgumentNullException(nameof(statusIconService));
         this.applicationInfoProvider = applicationInfoProvider ?? new ApplicationInfoProvider();
         this.externalUriLauncher = externalUriLauncher ?? new LinuxExternalUriLauncher();
@@ -197,7 +211,8 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
             sessionId,
             persistActiveSessionDirectly: false,
             restoreActiveSessionOnLoad: false,
-            uiDispatcher: AvaloniaUiDispatcher.Instance);
+            uiDispatcher: AvaloniaUiDispatcher.Instance,
+            diagnosticSink: this.diagnosticSink);
         var window = new MainWindow(
             viewModel,
             UnsupportedDesktopProgressService.Instance,
@@ -325,8 +340,9 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
         {
             throw;
         }
-        catch (Exception)
+        catch (Exception exception)
         {
+            this.RecordDataRecovery("load", key, "Document load failed; using fallback.", exception);
             return fallback;
         }
     }
@@ -344,8 +360,9 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
         {
             throw;
         }
-        catch (Exception)
+        catch (Exception exception)
         {
+            this.RecordDataRecovery("load", key, "Document load failed; treating it as missing.", exception);
             return new LoadDocumentResult<T>(false, default);
         }
     }
@@ -360,8 +377,9 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
         {
             throw;
         }
-        catch (Exception)
+        catch (Exception exception)
         {
+            this.RecordDataRecovery("load", key, "Optional document load failed; treating it as missing.", exception);
             return default;
         }
     }
@@ -608,16 +626,18 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
         {
             await previousSave.ConfigureAwait(false);
         }
-        catch (Exception)
+        catch (Exception exception)
         {
+            this.RecordDataRecovery("save", ActiveSessionsKey, "Previous active sessions save failed before a queued save.", exception);
         }
 
         try
         {
             await this.settingsStore.SaveAsync(ActiveSessionsKey, document).ConfigureAwait(false);
         }
-        catch (Exception)
+        catch (Exception exception)
         {
+            this.RecordDataRecovery("save", ActiveSessionsKey, "Active sessions save failed.", exception);
         }
     }
 
@@ -682,8 +702,9 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
         {
             await this.statusIconService.UpdateAsync(state).ConfigureAwait(true);
         }
-        catch (Exception)
+        catch (Exception exception)
         {
+            this.RecordBestEffort("status-icon", "update", this.statusIconService.GetType().Name, "Status icon update failed.", exception);
         }
     }
 
@@ -693,8 +714,9 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
         {
             await sessionSave.ConfigureAwait(true);
         }
-        catch (Exception)
+        catch (Exception exception)
         {
+            this.RecordDataRecovery("save", ActiveSessionsKey, "Final session save failed before shutdown.", exception);
         }
 
         this.lifetime.Shutdown();
@@ -711,10 +733,32 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
         await this.QueueSessionSave().ConfigureAwait(false);
     }
 
-    private static IStatusIconService CreateStatusIconService()
+    private static IWindowAttentionService CreateWindowAttentionService(IWindowAttentionTarget target)
     {
+        return new WindowAttentionController(target);
+    }
+
+    private static DefaultCoordinatorServices CreateDefaultServices()
+    {
+        IDiagnosticSink diagnosticSink = DiagnosticSinkFactory.CreateDefault();
         var environmentReader = new ProcessDesktopEnvironmentReader();
         var sessionBusProbe = new EnvironmentSessionBusProbe(environmentReader);
+        return new DefaultCoordinatorServices(
+            new JsonFileSettingsStore(new XdgSettingsPathService(), diagnosticSink),
+            new NotifySendNotificationService(diagnosticSink),
+            new LinuxAudioAlertService(SoundAssetsDirectory, diagnosticSink),
+            new CoordinatedSessionInhibitor(new SystemdSessionInhibitor(diagnosticSink)),
+            LinuxDesktopProgressServiceFactory.CreateDefault(diagnosticSink),
+            CreateStatusIconService(environmentReader, sessionBusProbe, diagnosticSink),
+            new LinuxExternalUriLauncher(diagnosticSink),
+            diagnosticSink);
+    }
+
+    private static IStatusIconService CreateStatusIconService(
+        IDesktopEnvironmentReader environmentReader,
+        ISessionBusProbe sessionBusProbe,
+        IDiagnosticSink diagnosticSink)
+    {
         if (!new LinuxStatusIconCapability(environmentReader, sessionBusProbe).IsSupported())
         {
             return UnsupportedStatusIconService.Instance;
@@ -725,18 +769,96 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
             using Stream iconStream = AssetLoader.Open(StatusIconResourceUri);
             return new AvaloniaStatusIconService(new WindowIcon(iconStream));
         }
-        catch (Exception)
+        catch (Exception exception)
         {
+            diagnosticSink.TryRecord(new DiagnosticEvent(
+                DiagnosticSeverity.Warning,
+                DiagnosticFailureClass.StartupConfiguration,
+                "status-icon",
+                "create",
+                "avalonia-status-icon",
+                "Status icon backend could not be initialized.",
+                exception));
             return UnsupportedStatusIconService.Instance;
         }
     }
 
-    private static IWindowAttentionService CreateWindowAttentionService(IWindowAttentionTarget target)
+    private void RecordBestEffort(
+        string category,
+        string operation,
+        string backend,
+        string message,
+        Exception exception)
     {
-        return new WindowAttentionController(target);
+        this.RecordDiagnostic(
+            DiagnosticFailureClass.BestEffort,
+            category,
+            operation,
+            backend,
+            message,
+            exception);
+    }
+
+    private void RecordDataRecovery(
+        string operation,
+        string documentKey,
+        string message,
+        Exception exception)
+    {
+        this.RecordDiagnostic(
+            DiagnosticFailureClass.DataRecovery,
+            "settings",
+            operation,
+            documentKey,
+            message,
+            exception);
+    }
+
+    private void RecordStartupConfiguration(
+        string category,
+        string operation,
+        string backend,
+        string message,
+        Exception exception)
+    {
+        this.RecordDiagnostic(
+            DiagnosticFailureClass.StartupConfiguration,
+            category,
+            operation,
+            backend,
+            message,
+            exception);
+    }
+
+    private void RecordDiagnostic(
+        DiagnosticFailureClass failureClass,
+        string category,
+        string operation,
+        string backend,
+        string message,
+        Exception exception)
+    {
+        this.diagnosticSink.TryRecord(new DiagnosticEvent(
+            DiagnosticSeverity.Warning,
+            failureClass,
+            category,
+            operation,
+            backend,
+            message,
+            exception));
     }
 
     private readonly record struct LoadDocumentResult<T>(bool Found, T? Value);
 
     private sealed record WindowRegistration(MainWindow Window, MainWindowViewModel ViewModel);
+
+    private sealed record DefaultCoordinatorServices(
+        ISettingsStore SettingsStore,
+        INotificationService NotificationService,
+        IAudioAlertService AudioAlertService,
+        CoordinatedSessionInhibitor SessionInhibitor,
+        IDesktopProgressService DesktopProgressService,
+        IStatusIconService StatusIconService,
+        IExternalUriLauncher ExternalUriLauncher,
+        IDiagnosticSink DiagnosticSink);
 }

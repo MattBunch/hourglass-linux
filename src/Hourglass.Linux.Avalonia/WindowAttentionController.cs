@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Hourglass.Platform;
 
 namespace Hourglass.Linux.Avalonia;
 
@@ -22,10 +23,17 @@ internal interface IWindowAttentionService
     void RequestAttention();
 }
 
-internal sealed class WindowAttentionController(IWindowAttentionTarget target) : IWindowAttentionService
+internal sealed class WindowAttentionController : IWindowAttentionService
 {
-    private readonly IWindowAttentionTarget target = target ?? throw new ArgumentNullException(nameof(target));
+    private readonly IDiagnosticSink diagnosticSink;
+    private readonly IWindowAttentionTarget target;
     private WindowState restoreWindowState = WindowState.Normal;
+
+    public WindowAttentionController(IWindowAttentionTarget target, IDiagnosticSink? diagnosticSink = null)
+    {
+        this.target = target ?? throw new ArgumentNullException(nameof(target));
+        this.diagnosticSink = diagnosticSink ?? NoOpDiagnosticSink.Instance;
+    }
 
     public WindowState RestoreWindowState => this.restoreWindowState;
 
@@ -65,8 +73,9 @@ internal sealed class WindowAttentionController(IWindowAttentionTarget target) :
         {
             return this.target.IsVisible;
         }
-        catch (Exception)
+        catch (Exception exception)
         {
+            this.RecordFailure("read-visible", exception);
             return true;
         }
     }
@@ -77,8 +86,9 @@ internal sealed class WindowAttentionController(IWindowAttentionTarget target) :
         {
             return this.target.WindowState;
         }
-        catch (Exception)
+        catch (Exception exception)
         {
+            this.RecordFailure("read-state", exception);
             return null;
         }
     }
@@ -89,8 +99,9 @@ internal sealed class WindowAttentionController(IWindowAttentionTarget target) :
         {
             this.target.Show();
         }
-        catch (Exception)
+        catch (Exception exception)
         {
+            this.RecordFailure("show", exception);
         }
     }
 
@@ -100,8 +111,9 @@ internal sealed class WindowAttentionController(IWindowAttentionTarget target) :
         {
             this.target.Hide();
         }
-        catch (Exception)
+        catch (Exception exception)
         {
+            this.RecordFailure("hide", exception);
         }
     }
 
@@ -111,8 +123,9 @@ internal sealed class WindowAttentionController(IWindowAttentionTarget target) :
         {
             this.target.WindowState = this.restoreWindowState;
         }
-        catch (Exception)
+        catch (Exception exception)
         {
+            this.RecordFailure("restore", exception);
         }
     }
 
@@ -130,8 +143,21 @@ internal sealed class WindowAttentionController(IWindowAttentionTarget target) :
         {
             this.target.Activate();
         }
-        catch (Exception)
+        catch (Exception exception)
         {
+            this.RecordFailure("activate", exception);
         }
+    }
+
+    private void RecordFailure(string operation, Exception exception)
+    {
+        this.diagnosticSink.TryRecord(new DiagnosticEvent(
+            DiagnosticSeverity.Warning,
+            DiagnosticFailureClass.BestEffort,
+            "window-attention",
+            operation,
+            "avalonia-window",
+            "Window attention request failed.",
+            exception));
     }
 }
