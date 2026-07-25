@@ -83,6 +83,7 @@ public sealed class LinuxAudioAlertService : IAudioAlertService
 
     public async Task<IAsyncDisposable?> PlayAlertAsync(string soundId, CancellationToken cancellationToken = default)
     {
+        this.ResetFailureSuppression();
         string? soundPath = this.GetSoundPath(soundId, cancellationToken);
         if (soundPath == null)
         {
@@ -95,6 +96,7 @@ public sealed class LinuxAudioAlertService : IAudioAlertService
 
     public Task<IAsyncDisposable?> PlayAlertLoopingAsync(string soundId, CancellationToken cancellationToken = default)
     {
+        this.ResetFailureSuppression();
         string? soundPath = this.GetSoundPath(soundId, cancellationToken);
         if (soundPath == null)
         {
@@ -357,6 +359,11 @@ public sealed class LinuxAudioAlertService : IAudioAlertService
             backend,
             message,
             exception));
+    }
+
+    private void ResetFailureSuppression()
+    {
+        this.diagnosticSink.ResetDuplicateSuppression("audio-alerts");
     }
 
     private readonly record struct AudioPlayerCommand(string ExecutableName, string? StableArgument = null)

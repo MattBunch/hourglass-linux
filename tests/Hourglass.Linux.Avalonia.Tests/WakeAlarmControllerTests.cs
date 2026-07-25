@@ -104,6 +104,22 @@ public sealed class WakeAlarmControllerTests
         Assert.Equal("schedule", diagnostic.Operation);
     }
 
+    [Fact]
+    public async Task UnsuccessfulScheduleResultRecordsDiagnosticAndDoesNotThrow()
+    {
+        var service = new UnsuccessfulWakeAlarmService();
+        var diagnostics = new RecordingDiagnosticSink();
+        await using var controller = new WakeAlarmController(service, () => Now, diagnostics);
+
+        await controller.ApplyAsync([RunningTimer(Now.AddMinutes(10))], enabled: true);
+
+        DiagnosticEvent diagnostic = Assert.Single(diagnostics.Events);
+        Assert.Equal(DiagnosticFailureClass.UserRequested, diagnostic.FailureClass);
+        Assert.Equal("wake-alarm", diagnostic.Category);
+        Assert.Equal("schedule", diagnostic.Operation);
+        Assert.Equal("Wake alarm unavailable.", diagnostic.Message);
+    }
+
     private static WakeAlarmTimerSnapshot RunningTimer(DateTimeOffset endTime)
     {
         return new WakeAlarmTimerSnapshot(TimerState.Running, endTime.LocalDateTime);
@@ -148,6 +164,20 @@ public sealed class WakeAlarmControllerTests
             CancellationToken cancellationToken = default)
         {
             throw new InvalidOperationException("Wake scheduling failed.");
+        }
+    }
+
+    private sealed class UnsuccessfulWakeAlarmService : IWakeAlarmService
+    {
+        public Task<WakeAlarmScheduleResult> TryScheduleWakeAsync(
+            WakeAlarmRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(new WakeAlarmScheduleResult(
+                Supported: false,
+                Scheduled: false,
+                Message: "Wake alarm unavailable.",
+                Lease: null));
         }
     }
 }

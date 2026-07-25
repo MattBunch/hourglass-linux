@@ -43,6 +43,8 @@ public sealed class LinuxExternalUriLauncher : IExternalUriLauncher
             return false;
         }
 
+        this.diagnosticSink.ResetDuplicateSuppression("external-uri", "open", this.executableName);
+
         try
         {
             int exitCode = await this.runProcessAsync(

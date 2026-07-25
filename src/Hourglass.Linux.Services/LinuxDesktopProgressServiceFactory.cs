@@ -49,9 +49,20 @@ public sealed class LinuxDesktopProgressServiceFactory
 
     private IDesktopProgressService CreateUnityOrUnsupported()
     {
-        return this.unitySenderFactory.TryCreate(out IUnityLauncherEntrySender sender)
-            ? new UnityLauncherDesktopProgressService(sender, this.diagnosticSink)
-            : UnsupportedDesktopProgressService.Instance;
+        this.diagnosticSink.ResetDuplicateSuppression("desktop-progress", "initialize", "unity");
+        if (this.unitySenderFactory.TryCreate(out IUnityLauncherEntrySender sender))
+        {
+            return new UnityLauncherDesktopProgressService(sender, this.diagnosticSink);
+        }
+
+        this.diagnosticSink.Record(new DiagnosticEvent(
+            DiagnosticSeverity.Warning,
+            DiagnosticFailureClass.StartupConfiguration,
+            "desktop-progress",
+            "initialize",
+            "unity",
+            "Unity launcher desktop progress backend could not be initialized."));
+        return UnsupportedDesktopProgressService.Instance;
     }
 
     private static DesktopProgressBackendOverride ParseBackendOverride(string? value)

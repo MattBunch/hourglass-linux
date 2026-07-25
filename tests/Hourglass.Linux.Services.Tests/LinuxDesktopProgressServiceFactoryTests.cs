@@ -104,15 +104,22 @@ public sealed class LinuxDesktopProgressServiceFactoryTests
     [Fact]
     public void ForcedUnityFallsBackWhenInitializationFails()
     {
+        var diagnostics = new RecordingDiagnosticSink();
         IDesktopProgressService service = CreateService(
             new Dictionary<string, string?>
             {
                 [LinuxDesktopProgressServiceFactory.XdgCurrentDesktopVariable] = "GNOME",
                 [LinuxDesktopProgressServiceFactory.BackendOverrideVariable] = "unity"
             },
-            senderAvailable: false);
+            senderAvailable: false,
+            diagnostics);
 
         Assert.IsType<UnsupportedDesktopProgressService>(service);
+        DiagnosticEvent diagnostic = Assert.Single(diagnostics.Events);
+        Assert.Equal(DiagnosticFailureClass.StartupConfiguration, diagnostic.FailureClass);
+        Assert.Equal("desktop-progress", diagnostic.Category);
+        Assert.Equal("initialize", diagnostic.Operation);
+        Assert.Equal("unity", diagnostic.Backend);
     }
 
     [Fact]
@@ -168,11 +175,13 @@ public sealed class LinuxDesktopProgressServiceFactoryTests
 
     private static IDesktopProgressService CreateService(
         IReadOnlyDictionary<string, string?> environment,
-        bool senderAvailable)
+        bool senderAvailable,
+        IDiagnosticSink? diagnosticSink = null)
     {
         var factory = new LinuxDesktopProgressServiceFactory(
             new FakeDesktopEnvironmentReader(environment),
-            new FakeUnityLauncherEntrySenderFactory(senderAvailable));
+            new FakeUnityLauncherEntrySenderFactory(senderAvailable),
+            diagnosticSink);
 
         return factory.Create();
     }

@@ -72,6 +72,27 @@ public sealed class DiagnosticSinkTests
 
         Assert.Equal(2, inner.Events.Count);
     }
+
+    [Fact]
+    public void DeduplicatingSinkCanResetMatchingSuppressionBoundary()
+    {
+        var inner = new RecordingDiagnosticSink();
+        var sink = new DeduplicatingDiagnosticSink(inner);
+        var diagnosticEvent = new DiagnosticEvent(
+            DiagnosticSeverity.Warning,
+            DiagnosticFailureClass.UserRequested,
+            "external-uri",
+            "open",
+            "xdg-open",
+            "URI launcher exited with code 1.");
+
+        sink.Record(diagnosticEvent);
+        sink.Record(diagnosticEvent);
+        sink.ResetDuplicateSuppression("external-uri", "open", "xdg-open");
+        sink.Record(diagnosticEvent);
+
+        Assert.Equal(2, inner.Events.Count);
+    }
 }
 
 internal sealed class RecordingDiagnosticSink : IDiagnosticSink

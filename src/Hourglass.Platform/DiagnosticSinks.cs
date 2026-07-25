@@ -49,7 +49,7 @@ public sealed class TraceDiagnosticSink : IDiagnosticSink
     }
 }
 
-public sealed class DeduplicatingDiagnosticSink(IDiagnosticSink inner) : IDiagnosticSink
+public sealed class DeduplicatingDiagnosticSink(IDiagnosticSink inner) : IDiagnosticSink, IDiagnosticSuppressionReset
 {
     private readonly Lock gate = new();
     private readonly IDiagnosticSink inner = inner ?? throw new ArgumentNullException(nameof(inner));
@@ -80,6 +80,19 @@ public sealed class DeduplicatingDiagnosticSink(IDiagnosticSink inner) : IDiagno
         this.inner.Record(diagnosticEvent);
     }
 
+    public void ResetDuplicateSuppression(string category, string? operation = null, string? backend = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(category);
+
+        lock (this.gate)
+        {
+            this.emitted.RemoveWhere(key =>
+                StringComparer.Ordinal.Equals(key.Category, category)
+                && (operation == null || StringComparer.Ordinal.Equals(key.Operation, operation))
+                && (backend == null || StringComparer.Ordinal.Equals(key.Backend, backend)));
+        }
+    }
+
     private readonly record struct DiagnosticKey(
         DiagnosticSeverity Severity,
         DiagnosticFailureClass FailureClass,
@@ -89,6 +102,23 @@ public sealed class DeduplicatingDiagnosticSink(IDiagnosticSink inner) : IDiagno
         string Message,
         string ExceptionType,
         string ExceptionMessage);
+}
+
+public static class DiagnosticSinkExtensions
+{
+    public static void ResetDuplicateSuppression(
+        this IDiagnosticSink diagnosticSink,
+        string category,
+        string? operation = null,
+        string? backend = null)
+    {
+        ArgumentNullException.ThrowIfNull(diagnosticSink);
+
+        if (diagnosticSink is IDiagnosticSuppressionReset resettable)
+        {
+            resettable.ResetDuplicateSuppression(category, operation, backend);
+        }
+    }
 }
 
 public static class DiagnosticSinkFactory

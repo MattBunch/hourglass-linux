@@ -47,6 +47,7 @@ internal sealed class WakeAlarmController(
             WakeAlarmScheduleResult result;
             try
             {
+                this.diagnosticSink.ResetDuplicateSuppression("wake-alarm", "schedule", this.wakeAlarmService.GetType().Name);
                 result = await this.wakeAlarmService.TryScheduleWakeAsync(
                     new WakeAlarmRequest(nextWakeAt.Value, WakeAlarmReason),
                     cancellationToken).ConfigureAwait(false);
@@ -61,7 +62,13 @@ internal sealed class WakeAlarmController(
                 return;
             }
 
-            if (result.Scheduled && result.Lease != null)
+            if (!result.Scheduled)
+            {
+                this.RecordFailure("schedule", result.Message, null);
+                return;
+            }
+
+            if (result.Lease != null)
             {
                 this.lease = result.Lease;
                 this.scheduledWakeAt = nextWakeAt;
@@ -137,7 +144,7 @@ internal sealed class WakeAlarmController(
         }
     }
 
-    private void RecordFailure(string operation, string message, Exception exception)
+    private void RecordFailure(string operation, string message, Exception? exception)
     {
         this.diagnosticSink.Record(new DiagnosticEvent(
             DiagnosticSeverity.Warning,

@@ -193,3 +193,11 @@ public interface IDiagnosticSink
 {
     void Record(DiagnosticEvent diagnosticEvent);
 }
+
+public interface IDiagnosticSuppressionReset
+{
+    void ResetDuplicateSuppression(
+        string category,
+        string? operation = null,
+        string? backend = null);
+}
