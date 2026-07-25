@@ -1527,16 +1527,17 @@ public sealed class MainWindowViewModelTests
         AssertAutomationName(buttons["Original Hourglass Project"], "Open original Hourglass project");
         AssertAutomationName(buttons["Copy build information"], "Copy build information");
         AssertAutomationName(buttons["Close"], "Close About Hourglass");
-        AssertAutomationName(
-            Assert.Single(
-                document.Descendants(avalonia + "TextBlock"),
-                element => element.Attribute(xaml + "Name")?.Value == "LinkStatusText"),
-            "Link status");
-        AssertAutomationName(
-            Assert.Single(
-                document.Descendants(avalonia + "TextBlock"),
-                element => element.Attribute(xaml + "Name")?.Value == "CopyStatusText"),
-            "Copy status");
+        XElement linkStatusText = Assert.Single(
+            document.Descendants(avalonia + "TextBlock"),
+            element => element.Attribute(xaml + "Name")?.Value == "LinkStatusText");
+        AssertAutomationNameBindsToText(linkStatusText);
+        AssertAutomationLiveSetting(linkStatusText, "Polite");
+
+        XElement copyStatusText = Assert.Single(
+            document.Descendants(avalonia + "TextBlock"),
+            element => element.Attribute(xaml + "Name")?.Value == "CopyStatusText");
+        AssertAutomationNameBindsToText(copyStatusText);
+        AssertAutomationLiveSetting(copyStatusText, "Polite");
         Assert.Equal("True", buttons["Close"].Attribute("IsCancel")?.Value);
     }
 
@@ -1558,12 +1559,14 @@ public sealed class MainWindowViewModelTests
         AssertAutomationName(FindNamedElement(themeEditor, avalonia + "TextBox", xaml, "ValidationFlashBox"), "Validation flash color");
         AssertAutomationName(FindNamedElement(themeEditor, avalonia + "TextBox", xaml, "CompletionBorderBox"), "Completion border color");
         AssertAutomationName(FindNamedElement(themeEditor, avalonia + "TextBox", xaml, "LockedBorderBox"), "Locked border color");
-        AssertAutomationName(FindNamedElement(themeEditor, avalonia + "TextBlock", xaml, "ValidationText"), "Theme validation message");
+        XElement validationText = FindNamedElement(themeEditor, avalonia + "TextBlock", xaml, "ValidationText");
+        AssertAutomationNameBindsToText(validationText);
+        AssertAutomationLiveSetting(validationText, "Polite");
         AssertAutomationName(FindButtonByContent(themeEditor, "Cancel"), "Cancel custom theme edit");
         AssertAutomationName(FindButtonByContent(themeEditor, "Save"), "Save custom theme");
 
         XDocument themeDelete = XDocument.Load(FindRepositoryFile("src/Hourglass.Linux.Avalonia/CustomThemeDeleteWindow.axaml"));
-        AssertAutomationName(FindNamedElement(themeDelete, avalonia + "TextBlock", xaml, "MessageText"), "Delete custom theme message");
+        AssertAutomationNameBindsToText(FindNamedElement(themeDelete, avalonia + "TextBlock", xaml, "MessageText"));
         AssertAutomationName(FindButtonByContent(themeDelete, "Cancel"), "Cancel delete custom theme");
         AssertAutomationName(FindButtonByContent(themeDelete, "Delete"), "Delete custom theme");
 
@@ -4199,9 +4202,19 @@ public sealed class MainWindowViewModelTests
         Assert.Equal(expected, element.Attribute("AutomationProperties.Name")?.Value);
     }
 
+    private static void AssertAutomationNameBindsToText(XElement element)
+    {
+        Assert.Equal("{Binding Text, RelativeSource={RelativeSource Self}}", element.Attribute("AutomationProperties.Name")?.Value);
+    }
+
     private static void AssertAutomationHelpText(XElement element, string expected)
     {
         Assert.Equal(expected, element.Attribute("AutomationProperties.HelpText")?.Value);
+    }
+
+    private static void AssertAutomationLiveSetting(XElement element, string expected)
+    {
+        Assert.Equal(expected, element.Attribute("AutomationProperties.LiveSetting")?.Value);
     }
 
     private static void AssertStyleSetter(XElement style, string property, string value)

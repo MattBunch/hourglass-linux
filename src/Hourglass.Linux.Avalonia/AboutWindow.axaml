@@ -88,7 +88,8 @@
                   HorizontalAlignment="Left"
                   Click="OriginalProjectButtonClick" />
           <TextBlock x:Name="LinkStatusText"
-                     AutomationProperties.Name="Link status"
+                     AutomationProperties.Name="{Binding Text, RelativeSource={RelativeSource Self}}"
+                     AutomationProperties.LiveSetting="Polite"
                      Foreground="{DynamicResource ThemeForegroundLowBrush}"
                      TextWrapping="Wrap" />
         </StackPanel>
@@ -108,7 +109,8 @@
                 AutomationProperties.Name="Copy build information"
                 Click="CopyBuildInformationButtonClick" />
         <TextBlock x:Name="CopyStatusText"
-                   AutomationProperties.Name="Copy status"
+                   AutomationProperties.Name="{Binding Text, RelativeSource={RelativeSource Self}}"
+                   AutomationProperties.LiveSetting="Polite"
                    VerticalAlignment="Center"
                    TextWrapping="Wrap" />
       </StackPanel>

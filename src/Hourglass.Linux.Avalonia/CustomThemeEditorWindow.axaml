@@ -51,7 +51,8 @@
         <TextBox x:Name="LockedBorderBox"
                  AutomationProperties.Name="Locked border color" />
         <TextBlock x:Name="ValidationText"
-                   AutomationProperties.Name="Theme validation message"
+                   AutomationProperties.Name="{Binding Text, RelativeSource={RelativeSource Self}}"
+                   AutomationProperties.LiveSetting="Polite"
                    Foreground="{DynamicResource SystemControlErrorTextForegroundBrush}"
                    TextWrapping="Wrap" />
       </StackPanel>

@@ -11,7 +11,7 @@
   <Grid Margin="20"
         RowDefinitions="*,Auto">
     <TextBlock x:Name="MessageText"
-               AutomationProperties.Name="Delete custom theme message"
+               AutomationProperties.Name="{Binding Text, RelativeSource={RelativeSource Self}}"
                TextWrapping="Wrap"
                VerticalAlignment="Center" />
     <StackPanel Grid.Row="1"
