@@ -1571,9 +1571,7 @@ public sealed class MainWindowViewModelTests
         AssertAutomationName(FindButtonByContent(themeDelete, "Delete"), "Delete custom theme");
 
         XDocument exitConfirmation = XDocument.Load(FindRepositoryFile("src/Hourglass.Linux.Avalonia/ExitConfirmationWindow.axaml"));
-        AssertAutomationName(
-            Assert.Single(exitConfirmation.Descendants(avalonia + "TextBlock")),
-            "Exit confirmation message");
+        AssertAutomationNameBindsToText(Assert.Single(exitConfirmation.Descendants(avalonia + "TextBlock")));
         AssertAutomationName(FindButtonByContent(exitConfirmation, "Cancel"), "Cancel exit");
         AssertAutomationName(FindButtonByContent(exitConfirmation, "Exit"), "Exit Hourglass");
     }

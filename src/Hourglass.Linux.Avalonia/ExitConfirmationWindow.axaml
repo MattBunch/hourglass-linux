@@ -11,7 +11,7 @@
   <Grid Margin="20"
         RowDefinitions="*,Auto">
     <TextBlock Text="One or more timers are still running or paused. Exit Hourglass?"
-               AutomationProperties.Name="Exit confirmation message"
+               AutomationProperties.Name="{Binding Text, RelativeSource={RelativeSource Self}}"
                TextWrapping="Wrap"
                VerticalAlignment="Center" />
     <StackPanel Grid.Row="1"
