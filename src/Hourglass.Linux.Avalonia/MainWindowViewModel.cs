@@ -11,6 +11,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 {
     private const string ApplicationTitle = "Hourglass";
     private const string InvalidTimerStatusText = "Enter a valid current timer.";
+    private const string TimerInputDefaultHelpText = "Enter a duration or time, then press Enter to start.";
     private const string SessionInhibitionReason = "Hourglass timer is running";
     private const string NotificationBody = "Timer complete";
     private const string ActiveSessionKey = "active-session";
@@ -402,6 +403,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     public string RemainingTime => this.viewState.RemainingTime;
 
     public string StatusText => this.viewState.StatusText;
+
+    public string TimerInputHelpText =>
+        this.HasValidationError ? this.StatusText : TimerInputDefaultHelpText;
 
     public string PauseResumeText => this.viewState.PauseResumeText;
 
@@ -1468,6 +1472,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         this.OnPropertyChanged(nameof(this.TimerInput));
         this.OnPropertyChanged(nameof(this.RemainingTime));
         this.OnPropertyChanged(nameof(this.StatusText));
+        this.OnPropertyChanged(nameof(this.TimerInputHelpText));
         this.OnPropertyChanged(nameof(this.PauseResumeText));
         this.OnPropertyChanged(nameof(this.IsInputEnabled));
         this.OnPropertyChanged(nameof(this.IsRunning));

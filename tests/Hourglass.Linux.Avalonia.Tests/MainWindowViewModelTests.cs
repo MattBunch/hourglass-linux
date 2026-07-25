@@ -1042,6 +1042,7 @@ public sealed class MainWindowViewModelTests
         Assert.Equal("not a timer", viewModel.TimerInput);
         Assert.Equal("Enter a valid current timer.", viewModel.StatusText);
         Assert.True(viewModel.HasValidationError);
+        Assert.Equal("Enter a valid current timer.", viewModel.TimerInputHelpText);
         Assert.Equal(2, feedbackCount);
         Assert.Equal(0, notificationService.CallCount);
         Assert.Equal(0, audioAlertService.CallCount);
@@ -1057,9 +1058,11 @@ public sealed class MainWindowViewModelTests
         viewModel.TimerInput = "invalid";
         viewModel.StartCommand.Execute(null);
         Assert.True(viewModel.HasValidationError);
+        Assert.Equal("Enter a valid current timer.", viewModel.TimerInputHelpText);
 
         viewModel.TimerInput = "still invalid";
         Assert.False(viewModel.HasValidationError);
+        Assert.Equal("Enter a duration or time, then press Enter to start.", viewModel.TimerInputHelpText);
 
         viewModel.StartCommand.Execute(null);
         Assert.True(viewModel.HasValidationError);
@@ -1228,9 +1231,9 @@ public sealed class MainWindowViewModelTests
         AssertAutomationName(
             FindNamedElement(document, controls + "ResponsiveTextBox", xaml, "TimerTitleTextBox"),
             "Timer title");
-        AssertAutomationHelpText(
-            FindNamedElement(document, controls + "ResponsiveTextBox", xaml, "TimerInputTextBox"),
-            "Enter a duration or time, then press Enter to start.");
+        XElement timerInput = FindNamedElement(document, controls + "ResponsiveTextBox", xaml, "TimerInputTextBox");
+        AssertAutomationHelpText(timerInput, "{Binding TimerInputHelpText, Mode=OneWay}");
+        AssertAutomationLiveSetting(timerInput, "Polite");
         AssertAutomationName(
             FindNamedElement(document, controls + "ResponsiveTextBox", xaml, "RemainingTimeTextBox"),
             "Remaining time");
