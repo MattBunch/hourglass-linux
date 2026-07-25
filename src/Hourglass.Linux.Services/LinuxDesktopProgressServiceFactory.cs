@@ -10,23 +10,27 @@ public sealed class LinuxDesktopProgressServiceFactory
     public const string XdgSessionDesktopVariable = "XDG_SESSION_DESKTOP";
 
     private readonly IDesktopEnvironmentReader environmentReader;
+    private readonly IDiagnosticSink diagnosticSink;
     private readonly IUnityLauncherEntrySenderFactory unitySenderFactory;
 
     public LinuxDesktopProgressServiceFactory(
         IDesktopEnvironmentReader environmentReader,
-        IUnityLauncherEntrySenderFactory unitySenderFactory)
+        IUnityLauncherEntrySenderFactory unitySenderFactory,
+        IDiagnosticSink? diagnosticSink = null)
     {
         this.environmentReader = environmentReader ?? throw new ArgumentNullException(nameof(environmentReader));
         this.unitySenderFactory = unitySenderFactory ?? throw new ArgumentNullException(nameof(unitySenderFactory));
+        this.diagnosticSink = diagnosticSink ?? NoOpDiagnosticSink.Instance;
     }
 
-    public static IDesktopProgressService CreateDefault()
+    public static IDesktopProgressService CreateDefault(IDiagnosticSink? diagnosticSink = null)
     {
         var environmentReader = new ProcessDesktopEnvironmentReader();
 
         return new LinuxDesktopProgressServiceFactory(
             environmentReader,
-            new DbusUnityLauncherEntrySenderFactory(new EnvironmentSessionBusProbe(environmentReader))).Create();
+            new DbusUnityLauncherEntrySenderFactory(new EnvironmentSessionBusProbe(environmentReader)),
+            diagnosticSink).Create();
     }
 
     public IDesktopProgressService Create()
@@ -46,7 +50,7 @@ public sealed class LinuxDesktopProgressServiceFactory
     private IDesktopProgressService CreateUnityOrUnsupported()
     {
         return this.unitySenderFactory.TryCreate(out IUnityLauncherEntrySender sender)
-            ? new UnityLauncherDesktopProgressService(sender)
+            ? new UnityLauncherDesktopProgressService(sender, this.diagnosticSink)
             : UnsupportedDesktopProgressService.Instance;
     }
 

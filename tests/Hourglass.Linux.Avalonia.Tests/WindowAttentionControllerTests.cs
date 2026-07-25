@@ -103,6 +103,28 @@ public sealed class WindowAttentionControllerTests
     }
 
     [Fact]
+    public void RequestAttentionRecordsDiagnosticsForFailedWindowOperations()
+    {
+        var target = new RecordingWindowTarget
+        {
+            IsVisible = false,
+            ThrowOnShow = true,
+            ThrowOnHide = true,
+            ThrowOnRestore = true,
+            ThrowOnActivate = true
+        };
+        target.SetInitialState(WindowState.Minimized);
+        var diagnostics = new RecordingDiagnosticSink();
+        var controller = new WindowAttentionController(target, diagnostics);
+
+        controller.RequestAttention();
+
+        Assert.Contains(diagnostics.Events, diagnostic => diagnostic.Operation == "show");
+        Assert.Contains(diagnostics.Events, diagnostic => diagnostic.Operation == "activate");
+        Assert.All(diagnostics.Events, diagnostic => Assert.Equal("window-attention", diagnostic.Category));
+    }
+
+    [Fact]
     public void RequestAttentionIsBestEffortWhenWindowStateReadFails()
     {
         var target = new RecordingWindowTarget

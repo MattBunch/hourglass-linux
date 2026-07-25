@@ -69,26 +69,29 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
             services.DesktopProgressService,
             services.StatusIconService,
             services.ApplicationInfoProvider,
-            services.ExternalUriLauncher)
+            services.ExternalUriLauncher,
+            createWindowAttentionService: target => new WindowAttentionController(target, services.DiagnosticSink),
+            diagnosticSink: services.DiagnosticSink)
     {
     }
 
     private static MainWindowViewModel CreateDefaultViewModel(DefaultMainWindowServices services)
     {
-        var settingsStore = new JsonFileSettingsStore(new XdgSettingsPathService());
+        var settingsStore = new JsonFileSettingsStore(new XdgSettingsPathService(), services.DiagnosticSink);
         return new MainWindowViewModel(
             new CountdownEngine(new SystemMonotonicClock()),
             () => DateTime.Now,
-            new NotifySendNotificationService(),
-            new SystemdSessionInhibitor(),
+            new NotifySendNotificationService(services.DiagnosticSink),
+            new SystemdSessionInhibitor(services.DiagnosticSink),
             settingsStore,
             new DirectAppSettingsStore(settingsStore),
             new DirectSavedTimersStore(settingsStore),
-            new LinuxAudioAlertService(SoundAssetsDirectory),
+            new LinuxAudioAlertService(SoundAssetsDirectory, services.DiagnosticSink),
             UnsupportedSystemPowerService.Instance,
             services.StatusIconService.IsSupported,
             services.StatusIconService.CanRecoverHiddenWindow,
-            uiDispatcher: AvaloniaUiDispatcher.Instance);
+            uiDispatcher: AvaloniaUiDispatcher.Instance,
+            diagnosticSink: services.DiagnosticSink);
     }
 
     internal MainWindow(MainWindowViewModel viewModel)
@@ -118,15 +121,18 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
         ApplicationInfoProvider applicationInfoProvider,
         IExternalUriLauncher externalUriLauncher,
         Func<IWindowAttentionTarget, IWindowAttentionService>? createWindowAttentionService = null,
+        IDiagnosticSink? diagnosticSink = null,
         bool loadSettingsOnOpened = true,
         Func<MainWindow, Task>? prepareCoordinatorClose = null,
         Func<Task>? requestApplicationExit = null)
     {
         InitializeComponent();
+        diagnosticSink ??= NoOpDiagnosticSink.Instance;
 
         this.viewModel = viewModel ?? throw new ArgumentNullException(nameof(viewModel));
         this.desktopProgressController = new DesktopProgressController(
-            desktopProgressService ?? throw new ArgumentNullException(nameof(desktopProgressService)));
+            desktopProgressService ?? throw new ArgumentNullException(nameof(desktopProgressService)),
+            diagnosticSink);
         this.statusIconService = statusIconService ?? throw new ArgumentNullException(nameof(statusIconService));
         this.applicationInfoProvider = applicationInfoProvider ?? throw new ArgumentNullException(nameof(applicationInfoProvider));
         this.externalUriLauncher = externalUriLauncher ?? throw new ArgumentNullException(nameof(externalUriLauncher));
@@ -134,7 +140,7 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
         this.prepareCoordinatorClose = prepareCoordinatorClose ?? (_ => Task.CompletedTask);
         this.requestApplicationExit = requestApplicationExit ?? this.RequestLocalExitAsync;
         this.DataContext = this.viewModel;
-        this.windowAttentionService = (createWindowAttentionService ?? CreateWindowAttentionService)(this);
+        this.windowAttentionService = (createWindowAttentionService ?? (target => CreateWindowAttentionService(target, diagnosticSink)))(this);
         this.fullScreenController = new WindowFullScreenController(this);
         this.windowGeometryController = new WindowGeometryController(
             this,
@@ -230,6 +236,7 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
 
     private static DefaultMainWindowServices CreateDefaultServices()
     {
+        IDiagnosticSink diagnosticSink = DiagnosticSinkFactory.CreateDefault();
         var environmentReader = new ProcessDesktopEnvironmentReader();
         var sessionBusProbe = new EnvironmentSessionBusProbe(environmentReader);
         IStatusIconService statusIconService = new LinuxStatusIconCapability(
@@ -239,10 +246,11 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
             : UnsupportedStatusIconService.Instance;
 
         return new DefaultMainWindowServices(
-            LinuxDesktopProgressServiceFactory.CreateDefault(),
+            LinuxDesktopProgressServiceFactory.CreateDefault(diagnosticSink),
             statusIconService,
             new ApplicationInfoProvider(),
-            new LinuxExternalUriLauncher());
+            new LinuxExternalUriLauncher(diagnosticSink),
+            diagnosticSink);
     }
 
     private static IStatusIconService CreateAvaloniaStatusIconService()
@@ -1305,14 +1313,17 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
         return true;
     }
 
-    private static IWindowAttentionService CreateWindowAttentionService(IWindowAttentionTarget target)
+    private static IWindowAttentionService CreateWindowAttentionService(
+        IWindowAttentionTarget target,
+        IDiagnosticSink diagnosticSink)
     {
-        return new WindowAttentionController(target);
+        return new WindowAttentionController(target, diagnosticSink);
     }
 
     private sealed record DefaultMainWindowServices(
         IDesktopProgressService DesktopProgressService,
         IStatusIconService StatusIconService,
         ApplicationInfoProvider ApplicationInfoProvider,
-        IExternalUriLauncher ExternalUriLauncher);
+        IExternalUriLauncher ExternalUriLauncher,
+        IDiagnosticSink DiagnosticSink);
 }

@@ -7,10 +7,12 @@ public sealed class UnityLauncherDesktopProgressService : IDesktopProgressServic
     public const string ApplicationUri = "application://io.github.MattBunch.Hourglass.desktop";
 
     private readonly IUnityLauncherEntrySender sender;
+    private readonly IDiagnosticSink diagnosticSink;
 
-    public UnityLauncherDesktopProgressService(IUnityLauncherEntrySender sender)
+    public UnityLauncherDesktopProgressService(IUnityLauncherEntrySender sender, IDiagnosticSink? diagnosticSink = null)
     {
         this.sender = sender ?? throw new ArgumentNullException(nameof(sender));
+        this.diagnosticSink = diagnosticSink ?? NoOpDiagnosticSink.Instance;
     }
 
     public bool IsSupported => true;
@@ -52,8 +54,16 @@ public sealed class UnityLauncherDesktopProgressService : IDesktopProgressServic
         {
             throw;
         }
-        catch (Exception)
+        catch (Exception exception)
         {
+            this.diagnosticSink.Record(new DiagnosticEvent(
+                DiagnosticSeverity.Warning,
+                DiagnosticFailureClass.BestEffort,
+                "desktop-progress",
+                update.ProgressVisible ? "set-progress" : "clear",
+                "unity-launcher-entry",
+                "Launcher progress update failed.",
+                exception));
         }
     }
 }

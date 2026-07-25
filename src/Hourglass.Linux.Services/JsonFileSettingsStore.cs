@@ -13,10 +13,12 @@ public sealed class JsonFileSettingsStore : ISettingsStore
     };
 
     private readonly ISettingsPathService settingsPathService;
+    private readonly IDiagnosticSink diagnosticSink;
 
-    public JsonFileSettingsStore(ISettingsPathService settingsPathService)
+    public JsonFileSettingsStore(ISettingsPathService settingsPathService, IDiagnosticSink? diagnosticSink = null)
     {
         this.settingsPathService = settingsPathService ?? throw new ArgumentNullException(nameof(settingsPathService));
+        this.diagnosticSink = diagnosticSink ?? NoOpDiagnosticSink.Instance;
     }
 
     public async Task<T?> LoadAsync<T>(string key, CancellationToken cancellationToken = default)
@@ -36,12 +38,14 @@ public sealed class JsonFileSettingsStore : ISettingsStore
         {
             return default;
         }
-        catch (JsonException)
+        catch (JsonException exception)
         {
+            this.RecordLoadRecovery(key, "Settings document contained invalid JSON.", exception);
             return default;
         }
-        catch (NotSupportedException)
+        catch (NotSupportedException exception)
         {
+            this.RecordLoadRecovery(key, "Settings document could not be deserialized.", exception);
             return default;
         }
     }
@@ -94,5 +98,17 @@ public sealed class JsonFileSettingsStore : ISettingsStore
         }
 
         return $"{key}{FileExtension}";
+    }
+
+    private void RecordLoadRecovery(string key, string message, Exception exception)
+    {
+        this.diagnosticSink.Record(new DiagnosticEvent(
+            DiagnosticSeverity.Warning,
+            DiagnosticFailureClass.DataRecovery,
+            "settings",
+            "load",
+            key,
+            message,
+            exception));
     }
 }

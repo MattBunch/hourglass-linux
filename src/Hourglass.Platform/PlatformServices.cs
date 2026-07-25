@@ -165,11 +165,31 @@ public interface ISystemPowerService
     Task RequestShutdownAsync(CancellationToken cancellationToken = default);
 }
 
+public enum DiagnosticSeverity
+{
+    Info,
+    Warning,
+    Error
+}
+
+public enum DiagnosticFailureClass
+{
+    BestEffort,
+    UserRequested,
+    StartupConfiguration,
+    DataRecovery
+}
+
+public sealed record DiagnosticEvent(
+    DiagnosticSeverity Severity,
+    DiagnosticFailureClass FailureClass,
+    string Category,
+    string Operation,
+    string Backend,
+    string Message,
+    Exception? Exception = null);
+
 public interface IDiagnosticSink
 {
-    void Info(string category, string message);
-
-    void Warning(string category, string message, Exception? exception = null);
-
-    void Error(string category, string message, Exception? exception = null);
+    void Record(DiagnosticEvent diagnosticEvent);
 }

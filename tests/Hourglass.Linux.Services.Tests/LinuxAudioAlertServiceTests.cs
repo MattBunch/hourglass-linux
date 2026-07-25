@@ -188,9 +188,15 @@ public sealed class LinuxAudioAlertServiceTests : IDisposable
     public async Task AllPlayersFailingReturnsNormally()
     {
         string soundPath = this.CreateSoundFile();
-        var service = new LinuxAudioAlertService(soundPath, (_, _) => Task.FromResult(1));
+        var diagnostics = new RecordingDiagnosticSink();
+        var service = new LinuxAudioAlertService(soundPath, (_, _) => Task.FromResult(1), diagnosticSink: diagnostics);
 
         await service.PlayAlertAsync(AudioAlertSoundIds.NormalBeep);
+
+        DiagnosticEvent diagnostic = Assert.Single(diagnostics.Events);
+        Assert.Equal(DiagnosticFailureClass.BestEffort, diagnostic.FailureClass);
+        Assert.Equal("audio-alerts", diagnostic.Category);
+        Assert.Equal("play", diagnostic.Operation);
     }
 
     [Fact]

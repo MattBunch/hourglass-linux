@@ -81,12 +81,15 @@ public sealed class UnityLauncherDesktopProgressServiceTests
     public async Task SenderFailuresAreIsolated()
     {
         var sender = new RecordingUnityLauncherEntrySender { ThrowOnSend = true };
-        var service = new UnityLauncherDesktopProgressService(sender);
+        var diagnostics = new RecordingDiagnosticSink();
+        var service = new UnityLauncherDesktopProgressService(sender, diagnostics);
 
         await service.SetProgressAsync(0.5, DesktopProgressState.Normal);
         await service.ClearAsync();
 
         Assert.Equal(2, sender.Attempts);
+        Assert.Equal(2, diagnostics.Events.Count);
+        Assert.All(diagnostics.Events, diagnostic => Assert.Equal("desktop-progress", diagnostic.Category));
     }
 
     [Fact]

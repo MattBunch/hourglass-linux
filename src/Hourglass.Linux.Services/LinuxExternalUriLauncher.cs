@@ -9,21 +9,29 @@ public sealed class LinuxExternalUriLauncher : IExternalUriLauncher
     private const string BrowserLauncherExecutable = "xdg-open";
 
     private readonly string executableName;
+    private readonly IDiagnosticSink diagnosticSink;
     private readonly Func<ProcessStartInfo, CancellationToken, Task<int>> runProcessAsync;
 
     public LinuxExternalUriLauncher()
-        : this(RunProcessAsync, BrowserLauncherExecutable)
+        : this(RunProcessAsync, BrowserLauncherExecutable, NoOpDiagnosticSink.Instance)
+    {
+    }
+
+    public LinuxExternalUriLauncher(IDiagnosticSink diagnosticSink)
+        : this(RunProcessAsync, BrowserLauncherExecutable, diagnosticSink ?? throw new ArgumentNullException(nameof(diagnosticSink)))
     {
     }
 
     internal LinuxExternalUriLauncher(
         Func<ProcessStartInfo, CancellationToken, Task<int>> runProcessAsync,
-        string executableName = BrowserLauncherExecutable)
+        string executableName = BrowserLauncherExecutable,
+        IDiagnosticSink? diagnosticSink = null)
     {
         this.runProcessAsync = runProcessAsync ?? throw new ArgumentNullException(nameof(runProcessAsync));
         this.executableName = string.IsNullOrWhiteSpace(executableName)
             ? throw new ArgumentException("Executable name must not be empty.", nameof(executableName))
             : executableName;
+        this.diagnosticSink = diagnosticSink ?? NoOpDiagnosticSink.Instance;
     }
 
     public async Task<bool> OpenAsync(Uri uri, CancellationToken cancellationToken = default)
@@ -41,18 +49,26 @@ public sealed class LinuxExternalUriLauncher : IExternalUriLauncher
                     CreateStartInfo(this.executableName, uri),
                     cancellationToken)
                 .ConfigureAwait(false);
-            return exitCode == 0;
+            bool opened = exitCode == 0;
+            if (!opened)
+            {
+                this.RecordFailure($"URI launcher exited with code {exitCode}.", null);
+            }
+
+            return opened;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             throw;
         }
-        catch (Win32Exception)
+        catch (Win32Exception exception)
         {
+            this.RecordFailure("URI launcher command could not be started.", exception);
             return false;
         }
-        catch (InvalidOperationException)
+        catch (InvalidOperationException exception)
         {
+            this.RecordFailure("URI launcher command failed before completion.", exception);
             return false;
         }
     }
@@ -92,5 +108,17 @@ public sealed class LinuxExternalUriLauncher : IExternalUriLauncher
 
         await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
         return process.ExitCode;
+    }
+
+    private void RecordFailure(string message, Exception? exception)
+    {
+        this.diagnosticSink.Record(new DiagnosticEvent(
+            DiagnosticSeverity.Warning,
+            DiagnosticFailureClass.UserRequested,
+            "external-uri",
+            "open",
+            this.executableName,
+            message,
+            exception));
     }
 }

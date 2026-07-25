@@ -2,6 +2,7 @@ namespace Hourglass.Linux.Services.Tests;
 
 using System.ComponentModel;
 using System.Diagnostics;
+using Hourglass.Platform;
 using Xunit;
 
 public sealed class NotifySendNotificationServiceTests
@@ -29,17 +30,30 @@ public sealed class NotifySendNotificationServiceTests
     [Fact]
     public async Task MissingNotifySendDoesNotThrow()
     {
-        var service = new NotifySendNotificationService((_, _) => throw new Win32Exception());
+        var diagnostics = new RecordingDiagnosticSink();
+        var service = new NotifySendNotificationService(
+            (_, _) => throw new Win32Exception(),
+            diagnosticSink: diagnostics);
 
         await service.ShowTimerExpiredAsync("Hourglass", "Timer complete");
+
+        DiagnosticEvent diagnostic = Assert.Single(diagnostics.Events);
+        Assert.Equal(DiagnosticFailureClass.BestEffort, diagnostic.FailureClass);
+        Assert.Equal("notifications", diagnostic.Category);
+        Assert.Equal("notify-send", diagnostic.Backend);
     }
 
     [Fact]
     public async Task FailedNotifySendExitDoesNotThrow()
     {
-        var service = new NotifySendNotificationService((_, _) => Task.FromResult(1));
+        var diagnostics = new RecordingDiagnosticSink();
+        var service = new NotifySendNotificationService((_, _) => Task.FromResult(1), diagnosticSink: diagnostics);
 
         await service.ShowTimerExpiredAsync("Hourglass", "Timer complete");
+
+        DiagnosticEvent diagnostic = Assert.Single(diagnostics.Events);
+        Assert.Equal("show-expired", diagnostic.Operation);
+        Assert.Contains("code 1", diagnostic.Message, StringComparison.Ordinal);
     }
 
     [Fact]

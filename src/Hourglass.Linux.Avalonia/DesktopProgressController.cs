@@ -2,8 +2,9 @@ namespace Hourglass.Linux.Avalonia;
 
 using Hourglass.Platform;
 
-internal sealed class DesktopProgressController(IDesktopProgressService service)
+internal sealed class DesktopProgressController(IDesktopProgressService service, IDiagnosticSink? diagnosticSink = null)
 {
+    private readonly IDiagnosticSink diagnosticSink = diagnosticSink ?? NoOpDiagnosticSink.Instance;
     private readonly SemaphoreSlim operationGate = new(1, 1);
     private readonly IDesktopProgressService service = service ?? throw new ArgumentNullException(nameof(service));
     private DesktopProgressRequest? lastAppliedRequest;
@@ -35,8 +36,9 @@ internal sealed class DesktopProgressController(IDesktopProgressService service)
             {
                 throw;
             }
-            catch (Exception)
+            catch (Exception exception)
             {
+                this.RecordFailure(request.IsHidden ? "clear" : "apply", exception);
             }
         }
         finally
@@ -60,13 +62,26 @@ internal sealed class DesktopProgressController(IDesktopProgressService service)
             {
                 throw;
             }
-            catch (Exception)
+            catch (Exception exception)
             {
+                this.RecordFailure("clear", exception);
             }
         }
         finally
         {
             this.operationGate.Release();
         }
+    }
+
+    private void RecordFailure(string operation, Exception exception)
+    {
+        this.diagnosticSink.Record(new DiagnosticEvent(
+            DiagnosticSeverity.Warning,
+            DiagnosticFailureClass.BestEffort,
+            "desktop-progress",
+            operation,
+            this.service.GetType().Name,
+            "Desktop progress update failed.",
+            exception));
     }
 }
