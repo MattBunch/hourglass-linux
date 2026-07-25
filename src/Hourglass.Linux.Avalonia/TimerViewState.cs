@@ -32,7 +32,7 @@ public sealed record TimerViewState(
     string? InputBeforeEdit,
     bool HasValidationError)
 {
-    internal static string DefaultTimerInput => ApplicationStrings.TimerInputDefault;
+    internal static string DefaultTimerInput => TimerStart.Default.ToString();
     internal static string ReadyStatusText => ApplicationStrings.StatusReady;
     internal static string RunningStatusText => ApplicationStrings.StatusRunning;
     internal static string PausedStatusText => ApplicationStrings.StatusPaused;

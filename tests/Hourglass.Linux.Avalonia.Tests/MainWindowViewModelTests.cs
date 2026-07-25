@@ -25,6 +25,20 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
+    public void DefaultTimerInputUsesParserResourceInsteadOfUiPlaceholder()
+    {
+        var viewModel = CreateViewModel(new ManualMonotonicClock());
+        XNamespace controls = "clr-namespace:Hourglass.Linux.Avalonia";
+        XNamespace xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
+        XDocument document = XDocument.Load(FindRepositoryFile("src/Hourglass.Linux.Avalonia/MainWindow.axaml"));
+        XElement timerInput = FindNamedElement(document, controls + "ResponsiveTextBox", xaml, "TimerInputTextBox");
+
+        Assert.Equal(TimerStart.Default.ToString(), TimerViewState.DefaultTimerInput);
+        Assert.Equal(TimerStart.Default.ToString(), viewModel.TimerInput);
+        Assert.Equal("{x:Static local:ApplicationStrings.TimerInputDefault}", timerInput.Attribute("PlaceholderText")?.Value);
+    }
+
+    [Fact]
     public void ChangingTimerTitleImmediatelyUpdatesWindowTitleAndRaisesNotifications()
     {
         var viewModel = CreateViewModel(new ManualMonotonicClock());
