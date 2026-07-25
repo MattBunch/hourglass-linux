@@ -1,0 +1,537 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AboutAutomationClose" xml:space="preserve">
+    <value>Close About Hourglass</value>
+  </data>
+  <data name="AboutAutomationCopyBuildInformation" xml:space="preserve">
+    <value>Copy build information</value>
+  </data>
+  <data name="AboutAutomationDeveloperWebsite" xml:space="preserve">
+    <value>Open developer website</value>
+  </data>
+  <data name="AboutAutomationIcon" xml:space="preserve">
+    <value>Hourglass application icon</value>
+  </data>
+  <data name="AboutAutomationOriginalProject" xml:space="preserve">
+    <value>Open original Hourglass project</value>
+  </data>
+  <data name="AboutAutomationRepository" xml:space="preserve">
+    <value>Open GitHub repository</value>
+  </data>
+  <data name="AboutDeveloperWebsiteButton" xml:space="preserve">
+    <value>Developer Website</value>
+  </data>
+  <data name="AboutOriginalProjectButton" xml:space="preserve">
+    <value>Original Hourglass Project</value>
+  </data>
+  <data name="AboutRepositoryButton" xml:space="preserve">
+    <value>GitHub Repository</value>
+  </data>
+  <data name="AboutBuildConfigurationLineFormat" xml:space="preserve">
+    <value>Build configuration: {0}</value>
+  </data>
+  <data name="AboutBuildInformationCopied" xml:space="preserve">
+    <value>Build information copied.</value>
+  </data>
+  <data name="AboutBuildInformationCopyFailed" xml:space="preserve">
+    <value>Build information could not be copied.</value>
+  </data>
+  <data name="AboutBuildLineFormat" xml:space="preserve">
+    <value>Build: {0}</value>
+  </data>
+  <data name="AboutArchitectureLineFormat" xml:space="preserve">
+    <value>Architecture: {0}</value>
+  </data>
+  <data name="AboutCommitLineFormat" xml:space="preserve">
+    <value>Commit: {0}</value>
+  </data>
+  <data name="AboutDeveloperFormat" xml:space="preserve">
+    <value>Developed by {0}</value>
+  </data>
+  <data name="AboutDialogTitle" xml:space="preserve">
+    <value>About Hourglass</value>
+  </data>
+  <data name="AboutLicenseFormat" xml:space="preserve">
+    <value>{0}. Hourglass Linux is distributed under the MIT license.</value>
+  </data>
+  <data name="AboutInformationalVersionLineFormat" xml:space="preserve">
+    <value>Informational version: {0}</value>
+  </data>
+  <data name="AboutLinkOpenFailed" xml:space="preserve">
+    <value>The link could not be opened.</value>
+  </data>
+  <data name="AboutMenuHeader" xml:space="preserve">
+    <value>About Hourglass</value>
+  </data>
+  <data name="AboutPlatformLineFormat" xml:space="preserve">
+    <value>Platform: {0} {1}</value>
+  </data>
+  <data name="AboutPlatformValueFormat" xml:space="preserve">
+    <value>{0} {1}</value>
+  </data>
+  <data name="AboutRepositoryLineFormat" xml:space="preserve">
+    <value>Repository: {0}</value>
+  </data>
+  <data name="AboutRuntimeLineFormat" xml:space="preserve">
+    <value>Runtime: {0}</value>
+  </data>
+  <data name="AboutOperatingSystemLineFormat" xml:space="preserve">
+    <value>Operating system: {0}</value>
+  </data>
+  <data name="AboutVersionLineFormat" xml:space="preserve">
+    <value>Version: {0}</value>
+  </data>
+  <data name="AdvancedOptionsMenuHeader" xml:space="preserve">
+    <value>Advanced options</value>
+  </data>
+  <data name="ApplicationTitle" xml:space="preserve">
+    <value>Hourglass</value>
+  </data>
+  <data name="ApplicationDescription" xml:space="preserve">
+    <value>Simple countdown timer for Linux</value>
+  </data>
+  <data name="ApplicationDeveloperName" xml:space="preserve">
+    <value>Matt Bunch</value>
+  </data>
+  <data name="ApplicationLicenseName" xml:space="preserve">
+    <value>MIT License</value>
+  </data>
+  <data name="ApplicationProductName" xml:space="preserve">
+    <value>Hourglass Linux</value>
+  </data>
+  <data name="AudioAlertLoudBeep" xml:space="preserve">
+    <value>Loud beep</value>
+  </data>
+  <data name="AudioAlertNoSound" xml:space="preserve">
+    <value>None</value>
+  </data>
+  <data name="AudioAlertNormalBeep" xml:space="preserve">
+    <value>Normal beep</value>
+  </data>
+  <data name="AudioAlertQuietBeep" xml:space="preserve">
+    <value>Quiet beep</value>
+  </data>
+  <data name="AudioAlertSoundMenuHeader" xml:space="preserve">
+    <value>Sound</value>
+  </data>
+  <data name="AutomationCancelExit" xml:space="preserve">
+    <value>Cancel exit</value>
+  </data>
+  <data name="AutomationCancelThemeDelete" xml:space="preserve">
+    <value>Cancel delete custom theme</value>
+  </data>
+  <data name="AutomationCancelThemeEdit" xml:space="preserve">
+    <value>Cancel custom theme edit</value>
+  </data>
+  <data name="AutomationDeleteTheme" xml:space="preserve">
+    <value>Delete custom theme</value>
+  </data>
+  <data name="AutomationExitApplication" xml:space="preserve">
+    <value>Exit Hourglass</value>
+  </data>
+  <data name="AutomationSaveTheme" xml:space="preserve">
+    <value>Save custom theme</value>
+  </data>
+  <data name="CommandCancel" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
+  <data name="CommandClose" xml:space="preserve">
+    <value>Close</value>
+  </data>
+  <data name="CommandDelete" xml:space="preserve">
+    <value>Delete</value>
+  </data>
+  <data name="CommandExit" xml:space="preserve">
+    <value>Exit</value>
+  </data>
+  <data name="CommandPause" xml:space="preserve">
+    <value>Pause</value>
+  </data>
+  <data name="CommandReset" xml:space="preserve">
+    <value>Stop</value>
+  </data>
+  <data name="CommandRestart" xml:space="preserve">
+    <value>Restart</value>
+  </data>
+  <data name="CommandResume" xml:space="preserve">
+    <value>Resume</value>
+  </data>
+  <data name="CommandSave" xml:space="preserve">
+    <value>Save</value>
+  </data>
+  <data name="CommandHide" xml:space="preserve">
+    <value>Hide</value>
+  </data>
+  <data name="CommandShow" xml:space="preserve">
+    <value>Show</value>
+  </data>
+  <data name="CommandStart" xml:space="preserve">
+    <value>Start</value>
+  </data>
+  <data name="CommandLineSingleInstanceContactFailedFormat" xml:space="preserve">
+    <value>Hourglass could not contact the running instance: {0}</value>
+  </data>
+  <data name="CommandLineSingleInstanceListenerFailedFormat" xml:space="preserve">
+    <value>Hourglass could not start the single-instance handoff listener: {0}</value>
+  </data>
+  <data name="CommandLineSingleInstanceLockFailedFormat" xml:space="preserve">
+    <value>Hourglass could not acquire the single-instance lock: {0}</value>
+  </data>
+  <data name="CommandLineInvalidTimerExpressionFormat" xml:space="preserve">
+    <value>Invalid timer expression: {0}</value>
+  </data>
+  <data name="CommandLineRepeatedTitleOption" xml:space="preserve">
+    <value>The --title option can only be specified once.</value>
+  </data>
+  <data name="CommandLineTitleRequiresTimerExpression" xml:space="preserve">
+    <value>A timer expression is required when --title is specified.</value>
+  </data>
+  <data name="CommandLineTitleRequiresValue" xml:space="preserve">
+    <value>The --title option requires a value.</value>
+  </data>
+  <data name="CommandLineUnrecognizedOptionFormat" xml:space="preserve">
+    <value>Unrecognized option: {0}</value>
+  </data>
+  <data name="ContextMenuAlwaysOnTop" xml:space="preserve">
+    <value>Always on top</value>
+  </data>
+  <data name="ContextMenuCloseWhenExpired" xml:space="preserve">
+    <value>Close when expired</value>
+  </data>
+  <data name="ContextMenuDoNotKeepComputerAwake" xml:space="preserve">
+    <value>Do not keep computer awake</value>
+  </data>
+  <data name="ContextMenuFullScreen" xml:space="preserve">
+    <value>Full screen</value>
+  </data>
+  <data name="ContextMenuHideToNotificationArea" xml:space="preserve">
+    <value>Hide to notification area</value>
+  </data>
+  <data name="ContextMenuLockInterface" xml:space="preserve">
+    <value>Lock interface</value>
+  </data>
+  <data name="ContextMenuLoopSound" xml:space="preserve">
+    <value>Loop sound</value>
+  </data>
+  <data name="ContextMenuLoopTimer" xml:space="preserve">
+    <value>Loop timer</value>
+  </data>
+  <data name="ContextMenuNotifications" xml:space="preserve">
+    <value>Notifications</value>
+  </data>
+  <data name="ContextMenuOpenSavedTimersOnStartup" xml:space="preserve">
+    <value>Open saved timers on startup</value>
+  </data>
+  <data name="ContextMenuPopUpWhenExpired" xml:space="preserve">
+    <value>Pop up when expired</value>
+  </data>
+  <data name="ContextMenuPromptOnExit" xml:space="preserve">
+    <value>Prompt on exit</value>
+  </data>
+  <data name="ContextMenuRestoreActiveSessionOnStartup" xml:space="preserve">
+    <value>Restore active session on startup</value>
+  </data>
+  <data name="ContextMenuReverseProgressBar" xml:space="preserve">
+    <value>Reverse progress bar</value>
+  </data>
+  <data name="ContextMenuShowInNotificationArea" xml:space="preserve">
+    <value>Show in notification area</value>
+  </data>
+  <data name="ContextMenuShowProgressInTaskbar" xml:space="preserve">
+    <value>Show progress in taskbar</value>
+  </data>
+  <data name="ContextMenuShowTimeElapsed" xml:space="preserve">
+    <value>Show time elapsed</value>
+  </data>
+  <data name="ContextMenuShutDownWhenExpired" xml:space="preserve">
+    <value>Shut down when expired</value>
+  </data>
+  <data name="ContextMenuStopPreview" xml:space="preserve">
+    <value>Stop preview</value>
+  </data>
+  <data name="ContextMenuPreviewSelectedSound" xml:space="preserve">
+    <value>Preview selected sound</value>
+  </data>
+  <data name="CustomThemeBaseThemeLabel" xml:space="preserve">
+    <value>Base theme</value>
+  </data>
+  <data name="CustomThemeDefaultName" xml:space="preserve">
+    <value>Custom theme</value>
+  </data>
+  <data name="CustomThemeNameAutomation" xml:space="preserve">
+    <value>Theme name</value>
+  </data>
+  <data name="CustomThemeDeleteMessageFormat" xml:space="preserve">
+    <value>Delete "{0}"?</value>
+  </data>
+  <data name="CustomThemeDeleteTitle" xml:space="preserve">
+    <value>Delete custom theme?</value>
+  </data>
+  <data name="CustomThemeEditorTitle" xml:space="preserve">
+    <value>Custom theme</value>
+  </data>
+  <data name="CustomThemeValidationColors" xml:space="preserve">
+    <value>Colors must use #RRGGBB or #AARRGGBB.</value>
+  </data>
+  <data name="CustomThemeValidationNameRequired" xml:space="preserve">
+    <value>Name is required.</value>
+  </data>
+  <data name="ExitConfirmationMessage" xml:space="preserve">
+    <value>One or more timers are still running or paused. Exit Hourglass?</value>
+  </data>
+  <data name="ExitConfirmationTitle" xml:space="preserve">
+    <value>Exit Hourglass?</value>
+  </data>
+  <data name="LabelAccent" xml:space="preserve">
+    <value>Accent</value>
+  </data>
+  <data name="LabelBackground" xml:space="preserve">
+    <value>Background</value>
+  </data>
+  <data name="LabelBackgroundColor" xml:space="preserve">
+    <value>Background color</value>
+  </data>
+  <data name="LabelBuild" xml:space="preserve">
+    <value>Build</value>
+  </data>
+  <data name="LabelCommandText" xml:space="preserve">
+    <value>Command text</value>
+  </data>
+  <data name="LabelCommandTextColor" xml:space="preserve">
+    <value>Command text color</value>
+  </data>
+  <data name="LabelCommit" xml:space="preserve">
+    <value>Commit</value>
+  </data>
+  <data name="LabelCompletionBorder" xml:space="preserve">
+    <value>Completion border</value>
+  </data>
+  <data name="LabelCompletionBorderColor" xml:space="preserve">
+    <value>Completion border color</value>
+  </data>
+  <data name="LabelLockedBorder" xml:space="preserve">
+    <value>Locked border</value>
+  </data>
+  <data name="LabelLockedBorderColor" xml:space="preserve">
+    <value>Locked border color</value>
+  </data>
+  <data name="LabelName" xml:space="preserve">
+    <value>Name</value>
+  </data>
+  <data name="LabelPlatform" xml:space="preserve">
+    <value>Platform</value>
+  </data>
+  <data name="LabelPrimaryText" xml:space="preserve">
+    <value>Primary text</value>
+  </data>
+  <data name="LabelPrimaryTextColor" xml:space="preserve">
+    <value>Primary text color</value>
+  </data>
+  <data name="LabelProgressFill" xml:space="preserve">
+    <value>Progress fill</value>
+  </data>
+  <data name="LabelProgressFillColor" xml:space="preserve">
+    <value>Progress fill color</value>
+  </data>
+  <data name="LabelRuntime" xml:space="preserve">
+    <value>Runtime</value>
+  </data>
+  <data name="LabelSecondaryText" xml:space="preserve">
+    <value>Secondary text</value>
+  </data>
+  <data name="LabelSecondaryTextColor" xml:space="preserve">
+    <value>Secondary text color</value>
+  </data>
+  <data name="LabelValidationFlash" xml:space="preserve">
+    <value>Validation flash</value>
+  </data>
+  <data name="LabelValidationFlashColor" xml:space="preserve">
+    <value>Validation flash color</value>
+  </data>
+  <data name="LabelVersion" xml:space="preserve">
+    <value>Version</value>
+  </data>
+  <data name="LocalBuild" xml:space="preserve">
+    <value>Local build</value>
+  </data>
+  <data name="UnknownMetadataValue" xml:space="preserve">
+    <value>Unknown</value>
+  </data>
+  <data name="MainMenuNewTimer" xml:space="preserve">
+    <value>New timer</value>
+  </data>
+  <data name="RecentInputsMenuHeader" xml:space="preserve">
+    <value>Recent inputs</value>
+  </data>
+  <data name="RecentInputsClear" xml:space="preserve">
+    <value>Clear recent inputs</value>
+  </data>
+  <data name="SavedTimersClear" xml:space="preserve">
+    <value>Clear saved timers</value>
+  </data>
+  <data name="SavedTimersMenuHeader" xml:space="preserve">
+    <value>Saved timers</value>
+  </data>
+  <data name="SavedTimersOpen" xml:space="preserve">
+    <value>Open</value>
+  </data>
+  <data name="SavedTimersOpenAll" xml:space="preserve">
+    <value>Open all saved timers</value>
+  </data>
+  <data name="SavedTimersRemove" xml:space="preserve">
+    <value>Remove</value>
+  </data>
+  <data name="SavedTimersSaveCurrent" xml:space="preserve">
+    <value>Save current timer</value>
+  </data>
+  <data name="SessionInhibitionReason" xml:space="preserve">
+    <value>Hourglass timer is running</value>
+  </data>
+  <data name="StatusInvalidTimer" xml:space="preserve">
+    <value>Enter a valid current timer.</value>
+  </data>
+  <data name="StatusPaused" xml:space="preserve">
+    <value>Paused</value>
+  </data>
+  <data name="StatusReady" xml:space="preserve">
+    <value>Ready</value>
+  </data>
+  <data name="StatusRunning" xml:space="preserve">
+    <value>Running</value>
+  </data>
+  <data name="StatusTimerComplete" xml:space="preserve">
+    <value>Timer complete</value>
+  </data>
+  <data name="ThemeBaseDark" xml:space="preserve">
+    <value>Dark</value>
+  </data>
+  <data name="ThemeBaseLight" xml:space="preserve">
+    <value>Light</value>
+  </data>
+  <data name="ThemeBaseSystem" xml:space="preserve">
+    <value>System</value>
+  </data>
+  <data name="ThemeCommandDelete" xml:space="preserve">
+    <value>Delete</value>
+  </data>
+  <data name="ThemeCommandDuplicate" xml:space="preserve">
+    <value>Duplicate</value>
+  </data>
+  <data name="ThemeCommandEdit" xml:space="preserve">
+    <value>Edit</value>
+  </data>
+  <data name="ThemeCommandExport" xml:space="preserve">
+    <value>Export</value>
+  </data>
+  <data name="ThemeCommandImport" xml:space="preserve">
+    <value>Import custom theme</value>
+  </data>
+  <data name="ThemeCommandNew" xml:space="preserve">
+    <value>New custom theme</value>
+  </data>
+  <data name="ThemeCommandUse" xml:space="preserve">
+    <value>Use this theme</value>
+  </data>
+  <data name="ThemeFilePickerTitle" xml:space="preserve">
+    <value>Hourglass theme</value>
+  </data>
+  <data name="ThemeImportTitle" xml:space="preserve">
+    <value>Import custom theme</value>
+  </data>
+  <data name="ThemeMenuHeader" xml:space="preserve">
+    <value>Theme</value>
+  </data>
+  <data name="ThemeExportTitle" xml:space="preserve">
+    <value>Export custom theme</value>
+  </data>
+  <data name="LabelAccentColor" xml:space="preserve">
+    <value>Accent color</value>
+  </data>
+  <data name="TimerAutomationCancel" xml:space="preserve">
+    <value>Cancel timer edit</value>
+  </data>
+  <data name="TimerAutomationCompletionHelp" xml:space="preserve">
+    <value>Shows completion or validation status. Focus to dismiss completion.</value>
+  </data>
+  <data name="TimerAutomationInput" xml:space="preserve">
+    <value>Timer input</value>
+  </data>
+  <data name="TimerAutomationRemainingHelp" xml:space="preserve">
+    <value>Shows the active timer time. Focus to edit the timer.</value>
+  </data>
+  <data name="TimerAutomationRemainingTime" xml:space="preserve">
+    <value>Remaining time</value>
+  </data>
+  <data name="TimerAutomationRestart" xml:space="preserve">
+    <value>Restart timer</value>
+  </data>
+  <data name="TimerAutomationResume" xml:space="preserve">
+    <value>Resume timer</value>
+  </data>
+  <data name="TimerAutomationPause" xml:space="preserve">
+    <value>Pause timer</value>
+  </data>
+  <data name="TimerAutomationStart" xml:space="preserve">
+    <value>Start timer</value>
+  </data>
+  <data name="TimerAutomationStatus" xml:space="preserve">
+    <value>Timer status</value>
+  </data>
+  <data name="TimerAutomationStop" xml:space="preserve">
+    <value>Stop timer</value>
+  </data>
+  <data name="TimerAutomationTitle" xml:space="preserve">
+    <value>Timer title</value>
+  </data>
+  <data name="TimerAutomationTitleHelp" xml:space="preserve">
+    <value>Optional title for this timer.</value>
+  </data>
+  <data name="TimerInputDefault" xml:space="preserve">
+    <value>5 minutes</value>
+  </data>
+  <data name="TimerInputDefaultHelpText" xml:space="preserve">
+    <value>Enter a duration or time, then press Enter to start.</value>
+  </data>
+  <data name="TimerTitlePlaceholder" xml:space="preserve">
+    <value>Click to enter title</value>
+  </data>
+  <data name="WindowTitleApplicationName" xml:space="preserve">
+    <value>Application name</value>
+  </data>
+  <data name="WindowTitleMenuHeader" xml:space="preserve">
+    <value>Window title</value>
+  </data>
+  <data name="WindowTitleTimeElapsed" xml:space="preserve">
+    <value>Time elapsed</value>
+  </data>
+  <data name="WindowTitleTimeElapsedPlusTimerTitle" xml:space="preserve">
+    <value>Time elapsed plus timer title</value>
+  </data>
+  <data name="WindowTitleTimeLeft" xml:space="preserve">
+    <value>Time left</value>
+  </data>
+  <data name="WindowTitleTimeLeftPlusTimerTitle" xml:space="preserve">
+    <value>Time left plus timer title</value>
+  </data>
+  <data name="WindowTitleTimerTitle" xml:space="preserve">
+    <value>Timer title</value>
+  </data>
+  <data name="WindowTitleTimerTitlePlusTimeElapsed" xml:space="preserve">
+    <value>Timer title plus time elapsed</value>
+  </data>
+  <data name="WindowTitleTimerTitlePlusTimeLeft" xml:space="preserve">
+    <value>Timer title plus time left</value>
+  </data>
+</root>

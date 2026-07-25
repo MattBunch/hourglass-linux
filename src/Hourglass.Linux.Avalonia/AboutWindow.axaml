@@ -1,7 +1,8 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:Hourglass.Linux.Avalonia"
         x:Class="Hourglass.Linux.Avalonia.AboutWindow"
-        Title="About Hourglass"
+        Title="{x:Static local:ApplicationStrings.AboutDialogTitle}"
         Icon="/Assets/hourglass.png"
         Width="460"
         Height="430"
@@ -15,7 +16,7 @@
     <StackPanel Orientation="Horizontal"
                 Spacing="14">
       <Image Source="/Assets/hourglass.png"
-             AutomationProperties.Name="Hourglass application icon"
+             AutomationProperties.Name="{x:Static local:ApplicationStrings.AboutAutomationIcon}"
              Width="56"
              Height="56"
              VerticalAlignment="Top" />
@@ -37,34 +38,34 @@
               RowDefinitions="Auto,Auto,Auto,Auto,Auto"
               ColumnSpacing="16"
               RowSpacing="5">
-          <TextBlock Text="Version" />
+          <TextBlock Text="{x:Static local:ApplicationStrings.LabelVersion}" />
           <TextBlock Grid.Column="1"
                      x:Name="VersionText"
                      TextWrapping="Wrap" />
 
           <TextBlock Grid.Row="1"
-                     Text="Build" />
+                     Text="{x:Static local:ApplicationStrings.LabelBuild}" />
           <TextBlock Grid.Row="1"
                      Grid.Column="1"
                      x:Name="BuildText"
                      TextWrapping="Wrap" />
 
           <TextBlock Grid.Row="2"
-                     Text="Commit" />
+                     Text="{x:Static local:ApplicationStrings.LabelCommit}" />
           <TextBlock Grid.Row="2"
                      Grid.Column="1"
                      x:Name="CommitText"
                      TextWrapping="Wrap" />
 
           <TextBlock Grid.Row="3"
-                     Text="Runtime" />
+                     Text="{x:Static local:ApplicationStrings.LabelRuntime}" />
           <TextBlock Grid.Row="3"
                      Grid.Column="1"
                      x:Name="RuntimeText"
                      TextWrapping="Wrap" />
 
           <TextBlock Grid.Row="4"
-                     Text="Platform" />
+                     Text="{x:Static local:ApplicationStrings.LabelPlatform}" />
           <TextBlock Grid.Row="4"
                      Grid.Column="1"
                      x:Name="PlatformText"
@@ -75,16 +76,16 @@
                    TextWrapping="Wrap" />
 
         <StackPanel Spacing="6">
-          <Button Content="GitHub Repository"
-                  AutomationProperties.Name="Open GitHub repository"
+          <Button Content="{x:Static local:ApplicationStrings.AboutRepositoryButton}"
+                  AutomationProperties.Name="{x:Static local:ApplicationStrings.AboutAutomationRepository}"
                   HorizontalAlignment="Left"
                   Click="RepositoryButtonClick" />
-          <Button Content="Developer Website"
-                  AutomationProperties.Name="Open developer website"
+          <Button Content="{x:Static local:ApplicationStrings.AboutDeveloperWebsiteButton}"
+                  AutomationProperties.Name="{x:Static local:ApplicationStrings.AboutAutomationDeveloperWebsite}"
                   HorizontalAlignment="Left"
                   Click="DeveloperWebsiteButtonClick" />
-          <Button Content="Original Hourglass Project"
-                  AutomationProperties.Name="Open original Hourglass project"
+          <Button Content="{x:Static local:ApplicationStrings.AboutOriginalProjectButton}"
+                  AutomationProperties.Name="{x:Static local:ApplicationStrings.AboutAutomationOriginalProject}"
                   HorizontalAlignment="Left"
                   Click="OriginalProjectButtonClick" />
           <TextBlock x:Name="LinkStatusText"
@@ -105,8 +106,8 @@
       <StackPanel Orientation="Horizontal"
                   VerticalAlignment="Center"
                   Spacing="10">
-        <Button Content="Copy build information"
-                AutomationProperties.Name="Copy build information"
+        <Button Content="{x:Static local:ApplicationStrings.AboutAutomationCopyBuildInformation}"
+                AutomationProperties.Name="{x:Static local:ApplicationStrings.AboutAutomationCopyBuildInformation}"
                 Click="CopyBuildInformationButtonClick" />
         <TextBlock x:Name="CopyStatusText"
                    AutomationProperties.Name="{Binding Text, RelativeSource={RelativeSource Self}}"
@@ -115,8 +116,8 @@
                    TextWrapping="Wrap" />
       </StackPanel>
       <Button Grid.Column="1"
-              Content="Close"
-              AutomationProperties.Name="Close About Hourglass"
+              Content="{x:Static local:ApplicationStrings.CommandClose}"
+              AutomationProperties.Name="{x:Static local:ApplicationStrings.AboutAutomationClose}"
               IsCancel="True"
               Click="CloseButtonClick" />
     </Grid>

@@ -51,7 +51,7 @@ internal static class Program
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidOperationException)
         {
             singleInstanceService?.Dispose();
-            errorWriter.WriteLine($"Hourglass could not acquire the single-instance lock: {exception.Message}");
+            errorWriter.WriteLine(ApplicationStrings.FormatSingleInstanceLockFailed(exception.Message));
             return 1;
         }
 
@@ -64,7 +64,7 @@ internal static class Program
             }
             catch (Exception exception) when (exception is IOException or SocketException or TimeoutException or OperationCanceledException)
             {
-                errorWriter.WriteLine($"Hourglass could not contact the running instance: {exception.Message}");
+                errorWriter.WriteLine(ApplicationStrings.FormatSingleInstanceContactFailed(exception.Message));
                 return 1;
             }
             finally
@@ -84,7 +84,7 @@ internal static class Program
             }
             catch (Exception exception) when (exception is IOException or SocketException or UnauthorizedAccessException)
             {
-                errorWriter.WriteLine($"Hourglass could not start the single-instance handoff listener: {exception.Message}");
+                errorWriter.WriteLine(ApplicationStrings.FormatSingleInstanceListenerFailed(exception.Message));
             }
 
             return startDesktopLifetime(request);

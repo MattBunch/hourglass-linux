@@ -86,6 +86,20 @@ public sealed class ApplicationInfoProviderTests
     }
 
     [Fact]
+    public void RuntimeDescriptionUsesApplicationStringInsteadOfAssemblyDescription()
+    {
+        Assembly assembly = CreateAssembly(
+            assemblyVersion: new Version(1, 0),
+            description: "Packaging description");
+        var provider = new ApplicationInfoProvider(assembly, () => ".NET", () => "Linux", () => "X64");
+
+        ApplicationInfo info = provider.GetApplicationInfo();
+
+        Assert.Equal(ApplicationStrings.ApplicationDescription, info.Description);
+        Assert.NotEqual("Packaging description", info.Description);
+    }
+
+    [Fact]
     public void RepositoryAndWebsiteUrisAreAbsoluteHttpsUrls()
     {
         var provider = new ApplicationInfoProvider(typeof(ApplicationInfoProvider).Assembly);
@@ -102,6 +116,7 @@ public sealed class ApplicationInfoProviderTests
         Version assemblyVersion,
         string? informationalVersion = null,
         string? fileVersion = null,
+        string? description = null,
         KeyValuePair<string, string>[]? metadata = null)
     {
         var assemblyName = new AssemblyName($"HourglassTestAssembly{Guid.NewGuid():N}")
@@ -118,6 +133,11 @@ public sealed class ApplicationInfoProviderTests
         if (!string.IsNullOrWhiteSpace(fileVersion))
         {
             builder.SetCustomAttribute(CreateAttribute<AssemblyFileVersionAttribute>(fileVersion));
+        }
+
+        if (!string.IsNullOrWhiteSpace(description))
+        {
+            builder.SetCustomAttribute(CreateAttribute<AssemblyDescriptionAttribute>(description));
         }
 
         foreach (KeyValuePair<string, string> item in metadata ?? [])

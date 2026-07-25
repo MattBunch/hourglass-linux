@@ -6,17 +6,11 @@ using System.Runtime.InteropServices;
 internal sealed class ApplicationInfoProvider
 {
     private const int DisplayRevisionLength = 12;
-    private const string DefaultProductName = "Hourglass Linux";
-    private const string DefaultDescription = "Simple countdown timer for Linux";
-    private const string DefaultDeveloperName = "Matt Bunch";
-    private const string DefaultLicenseName = "MIT License";
     private const string MetadataBuildConfiguration = "BuildConfiguration";
     private const string MetadataDeveloperWebsite = "DeveloperWebsite";
     private const string MetadataOriginalProject = "OriginalProject";
     private const string MetadataRepositoryUrl = "RepositoryUrl";
     private const string MetadataSourceRevision = "SourceRevision";
-    private const string Unknown = "Unknown";
-
     private static readonly Uri DefaultRepositoryUri = new("https://github.com/MattBunch/hourglass-linux");
     private static readonly Uri DefaultDeveloperWebsiteUri = new("https://mattbunch.dev");
     private static readonly Uri DefaultOriginalProjectUri = new("http://chris.dziemborowicz.com/apps/hourglass/");
@@ -53,20 +47,20 @@ internal sealed class ApplicationInfoProvider
         Uri repositoryUri = GetUri(GetMetadataValue(this.assembly, MetadataRepositoryUrl), DefaultRepositoryUri);
 
         return new ApplicationInfo(
-            GetAttributeValue<AssemblyProductAttribute>(this.assembly, attribute => attribute.Product) ?? DefaultProductName,
-            GetAttributeValue<AssemblyDescriptionAttribute>(this.assembly, attribute => attribute.Description) ?? DefaultDescription,
+            GetAttributeValue<AssemblyProductAttribute>(this.assembly, attribute => attribute.Product) ?? ApplicationStrings.ApplicationProductName,
+            ApplicationStrings.ApplicationDescription,
             GetVersion(informationalVersion),
             informationalVersion,
-            GetMetadataValue(this.assembly, MetadataBuildConfiguration) ?? Unknown,
+            GetMetadataValue(this.assembly, MetadataBuildConfiguration) ?? ApplicationStrings.UnknownMetadataValue,
             ShortenSourceRevision(GetMetadataValue(this.assembly, MetadataSourceRevision)),
-            NonEmpty(this.getRuntimeDescription(), Unknown),
-            NonEmpty(this.getOperatingSystemDescription(), Unknown),
-            NonEmpty(this.getProcessArchitecture(), Unknown),
-            GetAttributeValue<AssemblyCompanyAttribute>(this.assembly, attribute => attribute.Company) ?? DefaultDeveloperName,
+            NonEmpty(this.getRuntimeDescription(), ApplicationStrings.UnknownMetadataValue),
+            NonEmpty(this.getOperatingSystemDescription(), ApplicationStrings.UnknownMetadataValue),
+            NonEmpty(this.getProcessArchitecture(), ApplicationStrings.UnknownMetadataValue),
+            GetAttributeValue<AssemblyCompanyAttribute>(this.assembly, attribute => attribute.Company) ?? ApplicationStrings.ApplicationDeveloperName,
             repositoryUri,
             GetUri(GetMetadataValue(this.assembly, MetadataDeveloperWebsite), DefaultDeveloperWebsiteUri),
             GetUri(GetMetadataValue(this.assembly, MetadataOriginalProject), DefaultOriginalProjectUri),
-            DefaultLicenseName);
+            ApplicationStrings.ApplicationLicenseName);
     }
 
     internal static string ShortenSourceRevision(string? sourceRevision)
@@ -97,7 +91,7 @@ internal sealed class ApplicationInfoProvider
         }
 
         string? assemblyVersion = assembly.GetName().Version?.ToString();
-        return NonEmpty(assemblyVersion, Unknown);
+        return NonEmpty(assemblyVersion, ApplicationStrings.UnknownMetadataValue);
     }
 
     private static string GetVersion(string fallback)

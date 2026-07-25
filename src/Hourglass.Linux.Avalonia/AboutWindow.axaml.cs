@@ -36,9 +36,11 @@ public sealed partial class AboutWindow : Window
         this.BuildText.Text = this.applicationInfo.BuildConfiguration;
         this.CommitText.Text = this.applicationInfo.DisplaySourceRevision;
         this.RuntimeText.Text = this.applicationInfo.RuntimeDescription;
-        this.PlatformText.Text = $"{this.applicationInfo.OperatingSystemDescription} {this.applicationInfo.ProcessArchitecture}";
-        this.DeveloperText.Text = $"Developed by {this.applicationInfo.DeveloperName}";
-        this.LicenseText.Text = $"{this.applicationInfo.LicenseName}. Hourglass Linux is distributed under the MIT license.";
+        this.PlatformText.Text = ApplicationStrings.FormatAboutPlatformValue(
+            this.applicationInfo.OperatingSystemDescription,
+            this.applicationInfo.ProcessArchitecture);
+        this.DeveloperText.Text = ApplicationStrings.FormatAboutDeveloper(this.applicationInfo.DeveloperName);
+        this.LicenseText.Text = ApplicationStrings.FormatAboutLicense(this.applicationInfo.LicenseName);
     }
 
     private async void RepositoryButtonClick(object? sender, RoutedEventArgs e)
@@ -72,7 +74,7 @@ public sealed partial class AboutWindow : Window
 
         if (!opened)
         {
-            this.LinkStatusText.Text = "The link could not be opened.";
+            this.LinkStatusText.Text = ApplicationStrings.AboutLinkOpenFailed;
         }
     }
 
@@ -82,26 +84,26 @@ public sealed partial class AboutWindow : Window
         IClipboard? clipboard = TopLevel.GetTopLevel(this)?.Clipboard;
         if (clipboard == null)
         {
-            this.CopyStatusText.Text = "Build information could not be copied.";
+            this.CopyStatusText.Text = ApplicationStrings.AboutBuildInformationCopyFailed;
             return;
         }
 
         await clipboard.SetTextAsync(this.CreateBuildInformationText()).ConfigureAwait(true);
-        this.CopyStatusText.Text = "Build information copied.";
+        this.CopyStatusText.Text = ApplicationStrings.AboutBuildInformationCopied;
     }
 
     private string CreateBuildInformationText()
     {
         var builder = new StringBuilder();
         builder.AppendLine(this.applicationInfo.ProductName);
-        builder.AppendLine($"Version: {this.applicationInfo.Version}");
-        builder.AppendLine($"Informational version: {this.applicationInfo.InformationalVersion}");
-        builder.AppendLine($"Build configuration: {this.applicationInfo.BuildConfiguration}");
-        builder.AppendLine($"Commit: {this.applicationInfo.DisplaySourceRevision}");
-        builder.AppendLine($"Runtime: {this.applicationInfo.RuntimeDescription}");
-        builder.AppendLine($"Operating system: {this.applicationInfo.OperatingSystemDescription}");
-        builder.AppendLine($"Architecture: {this.applicationInfo.ProcessArchitecture}");
-        builder.AppendLine($"Repository: {this.applicationInfo.RepositoryUri}");
+        builder.AppendLine(ApplicationStrings.FormatAboutVersionLine(this.applicationInfo.Version));
+        builder.AppendLine(ApplicationStrings.FormatAboutInformationalVersionLine(this.applicationInfo.InformationalVersion));
+        builder.AppendLine(ApplicationStrings.FormatAboutBuildConfigurationLine(this.applicationInfo.BuildConfiguration));
+        builder.AppendLine(ApplicationStrings.FormatAboutCommitLine(this.applicationInfo.DisplaySourceRevision));
+        builder.AppendLine(ApplicationStrings.FormatAboutRuntimeLine(this.applicationInfo.RuntimeDescription));
+        builder.AppendLine(ApplicationStrings.FormatAboutOperatingSystemLine(this.applicationInfo.OperatingSystemDescription));
+        builder.AppendLine(ApplicationStrings.FormatAboutArchitectureLine(this.applicationInfo.ProcessArchitecture));
+        builder.AppendLine(ApplicationStrings.FormatAboutRepositoryLine(this.applicationInfo.RepositoryUri));
         return builder.ToString();
     }
 

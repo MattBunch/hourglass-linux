@@ -684,9 +684,9 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
         WindowRegistration? target = this.GetStatusIconTarget();
         StatusIconMenuState targetState = target?.ViewModel.StatusIconMenuState
             ?? new StatusIconMenuState(
-                "Hourglass",
+                ApplicationStrings.ApplicationTitle,
                 false,
-                "Pause",
+                ApplicationStrings.CommandPause,
                 false,
                 false,
                 false,

@@ -756,7 +756,7 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
         this.ThemeMenuItem.Items.Clear();
         this.ThemeMenuItem.Items.Add(new MenuItem
         {
-            Header = "System",
+            Header = ApplicationStrings.ThemeBaseSystem,
             ToggleType = MenuItemToggleType.Radio,
             GroupName = "ThemePreference",
             IsChecked = this.viewModel.IsSystemThemeSelected,
@@ -765,7 +765,7 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
         });
         this.ThemeMenuItem.Items.Add(new MenuItem
         {
-            Header = "Light",
+            Header = ApplicationStrings.ThemeBaseLight,
             ToggleType = MenuItemToggleType.Radio,
             GroupName = "ThemePreference",
             IsChecked = this.viewModel.IsLightThemeSelected,
@@ -774,7 +774,7 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
         });
         this.ThemeMenuItem.Items.Add(new MenuItem
         {
-            Header = "Dark",
+            Header = ApplicationStrings.ThemeBaseDark,
             ToggleType = MenuItemToggleType.Radio,
             GroupName = "ThemePreference",
             IsChecked = this.viewModel.IsDarkThemeSelected,
@@ -795,7 +795,7 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
             };
             themeItem.Items.Add(new MenuItem
             {
-                Header = "Use this theme",
+                Header = ApplicationStrings.ThemeCommandUse,
                 ToggleType = MenuItemToggleType.Radio,
                 GroupName = "ThemePreference",
                 IsChecked = theme.IsSelected,
@@ -804,25 +804,25 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
             });
             themeItem.Items.Add(new MenuItem
             {
-                Header = "Edit",
+                Header = ApplicationStrings.ThemeCommandEdit,
                 Command = new RelayCommand(
                     () => _ = this.EditCustomThemeAsync(theme.Id),
                     () => this.viewModel.CanModifyCustomThemes)
             });
             themeItem.Items.Add(new MenuItem
             {
-                Header = "Duplicate",
+                Header = ApplicationStrings.ThemeCommandDuplicate,
                 Command = this.viewModel.DuplicateCustomThemeCommand,
                 CommandParameter = theme.Id
             });
             themeItem.Items.Add(new MenuItem
             {
-                Header = "Export",
+                Header = ApplicationStrings.ThemeCommandExport,
                 Command = new RelayCommand(() => _ = this.ExportCustomThemeAsync(theme.Id))
             });
             themeItem.Items.Add(new MenuItem
             {
-                Header = "Delete",
+                Header = ApplicationStrings.ThemeCommandDelete,
                 Command = new RelayCommand(
                     () => _ = this.DeleteCustomThemeAsync(theme.Id),
                     () => this.viewModel.CanModifyCustomThemes)
@@ -833,14 +833,14 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
         this.ThemeMenuItem.Items.Add(new Separator());
         this.ThemeMenuItem.Items.Add(new MenuItem
         {
-            Header = "New custom theme",
+            Header = ApplicationStrings.ThemeCommandNew,
             Command = new RelayCommand(
                 () => _ = this.CreateCustomThemeAsync(),
                 () => this.viewModel.CanModifyCustomThemes)
         });
         this.ThemeMenuItem.Items.Add(new MenuItem
         {
-            Header = "Import custom theme",
+            Header = ApplicationStrings.ThemeCommandImport,
             Command = new RelayCommand(
                 () => _ = this.ImportCustomThemeAsync(),
                 () => this.viewModel.CanModifyCustomThemes)
@@ -922,13 +922,13 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
             AllowMultiple = false,
             FileTypeFilter =
             [
-                new FilePickerFileType("Hourglass theme")
+                new FilePickerFileType(ApplicationStrings.ThemeFilePickerTitle)
                 {
                     Patterns = ["*.json"],
                     MimeTypes = ["application/json"]
                 }
             ],
-            Title = "Import custom theme"
+            Title = ApplicationStrings.ThemeImportTitle
         }).ConfigureAwait(true);
         IStorageFile? file = files.FirstOrDefault();
         if (file == null)
@@ -981,14 +981,14 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
             DefaultExtension = "json",
             FileTypeChoices =
             [
-                new FilePickerFileType("Hourglass theme")
+                new FilePickerFileType(ApplicationStrings.ThemeFilePickerTitle)
                 {
                     Patterns = ["*.json"],
                     MimeTypes = ["application/json"]
                 }
             ],
             SuggestedFileName = $"{SanitizeFileName(theme.Name)}.json",
-            Title = "Export custom theme"
+            Title = ApplicationStrings.ThemeExportTitle
         }).ConfigureAwait(true);
         if (file == null)
         {
@@ -1041,7 +1041,7 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
 
         this.RecentInputsMenuItem.Items.Add(new MenuItem
         {
-            Header = "Clear recent inputs",
+            Header = ApplicationStrings.RecentInputsClear,
             Command = this.viewModel.ClearRecentInputsCommand
         });
     }
@@ -1051,12 +1051,12 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
         this.SavedTimersMenuItem.Items.Clear();
         this.SavedTimersMenuItem.Items.Add(new MenuItem
         {
-            Header = "Save current timer",
+            Header = ApplicationStrings.SavedTimersSaveCurrent,
             Command = this.viewModel.SaveCurrentTimerCommand
         });
         this.SavedTimersMenuItem.Items.Add(new MenuItem
         {
-            Header = "Open all saved timers",
+            Header = ApplicationStrings.SavedTimersOpenAll,
             Command = this.viewModel.OpenAllSavedTimersCommand
         });
 
@@ -1073,13 +1073,13 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
             };
             savedTimerMenuItem.Items.Add(new MenuItem
             {
-                Header = "Open",
+                Header = ApplicationStrings.SavedTimersOpen,
                 Command = this.viewModel.OpenSavedTimerCommand,
                 CommandParameter = savedTimer.Id
             });
             savedTimerMenuItem.Items.Add(new MenuItem
             {
-                Header = "Remove",
+                Header = ApplicationStrings.SavedTimersRemove,
                 Command = this.viewModel.RemoveSavedTimerCommand,
                 CommandParameter = savedTimer.Id
             });
@@ -1093,7 +1093,7 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
 
         this.SavedTimersMenuItem.Items.Add(new MenuItem
         {
-            Header = "Clear saved timers",
+            Header = ApplicationStrings.SavedTimersClear,
             Command = this.viewModel.ClearSavedTimersCommand
         });
     }

@@ -25,6 +25,20 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
+    public void DefaultTimerInputUsesParserResourceInsteadOfUiPlaceholder()
+    {
+        var viewModel = CreateViewModel(new ManualMonotonicClock());
+        XNamespace controls = "clr-namespace:Hourglass.Linux.Avalonia";
+        XNamespace xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
+        XDocument document = XDocument.Load(FindRepositoryFile("src/Hourglass.Linux.Avalonia/MainWindow.axaml"));
+        XElement timerInput = FindNamedElement(document, controls + "ResponsiveTextBox", xaml, "TimerInputTextBox");
+
+        Assert.Equal(TimerStart.Default.ToString(), TimerViewState.DefaultTimerInput);
+        Assert.Equal(TimerStart.Default.ToString(), viewModel.TimerInput);
+        Assert.Equal("{x:Static local:ApplicationStrings.TimerInputDefault}", timerInput.Attribute("PlaceholderText")?.Value);
+    }
+
+    [Fact]
     public void ChangingTimerTitleImmediatelyUpdatesWindowTitleAndRaisesNotifications()
     {
         var viewModel = CreateViewModel(new ManualMonotonicClock());
@@ -814,7 +828,7 @@ public sealed class MainWindowViewModelTests
         Assert.Equal(
             "{Binding TimerTitle, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}",
             titleInput.Attribute("Text")?.Value);
-        Assert.Equal("Click to enter title", titleInput.Attribute("PlaceholderText")?.Value);
+        Assert.Equal("Click to enter title", ResolveResourceReference(titleInput.Attribute("PlaceholderText")?.Value));
         Assert.Equal("titleInput", titleInput.Attribute("Classes")?.Value);
         Assert.Equal("TimerTitleTextBoxGotFocus", titleInput.Attribute("GotFocus")?.Value);
         Assert.Null(titleInput.Attribute("IsVisible"));
@@ -908,7 +922,7 @@ public sealed class MainWindowViewModelTests
 
         Assert.Contains("nameof(MainWindowViewModel.CanModifyCustomThemes)", codeBehind);
         Assert.Contains("() => this.viewModel.CanModifyCustomThemes", codeBehind);
-        Assert.Contains("Header = \"Use this theme\"", codeBehind);
+        Assert.Contains("Header = ApplicationStrings.ThemeCommandUse", codeBehind);
         Assert.Contains("ToggleType = MenuItemToggleType.Radio", codeBehind);
         Assert.Contains("if (!this.viewModel.CanModifyCustomThemes)", codeBehind);
         Assert.Contains("theme != null && this.viewModel.CanModifyCustomThemes", codeBehind);
@@ -1277,7 +1291,7 @@ public sealed class MainWindowViewModelTests
         Dictionary<string, XElement> menuItems = contextMenu
             .Elements(avalonia + "MenuItem")
             .Where(element => element.Attribute("Header") != null)
-            .ToDictionary(element => element.Attribute("Header")!.Value, StringComparer.Ordinal);
+            .ToDictionary(element => ResolveResourceReference(element.Attribute("Header")!.Value), StringComparer.Ordinal);
 
         Assert.Equal("{Binding AlwaysOnTop}", window.Attribute("Topmost")?.Value);
         Assert.Equal("Transparent", rootGrid.Attribute("Background")?.Value);
@@ -1293,7 +1307,7 @@ public sealed class MainWindowViewModelTests
         Dictionary<string, XElement> soundItems = menuItems["Sound"]
             .Elements(avalonia + "MenuItem")
             .Where(element => element.Attribute("Header") != null)
-            .ToDictionary(element => element.Attribute("Header")!.Value, StringComparer.Ordinal);
+            .ToDictionary(element => ResolveResourceReference(element.Attribute("Header")!.Value), StringComparer.Ordinal);
         Assert.Equal("Radio", soundItems["None"].Attribute("ToggleType")?.Value);
         Assert.Equal("AudioAlertSound", soundItems["None"].Attribute("GroupName")?.Value);
         Assert.Equal("{Binding IsNoSoundSelected, Mode=OneWay}", soundItems["None"].Attribute("IsChecked")?.Value);
@@ -1340,7 +1354,7 @@ public sealed class MainWindowViewModelTests
         Dictionary<string, XElement> titleItems = menuItems["Window title"]
             .Elements(avalonia + "MenuItem")
             .Where(element => element.Attribute("Header") != null)
-            .ToDictionary(element => element.Attribute("Header")!.Value, StringComparer.Ordinal);
+            .ToDictionary(element => ResolveResourceReference(element.Attribute("Header")!.Value), StringComparer.Ordinal);
         Assert.Equal("Radio", titleItems["Application name"].Attribute("ToggleType")?.Value);
         Assert.Equal("WindowTitleMode", titleItems["Application name"].Attribute("GroupName")?.Value);
         Assert.Equal(
@@ -1375,7 +1389,7 @@ public sealed class MainWindowViewModelTests
         Dictionary<string, XElement> advancedItems = menuItems["Advanced options"]
             .Elements(avalonia + "MenuItem")
             .Where(element => element.Attribute("Header") != null)
-            .ToDictionary(element => element.Attribute("Header")!.Value, StringComparer.Ordinal);
+            .ToDictionary(element => ResolveResourceReference(element.Attribute("Header")!.Value), StringComparer.Ordinal);
         Assert.Equal("CheckBox", advancedItems["Reverse progress bar"].Attribute("ToggleType")?.Value);
         Assert.Equal("{Binding ReverseProgressBar, Mode=OneWay}", advancedItems["Reverse progress bar"].Attribute("IsChecked")?.Value);
         Assert.Equal("{Binding ToggleReverseProgressBarCommand}", advancedItems["Reverse progress bar"].Attribute("Command")?.Value);
@@ -1482,6 +1496,7 @@ public sealed class MainWindowViewModelTests
             .Where(element => element.Name == avalonia + "MenuItem")
             .Select(element => element.Attribute("Header")?.Value)
             .OfType<string>()
+            .Select(ResolveResourceReference)
             .ToArray();
 
         Assert.True(
@@ -1491,11 +1506,11 @@ public sealed class MainWindowViewModelTests
         int hideIndex = Array.FindIndex(
             elements,
             element => element.Name == avalonia + "MenuItem"
-                && element.Attribute("Header")?.Value == "Hide to notification area");
+                && ResolveResourceReference(element.Attribute("Header")?.Value) == "Hide to notification area");
         Assert.True(hideIndex >= 0);
         Assert.Equal(avalonia + "Separator", elements[hideIndex + 1].Name);
-        Assert.Equal("About Hourglass", elements[hideIndex + 2].Attribute("Header")?.Value);
-        Assert.Equal("Exit", elements[hideIndex + 3].Attribute("Header")?.Value);
+        Assert.Equal("About Hourglass", ResolveResourceReference(elements[hideIndex + 2].Attribute("Header")?.Value));
+        Assert.Equal("Exit", ResolveResourceReference(elements[hideIndex + 3].Attribute("Header")?.Value));
     }
 
     [Fact]
@@ -1507,14 +1522,14 @@ public sealed class MainWindowViewModelTests
         XElement window = Assert.IsType<XElement>(document.Root);
         Dictionary<string, XElement> buttons = document
             .Descendants(avalonia + "Button")
-            .ToDictionary(element => element.Attribute("Content")?.Value ?? string.Empty, StringComparer.Ordinal);
+            .ToDictionary(element => ResolveResourceReference(element.Attribute("Content")?.Value), StringComparer.Ordinal);
         string[] namedTextBlocks = document
             .Descendants(avalonia + "TextBlock")
             .Select(element => element.Attribute(xaml + "Name")?.Value)
             .OfType<string>()
             .ToArray();
 
-        Assert.Equal("About Hourglass", window.Attribute("Title")?.Value);
+        Assert.Equal("About Hourglass", ResolveResourceReference(window.Attribute("Title")?.Value));
         Assert.Equal("/Assets/hourglass.png", window.Attribute("Icon")?.Value);
         Assert.Equal("False", window.Attribute("CanResize")?.Value);
         Assert.Equal("False", window.Attribute("ShowInTaskbar")?.Value);
@@ -1586,6 +1601,174 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
+    public void RuntimeXamlUserFacingTextUsesApplicationStringResources()
+    {
+        string[] xamlFiles =
+        [
+            "src/Hourglass.Linux.Avalonia/MainWindow.axaml",
+            "src/Hourglass.Linux.Avalonia/AboutWindow.axaml",
+            "src/Hourglass.Linux.Avalonia/ExitConfirmationWindow.axaml",
+            "src/Hourglass.Linux.Avalonia/CustomThemeEditorWindow.axaml",
+            "src/Hourglass.Linux.Avalonia/CustomThemeDeleteWindow.axaml"
+        ];
+        string[] userFacingAttributes =
+        [
+            "Title",
+            "Header",
+            "Content",
+            "Text",
+            "PlaceholderText",
+            "AutomationProperties.Name",
+            "AutomationProperties.HelpText"
+        ];
+
+        foreach (string xamlFile in xamlFiles)
+        {
+            XDocument document = XDocument.Load(FindRepositoryFile(xamlFile));
+            XElement root = Assert.IsType<XElement>(document.Root);
+            foreach (XElement element in root.DescendantsAndSelf())
+            {
+                foreach (string attributeName in userFacingAttributes)
+                {
+                    XAttribute? attribute = element.Attribute(attributeName);
+                    if (attribute == null || IsAllowedNonResourceXamlValue(attribute.Value))
+                    {
+                        continue;
+                    }
+
+                    Assert.StartsWith("{x:Static local:ApplicationStrings.", attribute.Value, StringComparison.Ordinal);
+                    Assert.EndsWith("}", attribute.Value, StringComparison.Ordinal);
+                }
+            }
+        }
+    }
+
+    [Fact]
+    public void AvaloniaRuntimeCodeKeepsUserFacingStringsBehindApplicationStrings()
+    {
+        string[] sourceFiles = Directory.GetFiles(
+                FindRepositoryDirectory("src/Hourglass.Linux.Avalonia"),
+                "*.cs",
+            SearchOption.AllDirectories)
+            .Where(file => !file.EndsWith("ApplicationStrings.cs", StringComparison.Ordinal)
+                && !file.EndsWith("AssemblyInfo.cs", StringComparison.Ordinal)
+                && !file.Split(Path.DirectorySeparatorChar).Contains("bin", StringComparer.Ordinal)
+                && !file.Split(Path.DirectorySeparatorChar).Contains("obj", StringComparer.Ordinal))
+            .ToArray();
+
+        string[] allowListedFragments =
+        [
+            "\"active-session\"",
+            "\"active-sessions\"",
+            "\"app\"",
+            "\"application/json\"",
+            "\"AudioAlertSound\"",
+            "\"avalonia-status-icon\"",
+            "\"avalonia-window\"",
+            "\"Active audio playback disposal failed.\"",
+            "\"Active session load failed; using no active session.\"",
+            "\"Active sessions save failed.\"",
+            "\"Assets\"",
+            "\"Application settings load failed; using defaults.\"",
+            "\"avares://hourglass-linux/Assets/hourglass.png\"",
+            "\"BuildConfiguration\"",
+            "\"clear\"",
+            "\"create\"",
+            "\"custom-theme\"",
+            "\"custom-themes\"",
+            "\"Default\"",
+            "\"DeveloperWebsite\"",
+            "\"desktop-progress\"",
+            "\"Desktop progress update failed.\"",
+            "\"Document load failed; treating it as missing.\"",
+            "\"Document load failed; using fallback.\"",
+            "\"Document save failed.\"",
+            "\"event\"",
+            "\"Event handler failed.\"",
+            "\"Final session save failed before shutdown.\"",
+            "\"handler\"",
+            "\"hourglass\"",
+            "\"hourglass-linux\"",
+            "\"hourglass-theme\"",
+            "\"json\"",
+            "\"Latest custom themes load failed before save; using fallback.\"",
+            "\"M\"",
+            "\"load\"",
+            "\"N\"",
+            "\"Optional document load failed; treating it as missing.\"",
+            "\"OriginalProject\"",
+            "\"Previous active sessions save failed before a queued save.\"",
+            "\"Previous custom themes save failed before a queued save.\"",
+            "\"Previous document save failed before a queued save.\"",
+            "\"Previous saved timers save failed before a queued save.\"",
+            "\"Previous settings save failed before a queued save.\"",
+            "\"release\"",
+            "\"RepositoryUrl\"",
+            "\"resource:Loud beep\"",
+            "\"resource:Normal beep\"",
+            "\"resource:Quiet beep\"",
+            "\"save\"",
+            "\"saved-timers\"",
+            "\"Saved timers load failed; using an empty document.\"",
+            "\"Saved timers save failed.\"",
+            "\"schedule\"",
+            "\"settings\"",
+            "\"Settings save failed.\"",
+            "\"Session inhibition acquire failed.\"",
+            "\"Session inhibition release failed.\"",
+            "\"Shutdown request failed.\"",
+            "\"Sounds\"",
+            "\"SourceRevision\"",
+            "\"status-icon\"",
+            "\"ThemePreference\"",
+            "\"Status icon backend could not be initialized.\"",
+            "\"Status icon update failed.\"",
+            "\"Timer expiry audio failed.\"",
+            "\"Timer expiry notification failed.\"",
+            "\"Transparent\"",
+            "\"unsupported\"",
+            "\"Wake alarm release failed.\"",
+            "\"Wake alarm scheduling failed.\"",
+            "\"wake-alarm\"",
+            "\"window-attention\"",
+            "\"Window attention request failed.\"",
+            "\"WindowTitleMode\"",
+            "\"*.json\"",
+            "\"--title\"",
+            "\"-t\"",
+            "\"https://github.com/MattBunch/hourglass-linux\"",
+            "\"https://mattbunch.dev\"",
+            "\"http://chris.dziemborowicz.com/apps/hourglass/\""
+        ];
+
+        foreach (string sourceFile in sourceFiles)
+        {
+            string source = File.ReadAllText(sourceFile);
+            foreach (string line in source.Split(Environment.NewLine))
+            {
+                string trimmed = line.Trim();
+                if (!trimmed.Contains('"', StringComparison.Ordinal)
+                    || trimmed.Contains("ApplicationStrings.", StringComparison.Ordinal)
+                    || trimmed.Contains("RecordBestEffort", StringComparison.Ordinal)
+                    || trimmed.Contains("RecordDataRecovery", StringComparison.Ordinal)
+                    || trimmed.Contains("RecordFailure", StringComparison.Ordinal)
+                    || trimmed.Contains("RecordUserRequested", StringComparison.Ordinal)
+                    || trimmed.Contains(".Classes.Set(", StringComparison.Ordinal)
+                    || trimmed.Contains("SetBrushResource(", StringComparison.Ordinal)
+                    || trimmed.Contains("SuggestedFileName", StringComparison.Ordinal)
+                    || trimmed.Contains("FormattableString.Invariant", StringComparison.Ordinal)
+                    || trimmed.StartsWith("//", StringComparison.Ordinal)
+                    || allowListedFragments.Any(fragment => trimmed.Contains(fragment, StringComparison.Ordinal)))
+                {
+                    continue;
+                }
+
+                Assert.DoesNotMatch("\"[^\"]*[A-Za-z][^\"]*\"", trimmed);
+            }
+        }
+    }
+
+    [Fact]
     public void AboutDialogIsMainWindowShellBehavior()
     {
         string codeBehind = File.ReadAllText(FindRepositoryFile("src/Hourglass.Linux.Avalonia/MainWindow.axaml.cs"));
@@ -1608,14 +1791,15 @@ public sealed class MainWindowViewModelTests
         XElement window = Assert.IsType<XElement>(document.Root);
         Dictionary<string, XElement> buttons = document
             .Descendants(avalonia + "Button")
-            .ToDictionary(element => element.Attribute("Content")?.Value ?? string.Empty, StringComparer.Ordinal);
+            .ToDictionary(element => ResolveResourceReference(element.Attribute("Content")?.Value), StringComparer.Ordinal);
 
         Assert.Equal("CenterOwner", window.Attribute("WindowStartupLocation")?.Value);
         Assert.Equal("True", buttons["Cancel"].Attribute("IsCancel")?.Value);
         Assert.Equal("True", buttons["Exit"].Attribute("IsDefault")?.Value);
         Assert.Contains(
             document.Descendants(avalonia + "TextBlock"),
-            element => element.Attribute("Text")?.Value == "One or more timers are still running or paused. Exit Hourglass?");
+            element => ResolveResourceReference(element.Attribute("Text")?.Value)
+                == "One or more timers are still running or paused. Exit Hourglass?");
     }
 
     [Fact]
@@ -4201,12 +4385,12 @@ public sealed class MainWindowViewModelTests
         XNamespace avalonia = "https://github.com/avaloniaui";
         return Assert.Single(
             document.Descendants(avalonia + "Button"),
-            element => element.Attribute("Content")?.Value == content);
+            element => ResolveResourceReference(element.Attribute("Content")?.Value) == content);
     }
 
     private static void AssertAutomationName(XElement element, string expected)
     {
-        Assert.Equal(expected, element.Attribute("AutomationProperties.Name")?.Value);
+        Assert.Equal(expected, ResolveResourceReference(element.Attribute("AutomationProperties.Name")?.Value));
     }
 
     private static void AssertAutomationNameBindsToText(XElement element)
@@ -4216,7 +4400,7 @@ public sealed class MainWindowViewModelTests
 
     private static void AssertAutomationHelpText(XElement element, string expected)
     {
-        Assert.Equal(expected, element.Attribute("AutomationProperties.HelpText")?.Value);
+        Assert.Equal(expected, ResolveResourceReference(element.Attribute("AutomationProperties.HelpText")?.Value));
     }
 
     private static void AssertAutomationLiveSetting(XElement element, string expected)
@@ -4251,6 +4435,77 @@ public sealed class MainWindowViewModelTests
         }
 
         throw new FileNotFoundException($"Could not find repository file '{relativePath}'.", relativePath);
+    }
+
+    private static string FindRepositoryDirectory(string relativePath)
+    {
+        DirectoryInfo? directory = new(AppContext.BaseDirectory);
+
+        while (directory != null)
+        {
+            string path = Path.Combine(directory.FullName, relativePath);
+
+            if (Directory.Exists(path))
+            {
+                return path;
+            }
+
+            directory = directory.Parent;
+        }
+
+        throw new DirectoryNotFoundException($"Could not find repository directory '{relativePath}'.");
+    }
+
+    private static string ResolveResourceReference(string? value)
+    {
+        const string prefix = "{x:Static local:ApplicationStrings.";
+        const string suffix = "}";
+
+        if (string.IsNullOrEmpty(value))
+        {
+            return string.Empty;
+        }
+
+        if (!value.StartsWith(prefix, StringComparison.Ordinal) || !value.EndsWith(suffix, StringComparison.Ordinal))
+        {
+            return value;
+        }
+
+        string propertyName = value[prefix.Length..^suffix.Length];
+        object? resolved = typeof(ApplicationStrings)
+            .GetProperty(propertyName)
+            ?.GetValue(null);
+
+        return Assert.IsType<string>(resolved);
+    }
+
+    private static bool IsAllowedNonResourceXamlValue(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value)
+            || value.StartsWith("{Binding ", StringComparison.Ordinal)
+            || value.StartsWith("{DynamicResource ", StringComparison.Ordinal)
+            || !value.Any(char.IsLetter))
+        {
+            return true;
+        }
+
+        string[] allowed =
+        [
+            "/Assets/hourglass.png",
+            "False",
+            "True",
+            "Auto",
+            "Center",
+            "CenterOwner",
+            "CheckBox",
+            "Radio",
+            "Transparent",
+            "Vertical",
+            "Horizontal",
+            "Wrap"
+        ];
+
+        return allowed.Contains(value, StringComparer.Ordinal);
     }
 
     private static string ExtractMethod(string source, string methodPrefix)

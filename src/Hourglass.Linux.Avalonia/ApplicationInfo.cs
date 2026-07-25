@@ -17,6 +17,6 @@ internal sealed record ApplicationInfo(
     string LicenseName)
 {
     public string DisplaySourceRevision => string.IsNullOrWhiteSpace(this.SourceRevision)
-        ? "Local build"
+        ? ApplicationStrings.LocalBuild
         : this.SourceRevision;
 }

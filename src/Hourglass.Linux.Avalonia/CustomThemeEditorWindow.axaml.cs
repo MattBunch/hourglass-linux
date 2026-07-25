@@ -20,7 +20,7 @@ public sealed partial class CustomThemeEditorWindow : Window
         this.themeId = theme?.Id ?? Guid.NewGuid().ToString("N");
         CustomThemeDefinition source = theme ?? new CustomThemeDefinition(
             this.themeId,
-            "Custom theme",
+            ApplicationStrings.CustomThemeDefaultName,
             LinuxThemePreference.System,
             CustomThemeColors.Default);
         this.NameBox.Text = source.Name;
@@ -71,14 +71,14 @@ public sealed partial class CustomThemeEditorWindow : Window
         ];
         if (colors.Any(color => !CustomThemeColors.IsValidColor(color)))
         {
-            this.ValidationText.Text = "Colors must use #RRGGBB or #AARRGGBB.";
+            this.ValidationText.Text = ApplicationStrings.CustomThemeValidationColors;
             return;
         }
 
         string name = this.NameBox.Text?.Trim() ?? string.Empty;
         if (string.IsNullOrWhiteSpace(name))
         {
-            this.ValidationText.Text = "Name is required.";
+            this.ValidationText.Text = ApplicationStrings.CustomThemeValidationNameRequired;
             return;
         }
 

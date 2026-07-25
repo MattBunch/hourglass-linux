@@ -1,7 +1,8 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:Hourglass.Linux.Avalonia"
         x:Class="Hourglass.Linux.Avalonia.ExitConfirmationWindow"
-        Title="Exit Hourglass?"
+        Title="{x:Static local:ApplicationStrings.ExitConfirmationTitle}"
         Icon="/Assets/hourglass.png"
         Width="360"
         Height="150"
@@ -10,7 +11,7 @@
         WindowStartupLocation="CenterOwner">
   <Grid Margin="20"
         RowDefinitions="*,Auto">
-    <TextBlock Text="One or more timers are still running or paused. Exit Hourglass?"
+    <TextBlock Text="{x:Static local:ApplicationStrings.ExitConfirmationMessage}"
                AutomationProperties.Name="{Binding Text, RelativeSource={RelativeSource Self}}"
                TextWrapping="Wrap"
                VerticalAlignment="Center" />
@@ -18,12 +19,12 @@
                 Orientation="Horizontal"
                 HorizontalAlignment="Right"
                 Spacing="8">
-      <Button Content="Cancel"
-              AutomationProperties.Name="Cancel exit"
+      <Button Content="{x:Static local:ApplicationStrings.CommandCancel}"
+              AutomationProperties.Name="{x:Static local:ApplicationStrings.AutomationCancelExit}"
               IsCancel="True"
               Click="CancelButtonClick" />
-      <Button Content="Exit"
-              AutomationProperties.Name="Exit Hourglass"
+      <Button Content="{x:Static local:ApplicationStrings.CommandExit}"
+              AutomationProperties.Name="{x:Static local:ApplicationStrings.AutomationExitApplication}"
               IsDefault="True"
               Click="ExitButtonClick" />
     </StackPanel>

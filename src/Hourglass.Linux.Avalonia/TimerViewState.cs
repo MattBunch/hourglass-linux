@@ -32,13 +32,13 @@ public sealed record TimerViewState(
     string? InputBeforeEdit,
     bool HasValidationError)
 {
-    internal const string DefaultTimerInput = "5 minutes";
-    internal const string ReadyStatusText = "Ready";
-    internal const string RunningStatusText = "Running";
-    internal const string PausedStatusText = "Paused";
-    internal const string TimerCompleteStatusText = "Timer complete";
-    internal const string PauseCommandText = "Pause";
-    internal const string ResumeCommandText = "Resume";
+    internal static string DefaultTimerInput => TimerStart.Default.ToString();
+    internal static string ReadyStatusText => ApplicationStrings.StatusReady;
+    internal static string RunningStatusText => ApplicationStrings.StatusRunning;
+    internal static string PausedStatusText => ApplicationStrings.StatusPaused;
+    internal static string TimerCompleteStatusText => ApplicationStrings.StatusTimerComplete;
+    internal static string PauseCommandText => ApplicationStrings.CommandPause;
+    internal static string ResumeCommandText => ApplicationStrings.CommandResume;
 
     public static TimerViewState Initial { get; } = FromTimerState(DefaultTimerInput, CountdownState.Stopped);
 

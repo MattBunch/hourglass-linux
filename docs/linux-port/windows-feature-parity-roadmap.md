@@ -888,9 +888,13 @@ This section is intentionally not Milestone 11. These workstreams cut across imp
 - Context-menu toggles expose correct checked state and labels.
 - Automated tests or targeted UI characterization tests cover the most important accessibility regressions.
 
-### Workstream 5: Localization Prep
+### Workstream 5: Localization Prep - Implemented
 
 **Goal:** Prepare the Linux UI for localization before a public parity release.
+
+**Status:** Implemented. Runtime Avalonia UI text now flows through the Linux Avalonia
+`ApplicationStrings`/`.resx` boundary, while packaging/AppStream metadata and protocol
+identifiers remain separate.
 
 **Implementation plan:**
 
@@ -997,9 +1001,9 @@ Create one focused issue or Codex task for each of the following rather than att
 8. Implemented: Add regression tests for timer continuity after optional integration failures.
 9. Implemented: Run keyboard/focus/accessibility characterization for the main timer window and dialogs.
 10. Implemented: Add accessible names and checked-state coverage where Avalonia defaults are insufficient.
-11. Inventory direct user-facing Linux UI strings and choose the runtime resource structure.
-12. Move timer status, command, dialog, and notification strings behind resources.
-13. Add localization-safe formatter tests for title, status, and notification text.
+11. Implemented: Inventory direct user-facing Linux UI strings and choose the runtime resource structure.
+12. Implemented: Move timer status, command, dialog, and notification strings behind resources.
+13. Implemented: Add localization-safe formatter tests for title, status, and notification text.
 14. Create the release validation checklist document.
 15. Run and record the native/AppImage desktop smoke matrix.
 16. Run and record the Flatpak sandbox smoke matrix.
