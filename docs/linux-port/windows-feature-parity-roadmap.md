@@ -910,9 +910,14 @@ identifiers remain separate.
 - Title, status, notification, and dialog text remain testable without starting Avalonia.
 - Existing English behavior remains unchanged after extraction.
 
-### Workstream 6: Release Validation Matrix
+### Workstream 6: Release Validation Matrix - Checklist implemented; validation runs pending
 
 **Goal:** Turn the existing smoke-test notes into a repeatable release-readiness checklist.
+
+**Status:** Checklist implemented in `docs/linux-port/release-validation-checklist.md`.
+Native/AppImage, Flatpak, multi-monitor, and physical wake validation runs are
+still pending and must not be treated as completed until exact validation rows
+record their results.
 
 **Implementation plan:**
 
@@ -1004,7 +1009,7 @@ Create one focused issue or Codex task for each of the following rather than att
 11. Implemented: Inventory direct user-facing Linux UI strings and choose the runtime resource structure.
 12. Implemented: Move timer status, command, dialog, and notification strings behind resources.
 13. Implemented: Add localization-safe formatter tests for title, status, and notification text.
-14. Create the release validation checklist document.
+14. Implemented: Create the release validation checklist document.
 15. Run and record the native/AppImage desktop smoke matrix.
 16. Run and record the Flatpak sandbox smoke matrix.
 17. Run and record multi-monitor placement validation.
