@@ -179,6 +179,11 @@ docs/distribution-guide
 
 Confirm that the application is technically and legally ready for public distribution.
 
+Use `docs/linux-port/release-validation-checklist.md` as the execution record
+for this audit. Keep unrun manual desktop, package, multi-monitor, and
+wake-from-suspend coverage as `Not run` or `Skipped` with a reason until an
+exact environment has been validated.
+
 ## Checklist
 
 ### Application stability
