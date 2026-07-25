@@ -68,6 +68,11 @@ public static class ApplicationStrings
     public static string CommandLineSingleInstanceContactFailedFormat => GetString();
     public static string CommandLineSingleInstanceListenerFailedFormat => GetString();
     public static string CommandLineSingleInstanceLockFailedFormat => GetString();
+    public static string CommandLineInvalidTimerExpressionFormat => GetString();
+    public static string CommandLineRepeatedTitleOption => GetString();
+    public static string CommandLineTitleRequiresTimerExpression => GetString();
+    public static string CommandLineTitleRequiresValue => GetString();
+    public static string CommandLineUnrecognizedOptionFormat => GetString();
     public static string ContextMenuAlwaysOnTop => GetString();
     public static string ContextMenuCloseWhenExpired => GetString();
     public static string ContextMenuDoNotKeepComputerAwake => GetString();
@@ -214,6 +219,9 @@ public static class ApplicationStrings
     public static string FormatCustomThemeDeleteMessage(string themeName) =>
         Format(CustomThemeDeleteMessageFormat, themeName);
 
+    public static string FormatInvalidTimerExpression(string timerInput) =>
+        Format(CommandLineInvalidTimerExpressionFormat, timerInput);
+
     public static string FormatSingleInstanceContactFailed(string message) =>
         Format(CommandLineSingleInstanceContactFailedFormat, message);
 
@@ -222,6 +230,9 @@ public static class ApplicationStrings
 
     public static string FormatSingleInstanceLockFailed(string message) =>
         Format(CommandLineSingleInstanceLockFailedFormat, message);
+
+    public static string FormatUnrecognizedOption(string option) =>
+        Format(CommandLineUnrecognizedOptionFormat, option);
 
     private static string Format(string format, params object?[] args) =>
         string.Format(CultureInfo.CurrentCulture, format, args);

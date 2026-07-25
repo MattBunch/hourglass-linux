@@ -48,7 +48,7 @@ internal sealed class ApplicationInfoProvider
 
         return new ApplicationInfo(
             GetAttributeValue<AssemblyProductAttribute>(this.assembly, attribute => attribute.Product) ?? ApplicationStrings.ApplicationProductName,
-            GetAttributeValue<AssemblyDescriptionAttribute>(this.assembly, attribute => attribute.Description) ?? ApplicationStrings.ApplicationDescription,
+            ApplicationStrings.ApplicationDescription,
             GetVersion(informationalVersion),
             informationalVersion,
             GetMetadataValue(this.assembly, MetadataBuildConfiguration) ?? ApplicationStrings.UnknownMetadataValue,

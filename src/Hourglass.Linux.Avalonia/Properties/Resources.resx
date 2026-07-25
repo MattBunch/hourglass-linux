@@ -189,6 +189,21 @@
   <data name="CommandLineSingleInstanceLockFailedFormat" xml:space="preserve">
     <value>Hourglass could not acquire the single-instance lock: {0}</value>
   </data>
+  <data name="CommandLineInvalidTimerExpressionFormat" xml:space="preserve">
+    <value>Invalid timer expression: {0}</value>
+  </data>
+  <data name="CommandLineRepeatedTitleOption" xml:space="preserve">
+    <value>The --title option can only be specified once.</value>
+  </data>
+  <data name="CommandLineTitleRequiresTimerExpression" xml:space="preserve">
+    <value>A timer expression is required when --title is specified.</value>
+  </data>
+  <data name="CommandLineTitleRequiresValue" xml:space="preserve">
+    <value>The --title option requires a value.</value>
+  </data>
+  <data name="CommandLineUnrecognizedOptionFormat" xml:space="preserve">
+    <value>Unrecognized option: {0}</value>
+  </data>
   <data name="ContextMenuAlwaysOnTop" xml:space="preserve">
     <value>Always on top</value>
   </data>

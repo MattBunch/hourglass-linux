@@ -1739,7 +1739,6 @@ public sealed class MainWindowViewModelTests
                     || trimmed.Contains("RecordDataRecovery", StringComparison.Ordinal)
                     || trimmed.Contains("RecordFailure", StringComparison.Ordinal)
                     || trimmed.Contains("RecordUserRequested", StringComparison.Ordinal)
-                    || trimmed.Contains("CommandLineParseResult.Failure", StringComparison.Ordinal)
                     || trimmed.Contains(".Classes.Set(", StringComparison.Ordinal)
                     || trimmed.Contains("SetBrushResource(", StringComparison.Ordinal)
                     || trimmed.Contains("SuggestedFileName", StringComparison.Ordinal)

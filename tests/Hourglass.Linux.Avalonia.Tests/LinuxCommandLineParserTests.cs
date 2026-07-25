@@ -59,6 +59,22 @@ public sealed class LinuxCommandLineParserTests
         Assert.False(string.IsNullOrWhiteSpace(result.ErrorMessage));
     }
 
+    [Theory]
+    [InlineData("--title", "The --title option requires a value.")]
+    [InlineData("--title|Tea", "A timer expression is required when --title is specified.")]
+    [InlineData("--title|Tea|--title|Coffee|5 minutes", "The --title option can only be specified once.")]
+    [InlineData("--unknown|5 minutes", "Unrecognized option: --unknown")]
+    [InlineData("not a timer", "Invalid timer expression: not a timer")]
+    public void InvalidArgumentsUseResourceBackedErrorText(string rawArgs, string expectedError)
+    {
+        string[] args = rawArgs.Split('|');
+
+        CommandLineParseResult result = LinuxCommandLineParser.Parse(args);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(expectedError, result.ErrorMessage);
+    }
+
     [Fact]
     public void PastAbsoluteTimerArgumentFails()
     {
@@ -68,7 +84,7 @@ public sealed class LinuxCommandLineParserTests
 
         Assert.False(result.IsSuccess);
         Assert.Null(result.Request);
-        Assert.Contains("Invalid timer expression", result.ErrorMessage, StringComparison.Ordinal);
+        Assert.Equal("Invalid timer expression: January 1 2020", result.ErrorMessage);
     }
 
     [Fact]

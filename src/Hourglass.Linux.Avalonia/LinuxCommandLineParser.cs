@@ -31,12 +31,12 @@ internal static class LinuxCommandLineParser
             {
                 if (title != null)
                 {
-                    return CommandLineParseResult.Failure("The --title option can only be specified once.");
+                    return CommandLineParseResult.Failure(ApplicationStrings.CommandLineRepeatedTitleOption);
                 }
 
                 if (index + 1 >= copiedArgs.Length)
                 {
-                    return CommandLineParseResult.Failure("The --title option requires a value.");
+                    return CommandLineParseResult.Failure(ApplicationStrings.CommandLineTitleRequiresValue);
                 }
 
                 title = copiedArgs[++index];
@@ -45,7 +45,7 @@ internal static class LinuxCommandLineParser
 
             if (timerParts.Count == 0 && arg.StartsWith("-", StringComparison.Ordinal))
             {
-                return CommandLineParseResult.Failure($"Unrecognized option: {arg}");
+                return CommandLineParseResult.Failure(ApplicationStrings.FormatUnrecognizedOption(arg));
             }
 
             timerParts.Add(arg);
@@ -53,7 +53,7 @@ internal static class LinuxCommandLineParser
 
         if (timerParts.Count == 0)
         {
-            return CommandLineParseResult.Failure("A timer expression is required when --title is specified.");
+            return CommandLineParseResult.Failure(ApplicationStrings.CommandLineTitleRequiresTimerExpression);
         }
 
         string timerInput = string.Join(" ", timerParts).Trim();
@@ -63,7 +63,7 @@ internal static class LinuxCommandLineParser
             || !timerStart.TryGetEndTime(wallClockNow, out DateTime endTime)
             || endTime < wallClockNow)
         {
-            return CommandLineParseResult.Failure($"Invalid timer expression: {timerInput}");
+            return CommandLineParseResult.Failure(ApplicationStrings.FormatInvalidTimerExpression(timerInput));
         }
 
         return CommandLineParseResult.Success(new SingleInstanceLaunchRequest(
