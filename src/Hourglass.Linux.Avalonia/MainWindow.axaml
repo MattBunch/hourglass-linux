@@ -440,7 +440,6 @@
                                    Classes="timerInput"
                                    AutomationProperties.Name="Timer input"
                                    AutomationProperties.HelpText="{Binding TimerInputHelpText, Mode=OneWay}"
-                                   AutomationProperties.LiveSetting="Polite"
                                    Text="{Binding TimerInput, Mode=TwoWay}"
                                    IsVisible="{Binding IsTimerInputVisible}"
                                    PlaceholderText="5 minutes"
@@ -480,6 +479,16 @@
                                    GotFocus="CompletionTextBoxGotFocus"
                                    PointerPressed="CompletionTextBoxPointerPressed" />
         </Grid>
+
+        <TextBlock x:Name="ValidationStatusText"
+                   AutomationProperties.Name="{Binding Text, RelativeSource={RelativeSource Self}}"
+                   AutomationProperties.LiveSetting="Polite"
+                   Text="{Binding StatusText, Mode=OneWay}"
+                   IsVisible="{Binding HasValidationError}"
+                   Foreground="{DynamicResource SystemControlErrorTextForegroundBrush}"
+                   FontSize="12"
+                   HorizontalAlignment="Center"
+                   TextWrapping="Wrap" />
 
         <StackPanel x:Name="CommandPanel"
                     Orientation="Horizontal"

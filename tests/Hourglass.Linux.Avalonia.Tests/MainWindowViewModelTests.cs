@@ -1233,7 +1233,13 @@ public sealed class MainWindowViewModelTests
             "Timer title");
         XElement timerInput = FindNamedElement(document, controls + "ResponsiveTextBox", xaml, "TimerInputTextBox");
         AssertAutomationHelpText(timerInput, "{Binding TimerInputHelpText, Mode=OneWay}");
-        AssertAutomationLiveSetting(timerInput, "Polite");
+        Assert.Null(timerInput.Attribute("AutomationProperties.LiveSetting"));
+
+        XElement validationStatus = FindNamedElement(document, avalonia + "TextBlock", xaml, "ValidationStatusText");
+        Assert.Equal("{Binding StatusText, Mode=OneWay}", validationStatus.Attribute("Text")?.Value);
+        Assert.Equal("{Binding HasValidationError}", validationStatus.Attribute("IsVisible")?.Value);
+        AssertAutomationNameBindsToText(validationStatus);
+        AssertAutomationLiveSetting(validationStatus, "Polite");
         AssertAutomationName(
             FindNamedElement(document, controls + "ResponsiveTextBox", xaml, "RemainingTimeTextBox"),
             "Remaining time");
