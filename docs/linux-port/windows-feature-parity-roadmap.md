@@ -871,6 +871,8 @@ This section is intentionally not Milestone 11. These workstreams cut across imp
 
 **Goal:** Verify the implemented parity UI remains usable by keyboard and assistive technologies.
 
+**Status:** Implemented for the primary timer surface, owned shell dialogs, custom-theme controls, and context-menu toggle characterization. The Avalonia UI now declares stable automation names/help text for timer fields, primary command buttons, About/link/copy feedback, exit confirmation, and custom-theme edit/delete controls. Source-inspection tests cover keyboard command paths, focus-return entry points, dialog keyboard defaults, and menu checked-state exposure. Full assistive-technology desktop certification remains part of the release validation matrix.
+
 **Implementation plan:**
 
 1. Review all timer commands, menu items, dialogs, and dynamic controls for keyboard reachability and stable focus order.
@@ -993,8 +995,8 @@ Create one focused issue or Codex task for each of the following rather than att
 6. Implemented: Add or tighten unsupported-backend tests for every optional desktop integration.
 7. Implemented: Define the optional-effect failure taxonomy and align service diagnostics with it.
 8. Implemented: Add regression tests for timer continuity after optional integration failures.
-9. Run keyboard/focus/accessibility characterization for the main timer window and dialogs.
-10. Add accessible names and checked-state coverage where Avalonia defaults are insufficient.
+9. Implemented: Run keyboard/focus/accessibility characterization for the main timer window and dialogs.
+10. Implemented: Add accessible names and checked-state coverage where Avalonia defaults are insufficient.
 11. Inventory direct user-facing Linux UI strings and choose the runtime resource structure.
 12. Move timer status, command, dialog, and notification strings behind resources.
 13. Add localization-safe formatter tests for title, status, and notification text.

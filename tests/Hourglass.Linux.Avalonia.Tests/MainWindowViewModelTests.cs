@@ -1218,6 +1218,42 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
+    public void MainWindowPrimaryTimerSurfaceHasAccessibleNamesAndKeyboardPaths()
+    {
+        XNamespace avalonia = "https://github.com/avaloniaui";
+        XNamespace controls = "clr-namespace:Hourglass.Linux.Avalonia";
+        XNamespace xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
+        XDocument document = XDocument.Load(FindRepositoryFile("src/Hourglass.Linux.Avalonia/MainWindow.axaml"));
+
+        AssertAutomationName(
+            FindNamedElement(document, controls + "ResponsiveTextBox", xaml, "TimerTitleTextBox"),
+            "Timer title");
+        AssertAutomationHelpText(
+            FindNamedElement(document, controls + "ResponsiveTextBox", xaml, "TimerInputTextBox"),
+            "Enter a duration or time, then press Enter to start.");
+        AssertAutomationName(
+            FindNamedElement(document, controls + "ResponsiveTextBox", xaml, "RemainingTimeTextBox"),
+            "Remaining time");
+        AssertAutomationName(
+            FindNamedElement(document, controls + "ResponsiveTextBox", xaml, "CompletionTextBox"),
+            "Timer status");
+        AssertAutomationName(FindNamedElement(document, avalonia + "Button", xaml, "StartButton"), "Start timer");
+        AssertAutomationName(FindNamedElement(document, avalonia + "Button", xaml, "PauseButton"), "Pause timer");
+        AssertAutomationName(FindNamedElement(document, avalonia + "Button", xaml, "ResumeButton"), "Resume timer");
+        AssertAutomationName(FindNamedElement(document, avalonia + "Button", xaml, "StopButton"), "Stop timer");
+        AssertAutomationName(FindNamedElement(document, avalonia + "Button", xaml, "RestartButton"), "Restart timer");
+        AssertAutomationName(FindNamedElement(document, avalonia + "Button", xaml, "CancelButton"), "Cancel timer edit");
+
+        string shortcuts = File.ReadAllText(FindRepositoryFile("src/Hourglass.Linux.Avalonia/WindowShortcutRouter.cs"));
+        Assert.Contains("Key.Space when !isEditableTextFocused => WindowShortcutAction.PauseResume", shortcuts, StringComparison.Ordinal);
+        Assert.Contains("Key.P => WindowShortcutAction.PauseResume", shortcuts, StringComparison.Ordinal);
+        Assert.Contains("Key.S => WindowShortcutAction.Stop", shortcuts, StringComparison.Ordinal);
+        Assert.Contains("Key.R => WindowShortcutAction.Restart", shortcuts, StringComparison.Ordinal);
+        Assert.Contains("Key.Escape => WindowShortcutAction.Escape", shortcuts, StringComparison.Ordinal);
+        Assert.Contains("WindowShortcutAction.ToggleFullScreen", shortcuts, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void ContextMenuUsesExistingTimerCommandsAndPersistentOptionBindings()
     {
         XNamespace avalonia = "https://github.com/avaloniaui";
@@ -1384,6 +1420,44 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
+    public void ContextMenuToggleItemsExposeLabelsAndCheckedState()
+    {
+        XNamespace avalonia = "https://github.com/avaloniaui";
+        XNamespace xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
+        XDocument document = XDocument.Load(FindRepositoryFile("src/Hourglass.Linux.Avalonia/MainWindow.axaml"));
+        XElement rootGrid = Assert.Single(
+            document.Descendants(avalonia + "Grid"),
+            element => element.Attribute(xaml + "Name")?.Value == "RootGrid");
+        XElement contextMenu = Assert.Single(
+            rootGrid.Element(avalonia + "Grid.ContextMenu")?.Elements(avalonia + "ContextMenu") ?? []);
+        XElement[] toggleItems = contextMenu
+            .Descendants(avalonia + "MenuItem")
+            .Where(element => element.Attribute("ToggleType") is not null)
+            .ToArray();
+
+        foreach (XElement item in toggleItems)
+        {
+            Assert.False(string.IsNullOrWhiteSpace(item.Attribute("Header")?.Value));
+        }
+
+        foreach (XElement item in toggleItems.Where(element => element.Attribute("ToggleType")?.Value == "Radio"))
+        {
+            Assert.False(string.IsNullOrWhiteSpace(item.Attribute("GroupName")?.Value));
+            Assert.False(string.IsNullOrWhiteSpace(item.Attribute("IsChecked")?.Value));
+        }
+
+        foreach (XElement item in toggleItems.Where(element => element.Attribute("ToggleType")?.Value == "CheckBox"
+            && element.Attribute(xaml + "Name")?.Value != "FullScreenMenuItem"))
+        {
+            Assert.False(string.IsNullOrWhiteSpace(item.Attribute("IsChecked")?.Value));
+        }
+
+        string codeBehind = File.ReadAllText(FindRepositoryFile("src/Hourglass.Linux.Avalonia/MainWindow.axaml.cs"));
+        Assert.Contains("this.FullScreenMenuItem.IsChecked = this.fullScreenController?.IsFullScreen == true;", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("this.FullScreenMenuItem.IsChecked = this.fullScreenController.IsFullScreen;", codeBehind, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void ContextMenuPlacesAboutBeforeExit()
     {
         XNamespace avalonia = "https://github.com/avaloniaui";
@@ -1448,7 +1522,57 @@ public sealed class MainWindowViewModelTests
         Assert.Contains("Developer Website", buttons.Keys);
         Assert.Contains("Original Hourglass Project", buttons.Keys);
         Assert.Contains("Copy build information", buttons.Keys);
+        AssertAutomationName(buttons["GitHub Repository"], "Open GitHub repository");
+        AssertAutomationName(buttons["Developer Website"], "Open developer website");
+        AssertAutomationName(buttons["Original Hourglass Project"], "Open original Hourglass project");
+        AssertAutomationName(buttons["Copy build information"], "Copy build information");
+        AssertAutomationName(buttons["Close"], "Close About Hourglass");
+        AssertAutomationName(
+            Assert.Single(
+                document.Descendants(avalonia + "TextBlock"),
+                element => element.Attribute(xaml + "Name")?.Value == "LinkStatusText"),
+            "Link status");
+        AssertAutomationName(
+            Assert.Single(
+                document.Descendants(avalonia + "TextBlock"),
+                element => element.Attribute(xaml + "Name")?.Value == "CopyStatusText"),
+            "Copy status");
         Assert.Equal("True", buttons["Close"].Attribute("IsCancel")?.Value);
+    }
+
+    [Fact]
+    public void DialogInteractiveControlsHaveAccessibleNames()
+    {
+        XNamespace avalonia = "https://github.com/avaloniaui";
+        XNamespace xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
+
+        XDocument themeEditor = XDocument.Load(FindRepositoryFile("src/Hourglass.Linux.Avalonia/CustomThemeEditorWindow.axaml"));
+        AssertAutomationName(FindNamedElement(themeEditor, avalonia + "TextBox", xaml, "NameBox"), "Theme name");
+        AssertAutomationName(FindNamedElement(themeEditor, avalonia + "ComboBox", xaml, "BaseThemeBox"), "Base theme");
+        AssertAutomationName(FindNamedElement(themeEditor, avalonia + "TextBox", xaml, "BackgroundBox"), "Background color");
+        AssertAutomationName(FindNamedElement(themeEditor, avalonia + "TextBox", xaml, "PrimaryTextBox"), "Primary text color");
+        AssertAutomationName(FindNamedElement(themeEditor, avalonia + "TextBox", xaml, "SecondaryTextBox"), "Secondary text color");
+        AssertAutomationName(FindNamedElement(themeEditor, avalonia + "TextBox", xaml, "CommandTextBox"), "Command text color");
+        AssertAutomationName(FindNamedElement(themeEditor, avalonia + "TextBox", xaml, "AccentBox"), "Accent color");
+        AssertAutomationName(FindNamedElement(themeEditor, avalonia + "TextBox", xaml, "ProgressFillBox"), "Progress fill color");
+        AssertAutomationName(FindNamedElement(themeEditor, avalonia + "TextBox", xaml, "ValidationFlashBox"), "Validation flash color");
+        AssertAutomationName(FindNamedElement(themeEditor, avalonia + "TextBox", xaml, "CompletionBorderBox"), "Completion border color");
+        AssertAutomationName(FindNamedElement(themeEditor, avalonia + "TextBox", xaml, "LockedBorderBox"), "Locked border color");
+        AssertAutomationName(FindNamedElement(themeEditor, avalonia + "TextBlock", xaml, "ValidationText"), "Theme validation message");
+        AssertAutomationName(FindButtonByContent(themeEditor, "Cancel"), "Cancel custom theme edit");
+        AssertAutomationName(FindButtonByContent(themeEditor, "Save"), "Save custom theme");
+
+        XDocument themeDelete = XDocument.Load(FindRepositoryFile("src/Hourglass.Linux.Avalonia/CustomThemeDeleteWindow.axaml"));
+        AssertAutomationName(FindNamedElement(themeDelete, avalonia + "TextBlock", xaml, "MessageText"), "Delete custom theme message");
+        AssertAutomationName(FindButtonByContent(themeDelete, "Cancel"), "Cancel delete custom theme");
+        AssertAutomationName(FindButtonByContent(themeDelete, "Delete"), "Delete custom theme");
+
+        XDocument exitConfirmation = XDocument.Load(FindRepositoryFile("src/Hourglass.Linux.Avalonia/ExitConfirmationWindow.axaml"));
+        AssertAutomationName(
+            Assert.Single(exitConfirmation.Descendants(avalonia + "TextBlock")),
+            "Exit confirmation message");
+        AssertAutomationName(FindButtonByContent(exitConfirmation, "Cancel"), "Cancel exit");
+        AssertAutomationName(FindButtonByContent(exitConfirmation, "Exit"), "Exit Hourglass");
     }
 
     [Fact]
@@ -4060,6 +4184,24 @@ public sealed class MainWindowViewModelTests
         return Assert.Single(
             document.Descendants(elementName),
             element => element.Attribute(xamlNamespace + "Name")?.Value == name);
+    }
+
+    private static XElement FindButtonByContent(XDocument document, string content)
+    {
+        XNamespace avalonia = "https://github.com/avaloniaui";
+        return Assert.Single(
+            document.Descendants(avalonia + "Button"),
+            element => element.Attribute("Content")?.Value == content);
+    }
+
+    private static void AssertAutomationName(XElement element, string expected)
+    {
+        Assert.Equal(expected, element.Attribute("AutomationProperties.Name")?.Value);
+    }
+
+    private static void AssertAutomationHelpText(XElement element, string expected)
+    {
+        Assert.Equal(expected, element.Attribute("AutomationProperties.HelpText")?.Value);
     }
 
     private static void AssertStyleSetter(XElement style, string property, string value)

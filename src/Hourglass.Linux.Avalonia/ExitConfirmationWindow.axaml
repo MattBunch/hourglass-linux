@@ -11,6 +11,7 @@
   <Grid Margin="20"
         RowDefinitions="*,Auto">
     <TextBlock Text="One or more timers are still running or paused. Exit Hourglass?"
+               AutomationProperties.Name="Exit confirmation message"
                TextWrapping="Wrap"
                VerticalAlignment="Center" />
     <StackPanel Grid.Row="1"
@@ -18,9 +19,11 @@
                 HorizontalAlignment="Right"
                 Spacing="8">
       <Button Content="Cancel"
+              AutomationProperties.Name="Cancel exit"
               IsCancel="True"
               Click="CancelButtonClick" />
       <Button Content="Exit"
+              AutomationProperties.Name="Exit Hourglass"
               IsDefault="True"
               Click="ExitButtonClick" />
     </StackPanel>
