@@ -102,7 +102,7 @@ public sealed class JsonFileSettingsStore : ISettingsStore
 
     private void RecordLoadRecovery(string key, string message, Exception exception)
     {
-        this.diagnosticSink.Record(new DiagnosticEvent(
+        this.diagnosticSink.TryRecord(new DiagnosticEvent(
             DiagnosticSeverity.Warning,
             DiagnosticFailureClass.DataRecovery,
             "settings",

@@ -97,7 +97,7 @@ public sealed class NotifySendNotificationService : INotificationService
 
     private void RecordFailure(string message, Exception? exception)
     {
-        this.diagnosticSink.Record(new DiagnosticEvent(
+        this.diagnosticSink.TryRecord(new DiagnosticEvent(
             DiagnosticSeverity.Warning,
             DiagnosticFailureClass.BestEffort,
             "notifications",

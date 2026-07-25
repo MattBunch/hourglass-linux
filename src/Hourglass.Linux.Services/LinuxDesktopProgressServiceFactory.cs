@@ -55,7 +55,7 @@ public sealed class LinuxDesktopProgressServiceFactory
             return new UnityLauncherDesktopProgressService(sender, this.diagnosticSink);
         }
 
-        this.diagnosticSink.Record(new DiagnosticEvent(
+        this.diagnosticSink.TryRecord(new DiagnosticEvent(
             DiagnosticSeverity.Warning,
             DiagnosticFailureClass.StartupConfiguration,
             "desktop-progress",

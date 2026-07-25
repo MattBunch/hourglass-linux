@@ -81,4 +81,16 @@ public sealed class ExternalUriLauncherTests
         Assert.Equal("open", diagnostic.Operation);
         Assert.Contains("code 1", diagnostic.Message, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public async Task DiagnosticSinkFailureDoesNotEscapeOpenFailure()
+    {
+        var launcher = new LinuxExternalUriLauncher(
+            (_, _) => Task.FromResult(1),
+            diagnosticSink: new ThrowingDiagnosticSink());
+
+        bool opened = await launcher.OpenAsync(new Uri("https://github.com/MattBunch/hourglass-linux"));
+
+        Assert.False(opened);
+    }
 }

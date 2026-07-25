@@ -2395,7 +2395,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         string message,
         Exception exception)
     {
-        this.diagnosticSink.Record(new DiagnosticEvent(
+        this.diagnosticSink.TryRecord(new DiagnosticEvent(
             DiagnosticSeverity.Warning,
             failureClass,
             category,

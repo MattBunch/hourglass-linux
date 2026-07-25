@@ -56,7 +56,7 @@ public sealed class UnityLauncherDesktopProgressService : IDesktopProgressServic
         }
         catch (Exception exception)
         {
-            this.diagnosticSink.Record(new DiagnosticEvent(
+            this.diagnosticSink.TryRecord(new DiagnosticEvent(
                 DiagnosticSeverity.Warning,
                 DiagnosticFailureClass.BestEffort,
                 "desktop-progress",

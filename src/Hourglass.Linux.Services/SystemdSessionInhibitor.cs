@@ -114,7 +114,7 @@ public sealed class SystemdSessionInhibitor : ISessionInhibitor
 
     private void RecordFailure(string message, Exception? exception)
     {
-        this.diagnosticSink.Record(new DiagnosticEvent(
+        this.diagnosticSink.TryRecord(new DiagnosticEvent(
             DiagnosticSeverity.Warning,
             DiagnosticFailureClass.BestEffort,
             "session-inhibition",

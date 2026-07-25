@@ -93,6 +93,28 @@ public sealed class DiagnosticSinkTests
 
         Assert.Equal(2, inner.Events.Count);
     }
+
+    [Fact]
+    public void DeduplicatingSinkDoesNotPropagateInnerSinkFailure()
+    {
+        var sink = new DeduplicatingDiagnosticSink(new ThrowingDiagnosticSink());
+
+        sink.Record(new DiagnosticEvent(
+            DiagnosticSeverity.Warning,
+            DiagnosticFailureClass.DataRecovery,
+            "settings",
+            "load",
+            "json",
+            "Settings could not be loaded."));
+    }
+
+    [Fact]
+    public void SafeResetDoesNotPropagateResetFailure()
+    {
+        IDiagnosticSink sink = new ThrowingResetDiagnosticSink();
+
+        sink.ResetDuplicateSuppression("external-uri", "open", "xdg-open");
+    }
 }
 
 internal sealed class RecordingDiagnosticSink : IDiagnosticSink
@@ -102,5 +124,25 @@ internal sealed class RecordingDiagnosticSink : IDiagnosticSink
     public void Record(DiagnosticEvent diagnosticEvent)
     {
         this.Events.Add(diagnosticEvent);
+    }
+}
+
+internal sealed class ThrowingDiagnosticSink : IDiagnosticSink
+{
+    public void Record(DiagnosticEvent diagnosticEvent)
+    {
+        throw new InvalidOperationException("Diagnostic sink failed.");
+    }
+}
+
+internal sealed class ThrowingResetDiagnosticSink : IDiagnosticSink, IDiagnosticSuppressionReset
+{
+    public void Record(DiagnosticEvent diagnosticEvent)
+    {
+    }
+
+    public void ResetDuplicateSuppression(string category, string? operation = null, string? backend = null)
+    {
+        throw new InvalidOperationException("Diagnostic reset failed.");
     }
 }

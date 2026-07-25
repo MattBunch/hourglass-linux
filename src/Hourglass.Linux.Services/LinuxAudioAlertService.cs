@@ -351,7 +351,7 @@ public sealed class LinuxAudioAlertService : IAudioAlertService
         string message,
         Exception? exception)
     {
-        this.diagnosticSink.Record(new DiagnosticEvent(
+        this.diagnosticSink.TryRecord(new DiagnosticEvent(
             DiagnosticSeverity.Warning,
             DiagnosticFailureClass.BestEffort,
             "audio-alerts",

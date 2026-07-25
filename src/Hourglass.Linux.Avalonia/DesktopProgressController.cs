@@ -75,7 +75,7 @@ internal sealed class DesktopProgressController(IDesktopProgressService service,
 
     private void RecordFailure(string operation, Exception exception)
     {
-        this.diagnosticSink.Record(new DiagnosticEvent(
+        this.diagnosticSink.TryRecord(new DiagnosticEvent(
             DiagnosticSeverity.Warning,
             DiagnosticFailureClass.BestEffort,
             "desktop-progress",

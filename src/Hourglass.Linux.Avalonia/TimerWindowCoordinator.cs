@@ -771,7 +771,7 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
         }
         catch (Exception exception)
         {
-            diagnosticSink.Record(new DiagnosticEvent(
+            diagnosticSink.TryRecord(new DiagnosticEvent(
                 DiagnosticSeverity.Warning,
                 DiagnosticFailureClass.StartupConfiguration,
                 "status-icon",
@@ -838,7 +838,7 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
         string message,
         Exception exception)
     {
-        this.diagnosticSink.Record(new DiagnosticEvent(
+        this.diagnosticSink.TryRecord(new DiagnosticEvent(
             DiagnosticSeverity.Warning,
             failureClass,
             category,

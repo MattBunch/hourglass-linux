@@ -77,7 +77,7 @@ public sealed class DeduplicatingDiagnosticSink(IDiagnosticSink inner) : IDiagno
             }
         }
 
-        this.inner.Record(diagnosticEvent);
+        this.inner.TryRecord(diagnosticEvent);
     }
 
     public void ResetDuplicateSuppression(string category, string? operation = null, string? backend = null)
@@ -114,9 +114,33 @@ public static class DiagnosticSinkExtensions
     {
         ArgumentNullException.ThrowIfNull(diagnosticSink);
 
-        if (diagnosticSink is IDiagnosticSuppressionReset resettable)
+        if (diagnosticSink is not IDiagnosticSuppressionReset resettable)
+        {
+            return;
+        }
+
+        try
         {
             resettable.ResetDuplicateSuppression(category, operation, backend);
+        }
+        catch (Exception)
+        {
+            // Diagnostic housekeeping must not change application behavior.
+        }
+    }
+
+    public static void TryRecord(this IDiagnosticSink diagnosticSink, DiagnosticEvent diagnosticEvent)
+    {
+        ArgumentNullException.ThrowIfNull(diagnosticSink);
+        ArgumentNullException.ThrowIfNull(diagnosticEvent);
+
+        try
+        {
+            diagnosticSink.Record(diagnosticEvent);
+        }
+        catch (Exception)
+        {
+            // Diagnostics are observational; sink failures must not replace the original recovery path.
         }
     }
 }
