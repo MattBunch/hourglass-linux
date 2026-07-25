@@ -35,6 +35,8 @@ Keyboard command parity includes Space outside editable text and `Ctrl+P` for pa
 
 Accessibility characterization now covers the primary timer fields and command buttons, About and confirmation dialogs, custom-theme edit/delete controls, and context-menu toggle state. The timer surface declares explicit automation names and help text where visual labels are sparse, while persistent menu options expose labels and checked state through Avalonia menu toggle metadata.
 
+Runtime Avalonia UI text is resource-backed through the Linux application shell to prepare for future localization. Packaging metadata, command identifiers, setting keys, document names, and diagnostic-only backend tokens remain outside that runtime localization boundary.
+
 The **Prompt on exit** context-menu option is enabled by default and persists across restarts. Closing through the title bar, context menu, or direct window close uses one coordinated path: a running or paused timer receives a native confirmation prompt, cancellation leaves it unchanged, and approval waits for queued settings writes before final cleanup. Stopped and expired timers close without a prompt.
 
 The **Advanced options** submenu now contains reverse progress, elapsed-time display, loop timer, loop sound, close when expired, lock interface, do not keep computer awake, and shut down when expired. These options are persisted through the Linux JSON settings store with backward-compatible defaults.

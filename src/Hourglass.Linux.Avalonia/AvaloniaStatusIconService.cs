@@ -18,13 +18,13 @@ internal sealed class AvaloniaStatusIconService : IStatusIconService
     {
         ArgumentNullException.ThrowIfNull(icon);
 
-        this.newTimerItem = this.CreateMenuItem("New timer", StatusIconAction.NewTimer);
-        this.showItem = this.CreateMenuItem("Show", StatusIconAction.ShowWindow);
-        this.hideItem = this.CreateMenuItem("Hide", StatusIconAction.HideWindow);
-        this.pauseResumeItem = this.CreateMenuItem("Pause", StatusIconAction.PauseResume);
-        this.stopItem = this.CreateMenuItem("Stop", StatusIconAction.Stop);
-        this.restartItem = this.CreateMenuItem("Restart", StatusIconAction.Restart);
-        this.exitItem = this.CreateMenuItem("Exit", StatusIconAction.Exit);
+        this.newTimerItem = this.CreateMenuItem(ApplicationStrings.MainMenuNewTimer, StatusIconAction.NewTimer);
+        this.showItem = this.CreateMenuItem(ApplicationStrings.CommandShow, StatusIconAction.ShowWindow);
+        this.hideItem = this.CreateMenuItem(ApplicationStrings.CommandHide, StatusIconAction.HideWindow);
+        this.pauseResumeItem = this.CreateMenuItem(ApplicationStrings.CommandPause, StatusIconAction.PauseResume);
+        this.stopItem = this.CreateMenuItem(ApplicationStrings.CommandReset, StatusIconAction.Stop);
+        this.restartItem = this.CreateMenuItem(ApplicationStrings.CommandRestart, StatusIconAction.Restart);
+        this.exitItem = this.CreateMenuItem(ApplicationStrings.CommandExit, StatusIconAction.Exit);
 
         var menu = new NativeMenu
         {
@@ -48,7 +48,7 @@ internal sealed class AvaloniaStatusIconService : IStatusIconService
             IsVisible = false,
             Icon = icon,
             Menu = menu,
-            ToolTipText = "Hourglass"
+            ToolTipText = ApplicationStrings.ApplicationTitle
         };
         this.trayIcon.Clicked += this.TrayIconClicked;
     }

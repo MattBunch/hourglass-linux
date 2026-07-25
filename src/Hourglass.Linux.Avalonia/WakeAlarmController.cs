@@ -8,7 +8,6 @@ internal sealed class WakeAlarmController(
     Func<DateTimeOffset> wallClockNow,
     IDiagnosticSink? diagnosticSink = null) : IAsyncDisposable
 {
-    private const string WakeAlarmReason = "Hourglass timer is running";
     private static readonly TimeSpan WakeLeadTime = TimeSpan.FromSeconds(15);
     private static readonly TimeSpan MinimumFutureWakeDelay = TimeSpan.FromSeconds(15);
 
@@ -49,7 +48,7 @@ internal sealed class WakeAlarmController(
             {
                 this.diagnosticSink.ResetDuplicateSuppression("wake-alarm", "schedule", this.wakeAlarmService.GetType().Name);
                 result = await this.wakeAlarmService.TryScheduleWakeAsync(
-                    new WakeAlarmRequest(nextWakeAt.Value, WakeAlarmReason),
+                    new WakeAlarmRequest(nextWakeAt.Value, ApplicationStrings.SessionInhibitionReason),
                     cancellationToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)

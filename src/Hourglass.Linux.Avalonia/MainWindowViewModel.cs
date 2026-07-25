@@ -9,11 +9,6 @@ namespace Hourglass.Linux.Avalonia;
 
 public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 {
-    private const string ApplicationTitle = "Hourglass";
-    private const string InvalidTimerStatusText = "Enter a valid current timer.";
-    private const string TimerInputDefaultHelpText = "Enter a duration or time, then press Enter to start.";
-    private const string SessionInhibitionReason = "Hourglass timer is running";
-    private const string NotificationBody = "Timer complete";
     private const string ActiveSessionKey = "active-session";
     private const string CustomThemesKey = "custom-themes";
 
@@ -39,7 +34,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private Task pendingCustomThemesSave = Task.CompletedTask;
     private Task pendingSavedTimersSave = Task.CompletedTask;
     private Task pendingSettingsSave = Task.CompletedTask;
-    private string publishedWindowTitle = ApplicationTitle;
+    private string publishedWindowTitle = ApplicationStrings.ApplicationTitle;
     private CustomThemesDocument customThemes = CustomThemesDocument.Empty;
     private SavedTimersDocument savedTimers = SavedTimersDocument.Empty;
     private LinuxAppSettings settings = LinuxAppSettings.Default;
@@ -395,7 +390,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     public string WindowTitle => WindowTitleFormatter.Format(
         this.settings.WindowTitleMode,
-        ApplicationTitle,
+        ApplicationStrings.ApplicationTitle,
         this.TimerTitle,
         FormatOptionalTimerTime(this.engine.Snapshot.TimeLeft),
         FormatOptionalTimerTime(this.engine.Snapshot.TimeElapsed));
@@ -405,7 +400,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     public string StatusText => this.viewState.StatusText;
 
     public string TimerInputHelpText =>
-        this.HasValidationError ? this.StatusText : TimerInputDefaultHelpText;
+        this.HasValidationError ? this.StatusText : ApplicationStrings.TimerInputDefaultHelpText;
 
     public string PauseResumeText => this.viewState.PauseResumeText;
 
@@ -1812,7 +1807,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     private void ShowValidationError()
     {
-        this.RefreshDisplay(InvalidTimerStatusText, hasValidationError: true);
+        this.RefreshDisplay(ApplicationStrings.StatusInvalidTimer, hasValidationError: true);
         PublishSafely(this.ValidationFeedbackRequested);
     }
 
@@ -1881,11 +1876,13 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         {
             string notificationTitle = WindowTitleFormatter.Format(
                 WindowTitleMode.TimerTitle,
-                ApplicationTitle,
+                ApplicationStrings.ApplicationTitle,
                 this.TimerTitle,
                 string.Empty,
                 string.Empty);
-            await this.notificationService.ShowTimerExpiredAsync(notificationTitle, NotificationBody).ConfigureAwait(false);
+            await this.notificationService.ShowTimerExpiredAsync(
+                notificationTitle,
+                ApplicationStrings.StatusTimerComplete).ConfigureAwait(false);
         }
         catch (Exception exception)
         {
@@ -1997,7 +1994,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         try
         {
             this.inhibitionLease = await this.sessionInhibitor.InhibitAsync(
-                SessionInhibitionReason,
+                ApplicationStrings.SessionInhibitionReason,
                 inhibitSuspend: true,
                 inhibitIdle: true).ConfigureAwait(false);
         }

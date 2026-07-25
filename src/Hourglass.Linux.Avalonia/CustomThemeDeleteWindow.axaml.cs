@@ -6,14 +6,14 @@ namespace Hourglass.Linux.Avalonia;
 public sealed partial class CustomThemeDeleteWindow : Window
 {
     public CustomThemeDeleteWindow()
-        : this("custom theme")
+        : this(ApplicationStrings.CustomThemeDefaultName)
     {
     }
 
     public CustomThemeDeleteWindow(string themeName)
     {
         InitializeComponent();
-        this.MessageText.Text = $"Delete \"{themeName}\"?";
+        this.MessageText.Text = ApplicationStrings.FormatCustomThemeDeleteMessage(themeName);
     }
 
     private void CancelButtonClick(object? sender, RoutedEventArgs e)

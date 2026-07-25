@@ -205,184 +205,184 @@
         Classes="content-active">
     <Grid.ContextMenu>
       <ContextMenu>
-        <MenuItem Header="New timer"
+        <MenuItem Header="{x:Static local:ApplicationStrings.MainMenuNewTimer}"
                   Command="{Binding NewTimerCommand}" />
-        <MenuItem Header="Start"
+        <MenuItem Header="{x:Static local:ApplicationStrings.CommandStart}"
                   Command="{Binding StartCommand}" />
         <MenuItem Header="{Binding PauseResumeText}"
                   Command="{Binding PauseResumeCommand}" />
-        <MenuItem Header="Stop"
+        <MenuItem Header="{x:Static local:ApplicationStrings.CommandReset}"
                   Command="{Binding ResetCommand}" />
-        <MenuItem Header="Restart"
+        <MenuItem Header="{x:Static local:ApplicationStrings.CommandRestart}"
                   Command="{Binding RestartCommand}" />
         <MenuItem x:Name="RecentInputsMenuItem"
-                  Header="Recent inputs" />
+                  Header="{x:Static local:ApplicationStrings.RecentInputsMenuHeader}" />
         <MenuItem x:Name="SavedTimersMenuItem"
-                  Header="Saved timers" />
+                  Header="{x:Static local:ApplicationStrings.SavedTimersMenuHeader}" />
         <Separator />
-        <MenuItem Header="Notifications"
+        <MenuItem Header="{x:Static local:ApplicationStrings.ContextMenuNotifications}"
                   ToggleType="CheckBox"
                   IsChecked="{Binding NotificationsEnabled, Mode=OneWay}"
                   Command="{Binding ToggleNotificationsCommand}" />
-        <MenuItem Header="Sound">
-          <MenuItem Header="None"
+        <MenuItem Header="{x:Static local:ApplicationStrings.AudioAlertSoundMenuHeader}">
+          <MenuItem Header="{x:Static local:ApplicationStrings.AudioAlertNoSound}"
                     ToggleType="Radio"
                     GroupName="AudioAlertSound"
                     IsChecked="{Binding IsNoSoundSelected, Mode=OneWay}"
                     Command="{Binding SelectAudioAlertSoundCommand}"
                     CommandParameter="none" />
-          <MenuItem Header="Loud beep"
+          <MenuItem Header="{x:Static local:ApplicationStrings.AudioAlertLoudBeep}"
                     ToggleType="Radio"
                     GroupName="AudioAlertSound"
                     IsChecked="{Binding IsLoudBeepSoundSelected, Mode=OneWay}"
                     Command="{Binding SelectAudioAlertSoundCommand}"
                     CommandParameter="resource:Loud beep" />
-          <MenuItem Header="Normal beep"
+          <MenuItem Header="{x:Static local:ApplicationStrings.AudioAlertNormalBeep}"
                     ToggleType="Radio"
                     GroupName="AudioAlertSound"
                     IsChecked="{Binding IsNormalBeepSoundSelected, Mode=OneWay}"
                     Command="{Binding SelectAudioAlertSoundCommand}"
                     CommandParameter="resource:Normal beep" />
-          <MenuItem Header="Quiet beep"
+          <MenuItem Header="{x:Static local:ApplicationStrings.AudioAlertQuietBeep}"
                     ToggleType="Radio"
                     GroupName="AudioAlertSound"
                     IsChecked="{Binding IsQuietBeepSoundSelected, Mode=OneWay}"
                     Command="{Binding SelectAudioAlertSoundCommand}"
                     CommandParameter="resource:Quiet beep" />
           <Separator />
-          <MenuItem Header="Preview selected sound"
+          <MenuItem Header="{x:Static local:ApplicationStrings.ContextMenuPreviewSelectedSound}"
                     Command="{Binding PreviewAudioAlertSoundCommand}" />
-          <MenuItem Header="Stop preview"
+          <MenuItem Header="{x:Static local:ApplicationStrings.ContextMenuStopPreview}"
                     Command="{Binding StopAudioAlertPreviewCommand}" />
         </MenuItem>
-        <MenuItem Header="Pop up when expired"
+        <MenuItem Header="{x:Static local:ApplicationStrings.ContextMenuPopUpWhenExpired}"
                   ToggleType="CheckBox"
                   IsChecked="{Binding PopUpWhenExpired, Mode=OneWay}"
                   Command="{Binding TogglePopUpWhenExpiredCommand}" />
-        <MenuItem Header="Always on top"
+        <MenuItem Header="{x:Static local:ApplicationStrings.ContextMenuAlwaysOnTop}"
                   ToggleType="CheckBox"
                   IsChecked="{Binding AlwaysOnTop, Mode=OneWay}"
                   Command="{Binding ToggleAlwaysOnTopCommand}" />
-        <MenuItem Header="Show progress in taskbar"
+        <MenuItem Header="{x:Static local:ApplicationStrings.ContextMenuShowProgressInTaskbar}"
                   ToggleType="CheckBox"
                   IsChecked="{Binding ShowProgressInTaskbar, Mode=OneWay}"
                   Command="{Binding ToggleShowProgressInTaskbarCommand}" />
-        <MenuItem Header="Show in notification area"
+        <MenuItem Header="{x:Static local:ApplicationStrings.ContextMenuShowInNotificationArea}"
                   ToggleType="CheckBox"
                   IsChecked="{Binding ShowInNotificationArea, Mode=OneWay}"
                   IsEnabled="{Binding IsStatusIconSupported}"
                   Command="{Binding ToggleShowInNotificationAreaCommand}" />
-        <MenuItem Header="Prompt on exit"
+        <MenuItem Header="{x:Static local:ApplicationStrings.ContextMenuPromptOnExit}"
                   ToggleType="CheckBox"
                   IsChecked="{Binding PromptOnExit, Mode=OneWay}"
                   Command="{Binding TogglePromptOnExitCommand}" />
         <MenuItem x:Name="ThemeMenuItem"
-                  Header="Theme" />
-        <MenuItem Header="Window title">
-          <MenuItem Header="Application name"
+                  Header="{x:Static local:ApplicationStrings.ThemeMenuHeader}" />
+        <MenuItem Header="{x:Static local:ApplicationStrings.WindowTitleMenuHeader}">
+          <MenuItem Header="{x:Static local:ApplicationStrings.WindowTitleApplicationName}"
                     ToggleType="Radio"
                     GroupName="WindowTitleMode"
                     IsChecked="{Binding IsApplicationNameTitleModeSelected, Mode=OneWay}"
                     Command="{Binding SelectWindowTitleModeCommand}"
                     CommandParameter="ApplicationName" />
-          <MenuItem Header="Time left"
+          <MenuItem Header="{x:Static local:ApplicationStrings.WindowTitleTimeLeft}"
                     ToggleType="Radio"
                     GroupName="WindowTitleMode"
                     IsChecked="{Binding IsTimeLeftTitleModeSelected, Mode=OneWay}"
                     Command="{Binding SelectWindowTitleModeCommand}"
                     CommandParameter="TimeLeft" />
-          <MenuItem Header="Time elapsed"
+          <MenuItem Header="{x:Static local:ApplicationStrings.WindowTitleTimeElapsed}"
                     ToggleType="Radio"
                     GroupName="WindowTitleMode"
                     IsChecked="{Binding IsTimeElapsedTitleModeSelected, Mode=OneWay}"
                     Command="{Binding SelectWindowTitleModeCommand}"
                     CommandParameter="TimeElapsed" />
-          <MenuItem Header="Timer title"
+          <MenuItem Header="{x:Static local:ApplicationStrings.WindowTitleTimerTitle}"
                     ToggleType="Radio"
                     GroupName="WindowTitleMode"
                     IsChecked="{Binding IsTimerTitleModeSelected, Mode=OneWay}"
                     Command="{Binding SelectWindowTitleModeCommand}"
                     CommandParameter="TimerTitle" />
-          <MenuItem Header="Time left plus timer title"
+          <MenuItem Header="{x:Static local:ApplicationStrings.WindowTitleTimeLeftPlusTimerTitle}"
                     ToggleType="Radio"
                     GroupName="WindowTitleMode"
                     IsChecked="{Binding IsTimeLeftPlusTimerTitleModeSelected, Mode=OneWay}"
                     Command="{Binding SelectWindowTitleModeCommand}"
                     CommandParameter="TimeLeftPlusTimerTitle" />
-          <MenuItem Header="Time elapsed plus timer title"
+          <MenuItem Header="{x:Static local:ApplicationStrings.WindowTitleTimeElapsedPlusTimerTitle}"
                     ToggleType="Radio"
                     GroupName="WindowTitleMode"
                     IsChecked="{Binding IsTimeElapsedPlusTimerTitleModeSelected, Mode=OneWay}"
                     Command="{Binding SelectWindowTitleModeCommand}"
                     CommandParameter="TimeElapsedPlusTimerTitle" />
-          <MenuItem Header="Timer title plus time left"
+          <MenuItem Header="{x:Static local:ApplicationStrings.WindowTitleTimerTitlePlusTimeLeft}"
                     ToggleType="Radio"
                     GroupName="WindowTitleMode"
                     IsChecked="{Binding IsTimerTitlePlusTimeLeftModeSelected, Mode=OneWay}"
                     Command="{Binding SelectWindowTitleModeCommand}"
                     CommandParameter="TimerTitlePlusTimeLeft" />
-          <MenuItem Header="Timer title plus time elapsed"
+          <MenuItem Header="{x:Static local:ApplicationStrings.WindowTitleTimerTitlePlusTimeElapsed}"
                     ToggleType="Radio"
                     GroupName="WindowTitleMode"
                     IsChecked="{Binding IsTimerTitlePlusTimeElapsedModeSelected, Mode=OneWay}"
                     Command="{Binding SelectWindowTitleModeCommand}"
                     CommandParameter="TimerTitlePlusTimeElapsed" />
         </MenuItem>
-        <MenuItem Header="Advanced options">
-          <MenuItem Header="Reverse progress bar"
+        <MenuItem Header="{x:Static local:ApplicationStrings.AdvancedOptionsMenuHeader}">
+          <MenuItem Header="{x:Static local:ApplicationStrings.ContextMenuReverseProgressBar}"
                     ToggleType="CheckBox"
                     IsChecked="{Binding ReverseProgressBar, Mode=OneWay}"
                     Command="{Binding ToggleReverseProgressBarCommand}" />
-          <MenuItem Header="Show time elapsed"
+          <MenuItem Header="{x:Static local:ApplicationStrings.ContextMenuShowTimeElapsed}"
                     ToggleType="CheckBox"
                     IsChecked="{Binding ShowTimeElapsed, Mode=OneWay}"
                     Command="{Binding ToggleShowTimeElapsedCommand}" />
-          <MenuItem Header="Loop timer"
+          <MenuItem Header="{x:Static local:ApplicationStrings.ContextMenuLoopTimer}"
                     ToggleType="CheckBox"
                     IsChecked="{Binding LoopTimer, Mode=OneWay}"
                     Command="{Binding ToggleLoopTimerCommand}" />
-          <MenuItem Header="Loop sound"
+          <MenuItem Header="{x:Static local:ApplicationStrings.ContextMenuLoopSound}"
                     ToggleType="CheckBox"
                     IsChecked="{Binding LoopSound, Mode=OneWay}"
                     Command="{Binding ToggleLoopSoundCommand}" />
-          <MenuItem Header="Close when expired"
+          <MenuItem Header="{x:Static local:ApplicationStrings.ContextMenuCloseWhenExpired}"
                     ToggleType="CheckBox"
                     IsChecked="{Binding CloseWhenExpired, Mode=OneWay}"
                     Command="{Binding ToggleCloseWhenExpiredCommand}" />
-          <MenuItem Header="Lock interface"
+          <MenuItem Header="{x:Static local:ApplicationStrings.ContextMenuLockInterface}"
                     ToggleType="CheckBox"
                     IsChecked="{Binding LockInterface, Mode=OneWay}"
                     Command="{Binding ToggleLockInterfaceCommand}" />
-          <MenuItem Header="Do not keep computer awake"
+          <MenuItem Header="{x:Static local:ApplicationStrings.ContextMenuDoNotKeepComputerAwake}"
                     ToggleType="CheckBox"
                     IsChecked="{Binding DoNotKeepComputerAwake, Mode=OneWay}"
                     Command="{Binding ToggleDoNotKeepComputerAwakeCommand}" />
-          <MenuItem Header="Shut down when expired"
+          <MenuItem Header="{x:Static local:ApplicationStrings.ContextMenuShutDownWhenExpired}"
                     ToggleType="CheckBox"
                     IsChecked="{Binding ShutDownWhenExpired, Mode=OneWay}"
                     IsEnabled="{Binding IsShutdownSupported}"
                     Command="{Binding ToggleShutDownWhenExpiredCommand}" />
-          <MenuItem Header="Restore active session on startup"
+          <MenuItem Header="{x:Static local:ApplicationStrings.ContextMenuRestoreActiveSessionOnStartup}"
                     ToggleType="CheckBox"
                     IsChecked="{Binding RestoreActiveSessionOnStartup, Mode=OneWay}"
                     Command="{Binding ToggleRestoreActiveSessionOnStartupCommand}" />
-          <MenuItem Header="Open saved timers on startup"
+          <MenuItem Header="{x:Static local:ApplicationStrings.ContextMenuOpenSavedTimersOnStartup}"
                     ToggleType="CheckBox"
                     IsChecked="{Binding OpenSavedTimersOnStartup, Mode=OneWay}"
                     Command="{Binding ToggleOpenSavedTimersOnStartupCommand}" />
         </MenuItem>
         <MenuItem x:Name="FullScreenMenuItem"
-                  Header="Full screen"
+                  Header="{x:Static local:ApplicationStrings.ContextMenuFullScreen}"
                   ToggleType="CheckBox"
                   Click="FullScreenMenuItemClick" />
         <Separator />
-        <MenuItem Header="Hide to notification area"
+        <MenuItem Header="{x:Static local:ApplicationStrings.ContextMenuHideToNotificationArea}"
                   IsEnabled="{Binding CanHideToNotificationArea}"
                   Command="{Binding HideToNotificationAreaCommand}" />
         <Separator />
-        <MenuItem Header="About Hourglass"
+        <MenuItem Header="{x:Static local:ApplicationStrings.AboutMenuHeader}"
                   Click="AboutMenuItemClick" />
-        <MenuItem Header="Exit"
+        <MenuItem Header="{x:Static local:ApplicationStrings.CommandExit}"
                   Click="ExitMenuItemClick" />
       </ContextMenu>
     </Grid.ContextMenu>
@@ -426,10 +426,10 @@
                   Spacing="4">
         <local:ResponsiveTextBox x:Name="TimerTitleTextBox"
                                  Classes="titleInput"
-                                 AutomationProperties.Name="Timer title"
-                                 AutomationProperties.HelpText="Optional title for this timer."
+                                 AutomationProperties.Name="{x:Static local:ApplicationStrings.TimerAutomationTitle}"
+                                 AutomationProperties.HelpText="{x:Static local:ApplicationStrings.TimerAutomationTitleHelp}"
                                  Text="{Binding TimerTitle, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                 PlaceholderText="Click to enter title"
+                                 PlaceholderText="{x:Static local:ApplicationStrings.TimerTitlePlaceholder}"
                                  MinFontSize="8"
                                  MaxFontSize="12"
                                  GotFocus="TimerTitleTextBoxGotFocus" />
@@ -438,11 +438,11 @@
               MinHeight="42">
           <local:ResponsiveTextBox x:Name="TimerInputTextBox"
                                    Classes="timerInput"
-                                   AutomationProperties.Name="Timer input"
+                                   AutomationProperties.Name="{x:Static local:ApplicationStrings.TimerAutomationInput}"
                                    AutomationProperties.HelpText="{Binding TimerInputHelpText, Mode=OneWay}"
                                    Text="{Binding TimerInput, Mode=TwoWay}"
                                    IsVisible="{Binding IsTimerInputVisible}"
-                                   PlaceholderText="5 minutes"
+                                   PlaceholderText="{x:Static local:ApplicationStrings.TimerInputDefault}"
                                    MinFontSize="8"
                                    MaxFontSize="18">
             <local:ResponsiveTextBox.KeyBindings>
@@ -455,8 +455,8 @@
 
           <local:ResponsiveTextBox x:Name="RemainingTimeTextBox"
                                    Classes="timerInput"
-                                   AutomationProperties.Name="Remaining time"
-                                   AutomationProperties.HelpText="Shows the active timer time. Focus to edit the timer."
+                                   AutomationProperties.Name="{x:Static local:ApplicationStrings.TimerAutomationRemainingTime}"
+                                   AutomationProperties.HelpText="{x:Static local:ApplicationStrings.TimerAutomationRemainingHelp}"
                                    Text="{Binding RemainingTime, Mode=OneWay}"
                                    IsReadOnly="True"
                                    IsVisible="{Binding IsRemainingTimeVisible}"
@@ -468,8 +468,8 @@
 
           <local:ResponsiveTextBox x:Name="CompletionTextBox"
                                    Classes="timerInput"
-                                   AutomationProperties.Name="Timer status"
-                                   AutomationProperties.HelpText="Shows completion or validation status. Focus to dismiss completion."
+                                   AutomationProperties.Name="{x:Static local:ApplicationStrings.TimerAutomationStatus}"
+                                   AutomationProperties.HelpText="{x:Static local:ApplicationStrings.TimerAutomationCompletionHelp}"
                                    Text="{Binding StatusText, Mode=OneWay}"
                                    IsReadOnly="True"
                                    IsVisible="{Binding IsCompletionTextVisible}"
@@ -496,38 +496,38 @@
                     Spacing="0">
           <Button x:Name="StartButton"
                   Classes="textCommand"
-                  AutomationProperties.Name="Start timer"
-                  Content="Start"
+                  AutomationProperties.Name="{x:Static local:ApplicationStrings.TimerAutomationStart}"
+                  Content="{x:Static local:ApplicationStrings.CommandStart}"
                   Command="{Binding StartCommand}"
                   IsVisible="{Binding IsStartVisible}" />
           <Button x:Name="PauseButton"
                   Classes="textCommand"
-                  AutomationProperties.Name="Pause timer"
-                  Content="Pause"
+                  AutomationProperties.Name="{x:Static local:ApplicationStrings.TimerAutomationPause}"
+                  Content="{x:Static local:ApplicationStrings.CommandPause}"
                   Command="{Binding PauseResumeCommand}"
                   IsVisible="{Binding IsPauseVisible}" />
           <Button x:Name="ResumeButton"
                   Classes="textCommand"
-                  AutomationProperties.Name="Resume timer"
-                  Content="Resume"
+                  AutomationProperties.Name="{x:Static local:ApplicationStrings.TimerAutomationResume}"
+                  Content="{x:Static local:ApplicationStrings.CommandResume}"
                   Command="{Binding PauseResumeCommand}"
                   IsVisible="{Binding IsResumeVisible}" />
           <Button x:Name="StopButton"
                   Classes="textCommand"
-                  AutomationProperties.Name="Stop timer"
-                  Content="Stop"
+                  AutomationProperties.Name="{x:Static local:ApplicationStrings.TimerAutomationStop}"
+                  Content="{x:Static local:ApplicationStrings.CommandReset}"
                   Command="{Binding ResetCommand}"
                   IsVisible="{Binding IsStopVisible}" />
           <Button x:Name="RestartButton"
                   Classes="textCommand"
-                  AutomationProperties.Name="Restart timer"
-                  Content="Restart"
+                  AutomationProperties.Name="{x:Static local:ApplicationStrings.TimerAutomationRestart}"
+                  Content="{x:Static local:ApplicationStrings.CommandRestart}"
                   Command="{Binding RestartCommand}"
                   IsVisible="{Binding IsRestartVisible}" />
           <Button x:Name="CancelButton"
                   Classes="textCommand"
-                  AutomationProperties.Name="Cancel timer edit"
-                  Content="Cancel"
+                  AutomationProperties.Name="{x:Static local:ApplicationStrings.TimerAutomationCancel}"
+                  Content="{x:Static local:ApplicationStrings.CommandCancel}"
                   Command="{Binding CancelEditCommand}"
                   IsVisible="{Binding IsCancelVisible}" />
         </StackPanel>
