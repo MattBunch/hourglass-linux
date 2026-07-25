@@ -11,6 +11,7 @@
   <Grid Margin="20"
         RowDefinitions="*,Auto">
     <TextBlock x:Name="MessageText"
+               AutomationProperties.Name="{Binding Text, RelativeSource={RelativeSource Self}}"
                TextWrapping="Wrap"
                VerticalAlignment="Center" />
     <StackPanel Grid.Row="1"
@@ -18,9 +19,11 @@
                 HorizontalAlignment="Right"
                 Spacing="8">
       <Button Content="Cancel"
+              AutomationProperties.Name="Cancel delete custom theme"
               IsCancel="True"
               Click="CancelButtonClick" />
       <Button Content="Delete"
+              AutomationProperties.Name="Delete custom theme"
               IsDefault="True"
               Click="DeleteButtonClick" />
     </StackPanel>

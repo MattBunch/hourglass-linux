@@ -426,6 +426,8 @@
                   Spacing="4">
         <local:ResponsiveTextBox x:Name="TimerTitleTextBox"
                                  Classes="titleInput"
+                                 AutomationProperties.Name="Timer title"
+                                 AutomationProperties.HelpText="Optional title for this timer."
                                  Text="{Binding TimerTitle, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                  PlaceholderText="Click to enter title"
                                  MinFontSize="8"
@@ -436,6 +438,8 @@
               MinHeight="42">
           <local:ResponsiveTextBox x:Name="TimerInputTextBox"
                                    Classes="timerInput"
+                                   AutomationProperties.Name="Timer input"
+                                   AutomationProperties.HelpText="{Binding TimerInputHelpText, Mode=OneWay}"
                                    Text="{Binding TimerInput, Mode=TwoWay}"
                                    IsVisible="{Binding IsTimerInputVisible}"
                                    PlaceholderText="5 minutes"
@@ -451,6 +455,8 @@
 
           <local:ResponsiveTextBox x:Name="RemainingTimeTextBox"
                                    Classes="timerInput"
+                                   AutomationProperties.Name="Remaining time"
+                                   AutomationProperties.HelpText="Shows the active timer time. Focus to edit the timer."
                                    Text="{Binding RemainingTime, Mode=OneWay}"
                                    IsReadOnly="True"
                                    IsVisible="{Binding IsRemainingTimeVisible}"
@@ -462,6 +468,8 @@
 
           <local:ResponsiveTextBox x:Name="CompletionTextBox"
                                    Classes="timerInput"
+                                   AutomationProperties.Name="Timer status"
+                                   AutomationProperties.HelpText="Shows completion or validation status. Focus to dismiss completion."
                                    Text="{Binding StatusText, Mode=OneWay}"
                                    IsReadOnly="True"
                                    IsVisible="{Binding IsCompletionTextVisible}"
@@ -472,37 +480,53 @@
                                    PointerPressed="CompletionTextBoxPointerPressed" />
         </Grid>
 
+        <TextBlock x:Name="ValidationStatusText"
+                   AutomationProperties.Name="{Binding Text, RelativeSource={RelativeSource Self}}"
+                   AutomationProperties.LiveSetting="Polite"
+                   Text="{Binding StatusText, Mode=OneWay}"
+                   IsVisible="{Binding HasValidationError}"
+                   Foreground="{DynamicResource SystemControlErrorTextForegroundBrush}"
+                   FontSize="12"
+                   HorizontalAlignment="Center"
+                   TextWrapping="Wrap" />
+
         <StackPanel x:Name="CommandPanel"
                     Orientation="Horizontal"
                     HorizontalAlignment="Center"
                     Spacing="0">
           <Button x:Name="StartButton"
                   Classes="textCommand"
+                  AutomationProperties.Name="Start timer"
                   Content="Start"
                   Command="{Binding StartCommand}"
                   IsVisible="{Binding IsStartVisible}" />
           <Button x:Name="PauseButton"
                   Classes="textCommand"
+                  AutomationProperties.Name="Pause timer"
                   Content="Pause"
                   Command="{Binding PauseResumeCommand}"
                   IsVisible="{Binding IsPauseVisible}" />
           <Button x:Name="ResumeButton"
                   Classes="textCommand"
+                  AutomationProperties.Name="Resume timer"
                   Content="Resume"
                   Command="{Binding PauseResumeCommand}"
                   IsVisible="{Binding IsResumeVisible}" />
           <Button x:Name="StopButton"
                   Classes="textCommand"
+                  AutomationProperties.Name="Stop timer"
                   Content="Stop"
                   Command="{Binding ResetCommand}"
                   IsVisible="{Binding IsStopVisible}" />
           <Button x:Name="RestartButton"
                   Classes="textCommand"
+                  AutomationProperties.Name="Restart timer"
                   Content="Restart"
                   Command="{Binding RestartCommand}"
                   IsVisible="{Binding IsRestartVisible}" />
           <Button x:Name="CancelButton"
                   Classes="textCommand"
+                  AutomationProperties.Name="Cancel timer edit"
                   Content="Cancel"
                   Command="{Binding CancelEditCommand}"
                   IsVisible="{Binding IsCancelVisible}" />

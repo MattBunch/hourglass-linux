@@ -15,6 +15,7 @@
     <StackPanel Orientation="Horizontal"
                 Spacing="14">
       <Image Source="/Assets/hourglass.png"
+             AutomationProperties.Name="Hourglass application icon"
              Width="56"
              Height="56"
              VerticalAlignment="Top" />
@@ -75,15 +76,20 @@
 
         <StackPanel Spacing="6">
           <Button Content="GitHub Repository"
+                  AutomationProperties.Name="Open GitHub repository"
                   HorizontalAlignment="Left"
                   Click="RepositoryButtonClick" />
           <Button Content="Developer Website"
+                  AutomationProperties.Name="Open developer website"
                   HorizontalAlignment="Left"
                   Click="DeveloperWebsiteButtonClick" />
           <Button Content="Original Hourglass Project"
+                  AutomationProperties.Name="Open original Hourglass project"
                   HorizontalAlignment="Left"
                   Click="OriginalProjectButtonClick" />
           <TextBlock x:Name="LinkStatusText"
+                     AutomationProperties.Name="{Binding Text, RelativeSource={RelativeSource Self}}"
+                     AutomationProperties.LiveSetting="Polite"
                      Foreground="{DynamicResource ThemeForegroundLowBrush}"
                      TextWrapping="Wrap" />
         </StackPanel>
@@ -100,13 +106,17 @@
                   VerticalAlignment="Center"
                   Spacing="10">
         <Button Content="Copy build information"
+                AutomationProperties.Name="Copy build information"
                 Click="CopyBuildInformationButtonClick" />
         <TextBlock x:Name="CopyStatusText"
+                   AutomationProperties.Name="{Binding Text, RelativeSource={RelativeSource Self}}"
+                   AutomationProperties.LiveSetting="Polite"
                    VerticalAlignment="Center"
                    TextWrapping="Wrap" />
       </StackPanel>
       <Button Grid.Column="1"
               Content="Close"
+              AutomationProperties.Name="Close About Hourglass"
               IsCancel="True"
               Click="CloseButtonClick" />
     </Grid>
