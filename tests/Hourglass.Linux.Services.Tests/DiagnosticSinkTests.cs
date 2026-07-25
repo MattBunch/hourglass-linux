@@ -6,7 +6,7 @@ using Xunit;
 public sealed class DiagnosticSinkTests
 {
     [Fact]
-    public void DeduplicatingSinkEmitsOnlyFirstMatchingEvent()
+    public void DeduplicatingSinkEmitsOnlyFirstIdenticalEvent()
     {
         var inner = new RecordingDiagnosticSink();
         var sink = new DeduplicatingDiagnosticSink(inner);
@@ -19,10 +19,34 @@ public sealed class DiagnosticSinkTests
             "Audio player failed.");
 
         sink.Record(diagnosticEvent);
-        sink.Record(diagnosticEvent with { Message = "Second failure." });
+        sink.Record(diagnosticEvent);
 
         DiagnosticEvent recorded = Assert.Single(inner.Events);
         Assert.Equal("Audio player failed.", recorded.Message);
+    }
+
+    [Fact]
+    public void DeduplicatingSinkPreservesDistinctFailureMessages()
+    {
+        var inner = new RecordingDiagnosticSink();
+        var sink = new DeduplicatingDiagnosticSink(inner);
+
+        sink.Record(new DiagnosticEvent(
+            DiagnosticSeverity.Warning,
+            DiagnosticFailureClass.BestEffort,
+            "audio-alerts",
+            "play",
+            "pw-play",
+            "Audio player exited with code 1."));
+        sink.Record(new DiagnosticEvent(
+            DiagnosticSeverity.Warning,
+            DiagnosticFailureClass.BestEffort,
+            "audio-alerts",
+            "play",
+            "pw-play",
+            "Audio player exited with code 127."));
+
+        Assert.Equal(2, inner.Events.Count);
     }
 
     [Fact]

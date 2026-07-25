@@ -64,7 +64,10 @@ public sealed class DeduplicatingDiagnosticSink(IDiagnosticSink inner) : IDiagno
             diagnosticEvent.FailureClass,
             diagnosticEvent.Category,
             diagnosticEvent.Operation,
-            diagnosticEvent.Backend);
+            diagnosticEvent.Backend,
+            diagnosticEvent.Message,
+            diagnosticEvent.Exception?.GetType().FullName ?? string.Empty,
+            diagnosticEvent.Exception?.Message ?? string.Empty);
 
         lock (this.gate)
         {
@@ -82,7 +85,10 @@ public sealed class DeduplicatingDiagnosticSink(IDiagnosticSink inner) : IDiagno
         DiagnosticFailureClass FailureClass,
         string Category,
         string Operation,
-        string Backend);
+        string Backend,
+        string Message,
+        string ExceptionType,
+        string ExceptionMessage);
 }
 
 public static class DiagnosticSinkFactory

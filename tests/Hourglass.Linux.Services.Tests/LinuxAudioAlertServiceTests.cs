@@ -308,6 +308,16 @@ public sealed class LinuxAudioAlertServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task UnsupportedSoundIdThrowsWhenBackendIsMissing()
+    {
+        string soundPath = this.CreateSoundFile();
+        var service = new LinuxAudioAlertService(soundPath, (_, _) => Task.FromResult(0), _ => false);
+
+        await Assert.ThrowsAsync<ArgumentException>(() => service.PlayAlertAsync("resource:Missing beep"));
+        await Assert.ThrowsAsync<ArgumentException>(() => service.PlayAlertLoopingAsync("resource:Missing beep"));
+    }
+
+    [Fact]
     public async Task CancellationIsPropagated()
     {
         string soundPath = this.CreateSoundFile();

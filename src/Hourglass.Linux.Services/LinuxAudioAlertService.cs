@@ -148,6 +148,11 @@ public sealed class LinuxAudioAlertService : IAudioAlertService
             return null;
         }
 
+        if (!this.TryGetSoundPath(soundId, out string? soundPath))
+        {
+            throw new ArgumentException($"Unsupported audio alert sound ID: {soundId}", nameof(soundId));
+        }
+
         if (this.selectedCommand == null)
         {
             this.RecordFailure(
@@ -156,11 +161,6 @@ public sealed class LinuxAudioAlertService : IAudioAlertService
                 "No supported audio player command was available.",
                 null);
             return null;
-        }
-
-        if (!this.TryGetSoundPath(soundId, out string? soundPath))
-        {
-            throw new ArgumentException($"Unsupported audio alert sound ID: {soundId}", nameof(soundId));
         }
 
         if (!File.Exists(soundPath))
