@@ -18,15 +18,15 @@ Do not mark a desktop, package type, tray backend, dock backend, multi-monitor s
 
 | Field | Value |
 | --- | --- |
-| App version | `Not run` |
-| Commit SHA | `Not run` |
-| CI/artifact source | `Not run` |
-| Package type | `Not run` |
-| Tester | `Not run` |
-| Date | `Not run` |
-| Overall result | `Not run` |
-| Notes | No release candidate has been validated from this checklist yet. |
-| Skip reason | Not applicable. |
+| App version | `0.1.0` |
+| Commit SHA | `41be4a1240604076ade5ff864af576dc000890cd` |
+| CI/artifact source | Local publish: `scripts/publish-linux-release.sh --runtime linux-x64 --output /tmp/hourglass-linux-publish`; local AppDir: `packaging/appimage/build-appdir.sh /tmp/hourglass-linux-publish /tmp/hourglass-linux.AppDir`. |
+| Package type | Native publish and AppDir prototype. |
+| Tester | matt |
+| Date | 2026-07-27 |
+| Overall result | `Skipped` |
+| Notes | Native publish and AppDir prototype were built locally and passed static package validation. Bounded desktop launches created `active-sessions.json` under isolated `XDG_CONFIG_HOME` paths. The full interactive desktop smoke workflow was not completed in this unattended validation run, and no final `.AppImage` artifact was produced. |
+| Skip reason | Full interactive desktop smoke coverage requires attended GUI operation in the target desktop session; this run could only collect bounded launch, config-path, artifact-layout, and static validation evidence. |
 
 ## Environment Fields
 
@@ -49,18 +49,18 @@ Run these rows from an installed launcher entry where possible so desktop identi
 
 | Environment | Package type | Result | Notes | Skip reason |
 | --- | --- | --- | --- | --- |
-| Fedora GNOME Wayland | Native publish | `Not run` | Record distro version, GNOME version, display server, dock/panel details, backend selection, and visible behavior. | Not applicable. |
-| Fedora GNOME Wayland | AppImage | `Not run` | Record launcher identity, icon identity, bundled sounds, config/data paths, and single-instance handoff. | Not applicable. |
-| Fedora GNOME X11 where available | Native publish | `Not run` | Record whether X11 is available on the target distro and whether activation/always-on-top behavior differs from Wayland. | Not applicable. |
-| Fedora GNOME X11 where available | AppImage | `Not run` | Record AppImage launcher identity, icon identity, and single-instance behavior under X11. | Not applicable. |
-| KDE Plasma Wayland | Native publish | `Not run` | Record Plasma version, panel/task manager details, status icon visibility, and taskbar progress behavior. | Not applicable. |
-| KDE Plasma Wayland | AppImage | `Not run` | Record AppImage desktop integration, status icon visibility, and taskbar progress behavior. | Not applicable. |
-| KDE Plasma X11 where available | Native publish | `Not run` | Record status icon, taskbar progress, attention, and always-on-top behavior. | Not applicable. |
-| KDE Plasma X11 where available | AppImage | `Not run` | Record AppImage desktop integration, status icon, taskbar progress, and single-instance behavior. | Not applicable. |
-| XFCE X11 | Native publish | `Not run` | Record panel, tray plugin, notification daemon, status icon visibility, and unsupported fallback behavior. | Not applicable. |
-| XFCE X11 | AppImage | `Not run` | Record AppImage desktop integration, status icon, notification, audio, and config path behavior. | Not applicable. |
-| Cinnamon or MATE X11 | Native publish | `Not run` | Record exact desktop, panel, tray/status notifier behavior, notifications, and taskbar progress behavior. | Not applicable. |
-| Cinnamon or MATE X11 | AppImage | `Not run` | Record exact desktop, AppImage integration, status icon, notification, audio, and config path behavior. | Not applicable. |
+| Fedora GNOME Wayland | Native publish | `Skipped` | Fedora Linux 44 Workstation, GNOME Shell 50.3, `XDG_SESSION_TYPE=wayland`, `WAYLAND_DISPLAY=wayland-0`, `XDG_CURRENT_DESKTOP=GNOME`. Artifact `/tmp/hourglass-linux-publish/hourglass-linux` started under a bounded desktop launch outside the Codex filesystem sandbox and created `/tmp/hourglass-linux-smoke-native-config/hourglass-linux/active-sessions.json` with default timer/session state. Bundled sounds were present under `/tmp/hourglass-linux-publish/Assets/Sounds/`. Static package validation passed. Full start, pause, resume, stop, restart, parsing, expiry, notification, sound, always-on-top, completion attention, session inhibition, desktop progress, status icon, clean shutdown, settings persistence, and single-instance handoff were not exercised end to end. GNOME stock taskbar progress and status icon support were not claimed. | Full attended GUI smoke coverage was not available in this validation run; Codex could only perform bounded launch and filesystem/artifact checks. |
+| Fedora GNOME Wayland | AppImage | `Skipped` | No final `.AppImage` artifact exists in this repository output. AppDir prototype `/tmp/hourglass-linux.AppDir/AppRun` started under a bounded desktop launch outside the Codex filesystem sandbox and created `/tmp/hourglass-linux-smoke-appdir-config/hourglass-linux/active-sessions.json`. AppDir layout included `AppRun`, desktop metadata, AppStream metadata, bundled sounds, and root icon links (`hourglass.png`, `hourglass.svg`, `.DirIcon`). Static package validation passed. | Final `.AppImage` artifact not produced in this validation run; current packaging flow produces an AppDir prototype only. |
+| Fedora GNOME X11 where available | Native publish | `Skipped` | No Fedora GNOME X11 session was available from the current desktop session. | Environment not available in this validation run. |
+| Fedora GNOME X11 where available | AppImage | `Skipped` | No Fedora GNOME X11 session was available from the current desktop session, and no final `.AppImage` artifact was produced. | Environment not available in this validation run. |
+| KDE Plasma Wayland | Native publish | `Skipped` | KDE Plasma Wayland was not available on this machine during the validation run. | Environment not available in this validation run. |
+| KDE Plasma Wayland | AppImage | `Skipped` | KDE Plasma Wayland was not available on this machine during the validation run, and no final `.AppImage` artifact was produced. | Environment not available in this validation run. |
+| KDE Plasma X11 where available | Native publish | `Skipped` | KDE Plasma X11 was not available on this machine during the validation run. | Environment not available in this validation run. |
+| KDE Plasma X11 where available | AppImage | `Skipped` | KDE Plasma X11 was not available on this machine during the validation run, and no final `.AppImage` artifact was produced. | Environment not available in this validation run. |
+| XFCE X11 | Native publish | `Skipped` | XFCE X11 was not available on this machine during the validation run. | Environment not available in this validation run. |
+| XFCE X11 | AppImage | `Skipped` | XFCE X11 was not available on this machine during the validation run, and no final `.AppImage` artifact was produced. | Environment not available in this validation run. |
+| Cinnamon or MATE X11 | Native publish | `Skipped` | Cinnamon or MATE X11 was not available on this machine during the validation run. | Environment not available in this validation run. |
+| Cinnamon or MATE X11 | AppImage | `Skipped` | Cinnamon or MATE X11 was not available on this machine during the validation run, and no final `.AppImage` artifact was produced. | Environment not available in this validation run. |
 
 ### Core Smoke Cases
 

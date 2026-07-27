@@ -910,14 +910,19 @@ identifiers remain separate.
 - Title, status, notification, and dialog text remain testable without starting Avalonia.
 - Existing English behavior remains unchanged after extraction.
 
-### Workstream 6: Release Validation Matrix - Checklist implemented; validation runs pending
+### Workstream 6: Release Validation Matrix - Native/AppImage matrix recorded; remaining validation pending
 
 **Goal:** Turn the existing smoke-test notes into a repeatable release-readiness checklist.
 
 **Status:** Checklist implemented in `docs/linux-port/release-validation-checklist.md`.
-Native/AppImage, Flatpak, multi-monitor, and physical wake validation runs are
-still pending and must not be treated as completed until exact validation rows
-record their results.
+The native/AppImage desktop smoke matrix has recorded results or skipped-with-
+reason entries for every seeded row. The local Fedora GNOME Wayland run produced
+native publish and AppDir prototype evidence, but full attended GUI smoke
+coverage was skipped and final `.AppImage` support remains gated by the
+distribution roadmap's Milestone 4 because the current CI/package flow produces
+an AppDir artifact, not a final `.AppImage`. Flatpak, multi-monitor, and
+physical wake validation runs are still pending and must not be treated as
+completed until exact validation rows record their results.
 
 **Implementation plan:**
 
@@ -1010,7 +1015,7 @@ Create one focused issue or Codex task for each of the following rather than att
 12. Implemented: Move timer status, command, dialog, and notification strings behind resources.
 13. Implemented: Add localization-safe formatter tests for title, status, and notification text.
 14. Implemented: Create the release validation checklist document.
-15. Run and record the native/AppImage desktop smoke matrix.
+15. Implemented: Run and record the native/AppImage desktop smoke matrix.
 16. Run and record the Flatpak sandbox smoke matrix.
 17. Run and record multi-monitor placement validation.
 18. Run and record physical wake-from-suspend validation before enabling any user-facing wake option.
