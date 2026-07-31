@@ -47,7 +47,7 @@ public sealed class PackagingMetadataTests
     }
 
     [Fact]
-    public void FlatpakManifestInstallsEveryBundledSound()
+    public void FlatpakManifestInstallsCompletePublishOutputAndLauncher()
     {
         string manifest = File.ReadAllText(FindRepositoryFile($"packaging/flatpak/{AppId}.yml"));
         string[] sounds = Directory.GetFiles(
@@ -59,11 +59,19 @@ public sealed class PackagingMetadataTests
 
         Assert.Contains($"app-id: {AppId}", manifest, StringComparison.Ordinal);
         Assert.Contains($"command: {Command}", manifest, StringComparison.Ordinal);
+        Assert.Contains("--socket=x11", manifest, StringComparison.Ordinal);
+        Assert.DoesNotContain("--socket=wayland", manifest, StringComparison.Ordinal);
+        Assert.DoesNotContain("--socket=fallback-x11", manifest, StringComparison.Ordinal);
+        Assert.DoesNotContain("--talk-name=org.freedesktop.portal.", manifest, StringComparison.Ordinal);
         Assert.Equal(["BeepLoud.wav", "BeepNormal.wav", "BeepQuiet.wav"], sounds);
+        Assert.Contains("install -d /app/bin /app/lib/hourglass-linux", manifest, StringComparison.Ordinal);
+        Assert.Contains("cp -a publish/. /app/lib/hourglass-linux/", manifest, StringComparison.Ordinal);
+        Assert.Contains("cat > /app/bin/hourglass-linux <<'EOF'", manifest, StringComparison.Ordinal);
+        Assert.Contains("exec /app/lib/hourglass-linux/hourglass-linux \"$@\"", manifest, StringComparison.Ordinal);
+        Assert.Contains("chmod +x /app/bin/hourglass-linux", manifest, StringComparison.Ordinal);
         foreach (string sound in sounds)
         {
-            Assert.Contains($"publish/Assets/Sounds/{sound}", manifest, StringComparison.Ordinal);
-            Assert.Contains($"/app/bin/Assets/Sounds/{sound}", manifest, StringComparison.Ordinal);
+            Assert.DoesNotContain($"publish/Assets/Sounds/{sound}", manifest, StringComparison.Ordinal);
         }
     }
 
@@ -95,6 +103,11 @@ public sealed class PackagingMetadataTests
         Assert.Contains("-p:SourceRevisionId=$source_revision", publishScript, StringComparison.Ordinal);
         Assert.Contains("--self-contained true", publishScript, StringComparison.Ordinal);
         Assert.DoesNotContain("cp -a -- \"$build_output/.\"", publishScript, StringComparison.Ordinal);
+        Assert.Contains("require_text \"$flatpak_manifest\" '      - cp -a publish/. /app/lib/hourglass-linux/'", validateScript, StringComparison.Ordinal);
+        Assert.Contains("require_text \"$flatpak_manifest\" '        exec /app/lib/hourglass-linux/hourglass-linux \"$@\"'", validateScript, StringComparison.Ordinal);
+        Assert.Contains("Flatpak manifest should not request Wayland while this Avalonia build requires X11.", validateScript, StringComparison.Ordinal);
+        Assert.Contains("Flatpak manifest should not request portal talk-name access; portals are allowed by default.", validateScript, StringComparison.Ordinal);
+        Assert.DoesNotContain("Flatpak manifest does not install sound asset", validateScript, StringComparison.Ordinal);
         Assert.Contains("desktop-file-validate", validateScript, StringComparison.Ordinal);
         Assert.Contains("appstreamcli validate --no-net", validateScript, StringComparison.Ordinal);
         Assert.Contains("HOURGLASS_REQUIRE_PACKAGE_VALIDATORS", validateScript, StringComparison.Ordinal);

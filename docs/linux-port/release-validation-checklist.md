@@ -19,14 +19,14 @@ Do not mark a desktop, package type, tray backend, dock backend, multi-monitor s
 | Field | Value |
 | --- | --- |
 | App version | `0.1.0` |
-| Commit SHA | `41be4a1240604076ade5ff864af576dc000890cd` |
-| CI/artifact source | Local publish: `scripts/publish-linux-release.sh --runtime linux-x64 --output /tmp/hourglass-linux-publish`; local AppDir: `packaging/appimage/build-appdir.sh /tmp/hourglass-linux-publish /tmp/hourglass-linux.AppDir`. |
-| Package type | Native publish and AppDir prototype. |
+| Commit SHA | Native/AppDir evidence: `41be4a1240604076ade5ff864af576dc000890cd`; Flatpak failed-layout evidence: `a19e5f9088ae87069755d87209afaca0a7e9a3f5`; Flatpak fixed-layout evidence: PR branch `agent/fix-flatpak-manifest-layout`, installed Flatpak commit `f441f0251cc2a1d14319eff79f6e24c361926c3008f7c0348fd0e13666774346`. |
+| CI/artifact source | Local publish: `scripts/publish-linux-release.sh --runtime linux-x64 --output /tmp/hourglass-linux-publish`; local AppDir: `packaging/appimage/build-appdir.sh /tmp/hourglass-linux-publish /tmp/hourglass-linux.AppDir`; failed-layout local Flatpak: `flatpak-builder --user --force-clean --install --install-deps-from=flathub /tmp/hourglass-flatpak-build /tmp/hourglass-flatpak-src.A3luNJ/packaging/flatpak/io.github.MattBunch.Hourglass.yml`; fixed-layout local Flatpak: `scripts/publish-linux-release.sh --runtime linux-x64 --output /tmp/hourglass-linux-publish`, then temp source copy `/tmp/hourglass-flatpak-src-pr.Q1d9xZ` and `flatpak-builder --user --force-clean --install --install-deps-from=flathub /tmp/hourglass-flatpak-build-pr /tmp/hourglass-flatpak-src-pr.Q1d9xZ/packaging/flatpak/io.github.MattBunch.Hourglass.yml`. |
+| Package type | Native publish, AppDir prototype, and Flatpak prototype. |
 | Tester | matt |
-| Date | 2026-07-27 |
+| Date | Native/AppDir evidence: 2026-07-27; Flatpak failed-layout evidence: 2026-07-29; Flatpak fixed-layout evidence: 2026-07-31. |
 | Overall result | `Skipped` |
-| Notes | Native publish and AppDir prototype were built locally and passed static package validation. Bounded desktop launches created `active-sessions.json` under isolated `XDG_CONFIG_HOME` paths. The full interactive desktop smoke workflow was not completed in this unattended validation run, and no final `.AppImage` artifact was produced. |
-| Skip reason | Full interactive desktop smoke coverage requires attended GUI operation in the target desktop session; this run could only collect bounded launch, config-path, artifact-layout, and static validation evidence. |
+| Notes | Native publish and AppDir prototype were built locally and passed static package validation. Bounded desktop launches created `active-sessions.json` under isolated `XDG_CONFIG_HOME` paths. The initial Flatpak prototype built and installed locally, but failed before app startup because `/app/bin/hourglass-linux.dll` was missing from the installed sandbox. The fixed Flatpak manifest installed the complete publish output under `/app/lib/hourglass-linux`, installed a `/app/bin/hourglass-linux` launcher, granted the X11 socket required by the current Avalonia desktop backend, and reached a bounded desktop launch. Flathub `org.flatpak.Builder` provided `flatpak-builder-lint`; after removing unneeded Wayland and portal talk-name permissions, manifest lint still reported `appid-url-not-reachable` because `io.github.MattBunch.Hourglass` maps to `https://github.com/mattbunch/hourglass`, while the source repository is `hourglass-linux`. |
+| Skip reason | Full attended GUI smoke coverage requires attended GUI operation in the target desktop session. |
 
 ## Environment Fields
 
@@ -101,12 +101,12 @@ Run Flatpak rows from the installed Flatpak application, not from an unpackaged 
 
 | Environment | Package type | Result | Notes | Skip reason |
 | --- | --- | --- | --- | --- |
-| Fedora GNOME Wayland | Flatpak | `Not run` | Record sandboxed settings paths, notifications, audio behavior, portals/session inhibition, and single-instance behavior. | Not applicable. |
-| Fedora GNOME X11 where available | Flatpak | `Not run` | Record whether X11 is available and whether sandboxed notifications, audio, and single-instance behavior differ from Wayland. | Not applicable. |
-| KDE Plasma Wayland | Flatpak | `Not run` | Record portal behavior, notifications, audio, status icon behavior, and taskbar progress behavior. | Not applicable. |
-| KDE Plasma X11 where available | Flatpak | `Not run` | Record portal behavior, notifications, audio, status icon behavior, and taskbar progress behavior. | Not applicable. |
-| XFCE X11 | Flatpak | `Not run` | Record notification daemon, audio behavior, status icon support, and unsupported fallback behavior. | Not applicable. |
-| Cinnamon or MATE X11 | Flatpak | `Not run` | Record exact desktop, panel/tray support, notifications, audio, and sandboxed settings paths. | Not applicable. |
+| Fedora GNOME Wayland | Flatpak | `Skipped` | Fedora Linux 44 Workstation, GNOME Shell 50.3, `XDG_SESSION_TYPE=wayland`, `WAYLAND_DISPLAY=wayland-0`, `XDG_CURRENT_DESKTOP=GNOME`. Host tooling included Flatpak 1.18.0 and flatpak-builder 1.4.10. `org.freedesktop.Platform//24.08`, `org.freedesktop.Sdk//24.08`, and Flathub `org.flatpak.Builder` were installed. The fixed Flatpak manifest built and installed as user app `io.github.MattBunch.Hourglass`, version `0.1.0`, runtime `org.freedesktop.Platform/x86_64/24.08`, commit `f441f0251cc2a1d14319eff79f6e24c361926c3008f7c0348fd0e13666774346`. Effective permissions were X11, shared IPC, and notification talk access. `/app/bin/hourglass-linux` was an executable launcher, and the complete publish output was present under `/app/lib/hourglass-linux`, including `hourglass-linux.dll` and `Assets/Sounds/BeepNormal.wav`. A previous fixed-layout build with Wayland plus fallback X11 still failed with `XOpenDisplay failed`; changing the manifest to `--socket=x11` matched the current Avalonia X11 backend and allowed `timeout 12s flatpak run io.github.MattBunch.Hourglass` to stay up until timeout. The bounded launch wrote `/home/matt/.var/app/io.github.MattBunch.Hourglass/config/hourglass-linux/active-sessions.json`. `flatpak-builder-lint manifest` reported only `appid-url-not-reachable` after permission cleanup; this is a Flathub app-ID/source-repository naming issue, not a local startup failure. The log only contained Mesa DRI diagnostics. Core timer workflow, duration and absolute-time parsing, expiry notification, bundled sound playback, completion attention, session inhibition, single-instance handoff, and desktop integration behavior were not exercised end to end. | Full attended GUI smoke coverage was not available in this validation run; Codex could only perform bounded launch and filesystem/package checks. |
+| Fedora GNOME X11 where available | Flatpak | `Skipped` | No Fedora GNOME X11 session was available from the current desktop session. | Environment not available in this validation run. |
+| KDE Plasma Wayland | Flatpak | `Skipped` | KDE Plasma Wayland was not available on this machine during the validation run. | Environment not available in this validation run. |
+| KDE Plasma X11 where available | Flatpak | `Skipped` | KDE Plasma X11 was not available on this machine during the validation run. | Environment not available in this validation run. |
+| XFCE X11 | Flatpak | `Skipped` | XFCE X11 was not available on this machine during the validation run. | Environment not available in this validation run. |
+| Cinnamon or MATE X11 | Flatpak | `Skipped` | Cinnamon or MATE X11 was not available on this machine during the validation run. | Environment not available in this validation run. |
 
 For each Flatpak row, validate the core smoke cases plus:
 
