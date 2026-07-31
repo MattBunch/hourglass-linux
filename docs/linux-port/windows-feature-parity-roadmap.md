@@ -910,19 +910,30 @@ identifiers remain separate.
 - Title, status, notification, and dialog text remain testable without starting Avalonia.
 - Existing English behavior remains unchanged after extraction.
 
-### Workstream 6: Release Validation Matrix - Native/AppImage matrix recorded; remaining validation pending
+### Workstream 6: Release Validation Matrix - Native/AppImage and Flatpak matrices recorded; remaining validation pending
 
 **Goal:** Turn the existing smoke-test notes into a repeatable release-readiness checklist.
 
 **Status:** Checklist implemented in `docs/linux-port/release-validation-checklist.md`.
-The native/AppImage desktop smoke matrix has recorded results or skipped-with-
-reason entries for every seeded row. The local Fedora GNOME Wayland run produced
-native publish and AppDir prototype evidence, but full attended GUI smoke
-coverage was skipped and final `.AppImage` support remains gated by the
-distribution roadmap's Milestone 4 because the current CI/package flow produces
-an AppDir artifact, not a final `.AppImage`. Flatpak, multi-monitor, and
-physical wake validation runs are still pending and must not be treated as
-completed until exact validation rows record their results.
+The native/AppImage and Flatpak desktop smoke matrices have recorded results or
+skipped-with-reason entries for every seeded row. The local Fedora GNOME Wayland
+native/AppDir run produced native publish and AppDir prototype evidence, but
+full attended GUI smoke coverage was skipped and final `.AppImage` support
+remains gated by the distribution roadmap's Milestone 4 because the current
+CI/package flow produces an AppDir artifact, not a final `.AppImage`. The local
+Fedora GNOME Wayland Flatpak prototype initially built and installed but failed
+to launch because the manifest installed only the apphost plus selected assets
+instead of the full publish output required by the runtime-managed app. The
+manifest now installs the complete publish output under `/app/lib/hourglass-linux`,
+adds a `/app/bin/hourglass-linux` launcher, and grants the X11 socket required
+by the current Avalonia desktop backend; the fixed prototype built, installed,
+and reached a bounded desktop launch. Flathub `org.flatpak.Builder` supplied
+`flatpak-builder-lint`; after permission cleanup, manifest lint still reports
+`appid-url-not-reachable` because the current app ID maps to a GitHub repository
+name that differs from `hourglass-linux`. Full attended Flatpak smoke coverage,
+multi-monitor validation, and physical wake validation runs are still pending
+and must not be treated as completed until exact validation rows record their
+results.
 
 **Implementation plan:**
 
@@ -1016,7 +1027,7 @@ Create one focused issue or Codex task for each of the following rather than att
 13. Implemented: Add localization-safe formatter tests for title, status, and notification text.
 14. Implemented: Create the release validation checklist document.
 15. Implemented: Run and record the native/AppImage desktop smoke matrix.
-16. Run and record the Flatpak sandbox smoke matrix.
+16. Implemented: Run and record the Flatpak sandbox smoke matrix.
 17. Run and record multi-monitor placement validation.
 18. Run and record physical wake-from-suspend validation before enabling any user-facing wake option.
 

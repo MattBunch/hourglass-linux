@@ -4,19 +4,21 @@ runtime-version: "24.08"
 sdk: org.freedesktop.Sdk
 command: hourglass-linux
 finish-args:
-  - --socket=wayland
-  - --socket=fallback-x11
+  - --socket=x11
   - --share=ipc
   - --talk-name=org.freedesktop.Notifications
-  - --talk-name=org.freedesktop.portal.Desktop
 modules:
   - name: hourglass-linux
     buildsystem: simple
     build-commands:
-      - install -Dm755 publish/hourglass-linux /app/bin/hourglass-linux
-      - install -Dm644 publish/Assets/Sounds/BeepLoud.wav /app/bin/Assets/Sounds/BeepLoud.wav
-      - install -Dm644 publish/Assets/Sounds/BeepNormal.wav /app/bin/Assets/Sounds/BeepNormal.wav
-      - install -Dm644 publish/Assets/Sounds/BeepQuiet.wav /app/bin/Assets/Sounds/BeepQuiet.wav
+      - install -d /app/bin /app/lib/hourglass-linux
+      - cp -a publish/. /app/lib/hourglass-linux/
+      - |
+        cat > /app/bin/hourglass-linux <<'EOF'
+        #!/usr/bin/env bash
+        exec /app/lib/hourglass-linux/hourglass-linux "$@"
+        EOF
+      - chmod +x /app/bin/hourglass-linux
       - install -Dm644 packaging/linux/io.github.MattBunch.Hourglass.desktop /app/share/applications/io.github.MattBunch.Hourglass.desktop
       - sed -i 's/^Icon=hourglass$/Icon=io.github.MattBunch.Hourglass/' /app/share/applications/io.github.MattBunch.Hourglass.desktop
       - install -Dm644 src/Hourglass.Linux.Avalonia/Assets/hourglass.png /app/share/icons/hicolor/256x256/apps/io.github.MattBunch.Hourglass.png

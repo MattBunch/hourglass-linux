@@ -52,14 +52,23 @@ require_text "$desktop_file" 'Categories=Utility;'
 
 require_text "$flatpak_manifest" "app-id: $app_id"
 require_text "$flatpak_manifest" 'command: hourglass-linux'
+require_text "$flatpak_manifest" '  - --socket=x11'
+if grep -Fqx -- '  - --socket=wayland' "$flatpak_manifest"; then
+  printf 'Flatpak manifest should not request Wayland while this Avalonia build requires X11.\n' >&2
+  exit 1
+fi
+if grep -Fq -- '--talk-name=org.freedesktop.portal.' "$flatpak_manifest"; then
+  printf 'Flatpak manifest should not request portal talk-name access; portals are allowed by default.\n' >&2
+  exit 1
+fi
+require_text "$flatpak_manifest" '      - install -d /app/bin /app/lib/hourglass-linux'
+require_text "$flatpak_manifest" '      - cp -a publish/. /app/lib/hourglass-linux/'
+require_text "$flatpak_manifest" '        exec /app/lib/hourglass-linux/hourglass-linux "$@"'
+require_text "$flatpak_manifest" '      - chmod +x /app/bin/hourglass-linux'
 
 while IFS= read -r -d '' sound; do
   relative_sound=${sound#"$repo_root/src/Hourglass.Linux.Avalonia/"}
   require_file "$publish_dir/$relative_sound"
-  if ! grep -Fq -- "publish/$relative_sound" "$flatpak_manifest"; then
-    printf 'Flatpak manifest does not install sound asset: %s\n' "$relative_sound" >&2
-    exit 1
-  fi
 done < <(find "$repo_root/src/Hourglass.Linux.Avalonia/Assets/Sounds" -maxdepth 1 -type f -name '*.wav' -print0 | sort -z)
 
 require_executable "$appdir/AppRun"
