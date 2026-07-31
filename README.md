@@ -4,6 +4,8 @@ The simple countdown timer originally for Windows, now on Linux.
 
 Visit [chris.dziemborowicz.com](http://chris.dziemborowicz.com/apps/hourglass/) to learn more about the original project.
 
+![Hourglass Linux feature demo](docs/assets/demo.gif)
+
 ## Requirements
 
 - .NET 10 SDK. This repository is pinned to SDK `10.0.108` in `global.json` with `rollForward` set to `latestFeature`.
@@ -36,6 +38,32 @@ attribution, MIT license information, and copyable diagnostic metadata for suppo
 Settings are stored in `hourglass-linux/app.json` under `$XDG_CONFIG_HOME`, or under `~/.config` when
 `XDG_CONFIG_HOME` is not set. Always-on-top uses Avalonia's standard `Topmost` window hint; some Wayland
 compositors may ignore that hint.
+
+## Regenerate The README Demo
+
+Requirements:
+
+- .NET 10 SDK.
+- FFmpeg.
+- Normal repository restore dependencies.
+
+Generate the README GIF and MP4:
+
+```bash
+./scripts/record-readme-demo.sh
+```
+
+Advanced direct invocation:
+
+```bash
+dotnet run \
+  --configuration Release \
+  --project tools/Hourglass.DemoRecorder/Hourglass.DemoRecorder.csproj \
+  -- \
+  --scenario readme
+```
+
+The recorder uses Avalonia headless rendering with isolated in-memory platform services. It does not read or modify normal Hourglass settings.
 
 ## Restricted Environments
 

@@ -21,6 +21,12 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{827E0CD3-B72
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Hourglass.Linux.Services.Tests", "tests\Hourglass.Linux.Services.Tests\Hourglass.Linux.Services.Tests.csproj", "{EECDFF19-2AC9-4535-B621-881D0D842732}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tools", "tools", "{07C2787E-EAC7-C090-1BA3-A61EC2A24D84}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Hourglass.DemoRecorder", "tools\Hourglass.DemoRecorder\Hourglass.DemoRecorder.csproj", "{30E16087-34AD-4197-9EE4-5AE858AEEDAD}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Hourglass.DemoRecorder.Tests", "tests\Hourglass.DemoRecorder.Tests\Hourglass.DemoRecorder.Tests.csproj", "{2B010595-E58F-4536-B230-7573C9D39A6E}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -115,6 +121,30 @@ Global
 		{EECDFF19-2AC9-4535-B621-881D0D842732}.Release|x64.Build.0 = Release|Any CPU
 		{EECDFF19-2AC9-4535-B621-881D0D842732}.Release|x86.ActiveCfg = Release|Any CPU
 		{EECDFF19-2AC9-4535-B621-881D0D842732}.Release|x86.Build.0 = Release|Any CPU
+		{30E16087-34AD-4197-9EE4-5AE858AEEDAD}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{30E16087-34AD-4197-9EE4-5AE858AEEDAD}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{30E16087-34AD-4197-9EE4-5AE858AEEDAD}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{30E16087-34AD-4197-9EE4-5AE858AEEDAD}.Debug|x64.Build.0 = Debug|Any CPU
+		{30E16087-34AD-4197-9EE4-5AE858AEEDAD}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{30E16087-34AD-4197-9EE4-5AE858AEEDAD}.Debug|x86.Build.0 = Debug|Any CPU
+		{30E16087-34AD-4197-9EE4-5AE858AEEDAD}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{30E16087-34AD-4197-9EE4-5AE858AEEDAD}.Release|Any CPU.Build.0 = Release|Any CPU
+		{30E16087-34AD-4197-9EE4-5AE858AEEDAD}.Release|x64.ActiveCfg = Release|Any CPU
+		{30E16087-34AD-4197-9EE4-5AE858AEEDAD}.Release|x64.Build.0 = Release|Any CPU
+		{30E16087-34AD-4197-9EE4-5AE858AEEDAD}.Release|x86.ActiveCfg = Release|Any CPU
+		{30E16087-34AD-4197-9EE4-5AE858AEEDAD}.Release|x86.Build.0 = Release|Any CPU
+		{2B010595-E58F-4536-B230-7573C9D39A6E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2B010595-E58F-4536-B230-7573C9D39A6E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2B010595-E58F-4536-B230-7573C9D39A6E}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{2B010595-E58F-4536-B230-7573C9D39A6E}.Debug|x64.Build.0 = Debug|Any CPU
+		{2B010595-E58F-4536-B230-7573C9D39A6E}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{2B010595-E58F-4536-B230-7573C9D39A6E}.Debug|x86.Build.0 = Debug|Any CPU
+		{2B010595-E58F-4536-B230-7573C9D39A6E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2B010595-E58F-4536-B230-7573C9D39A6E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{2B010595-E58F-4536-B230-7573C9D39A6E}.Release|x64.ActiveCfg = Release|Any CPU
+		{2B010595-E58F-4536-B230-7573C9D39A6E}.Release|x64.Build.0 = Release|Any CPU
+		{2B010595-E58F-4536-B230-7573C9D39A6E}.Release|x86.ActiveCfg = Release|Any CPU
+		{2B010595-E58F-4536-B230-7573C9D39A6E}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -122,5 +152,7 @@ Global
 	GlobalSection(NestedProjects) = preSolution
 		{DF6CB24A-251F-4156-B819-BA2669CD3744} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{EECDFF19-2AC9-4535-B621-881D0D842732} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
+		{30E16087-34AD-4197-9EE4-5AE858AEEDAD} = {07C2787E-EAC7-C090-1BA3-A61EC2A24D84}
+		{2B010595-E58F-4536-B230-7573C9D39A6E} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 	EndGlobalSection
 EndGlobal

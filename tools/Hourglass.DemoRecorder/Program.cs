@@ -1,0 +1,169 @@
+using System.Globalization;
+using Avalonia;
+using Hourglass.DemoRecorder.Scenarios;
+using Hourglass.DemoRecorder.Services;
+
+namespace Hourglass.DemoRecorder;
+
+internal static class Program
+{
+    [STAThread]
+    public static async Task<int> Main(string[] args)
+    {
+        CultureInfo.DefaultThreadCurrentCulture = CultureInfo.GetCultureInfo("en-US");
+        CultureInfo.DefaultThreadCurrentUICulture = CultureInfo.GetCultureInfo("en-US");
+
+        string repositoryRoot = FindRepositoryRoot(AppContext.BaseDirectory);
+        ParseOptionsResult parseResult;
+        try
+        {
+            parseResult = DemoRecorderOptions.Parse(args, repositoryRoot);
+        }
+        catch (ArgumentException exception)
+        {
+            Console.Error.WriteLine(exception.Message);
+            return 2;
+        }
+
+        if (parseResult.IsHelp)
+        {
+            Console.WriteLine(parseResult.Message);
+            return 0;
+        }
+
+        if (!parseResult.IsSuccess || parseResult.Options == null)
+        {
+            Console.Error.WriteLine(parseResult.Message);
+            return 2;
+        }
+
+        DemoRecorderOptions options = parseResult.Options;
+        IDemoScenario? scenario = CreateScenario(options.Scenario);
+        if (scenario == null)
+        {
+            Console.Error.WriteLine($"Unknown demo scenario '{options.Scenario}'. Available scenarios: readme.");
+            return 2;
+        }
+
+        if (!options.SkipGif || !options.SkipVideo)
+        {
+            if (!IsExecutableAvailable(options.FfmpegCommand))
+            {
+                Console.Error.WriteLine("FFmpeg was not found on PATH. Install ffmpeg and rerun ./scripts/record-readme-demo.sh.");
+                return 1;
+            }
+        }
+
+        try
+        {
+            if (Directory.Exists(options.FramesDirectory))
+            {
+                Directory.Delete(options.FramesDirectory, recursive: true);
+            }
+
+            var frameRecorder = new FrameRecorder(options.FramesDirectory, options.Width, options.Height);
+            frameRecorder.PrepareEmptyDirectory();
+            DemoAppBuilder.BuildAvaloniaApp().SetupWithoutStarting();
+
+            var services = new DemoPlatformServices();
+            await using (DemoContext context = await DemoContext.CreateAsync(options, frameRecorder, services).ConfigureAwait(true))
+            {
+                var runner = new DemoScenarioRunner(scenario, context);
+                Console.WriteLine("Rendering README demo frames...");
+                int frameCount = await runner.RunAsync().ConfigureAwait(true);
+                Console.WriteLine($"Rendered {frameCount} frames.");
+            }
+
+            var encoder = new FfmpegEncoder();
+            string? gifPath = options.SkipGif ? null : options.GifPath;
+            string? videoPath = options.SkipVideo ? null : options.VideoPath;
+            if (gifPath != null)
+            {
+                Console.WriteLine($"Encoding {Path.GetRelativePath(repositoryRoot, gifPath)}...");
+            }
+
+            if (videoPath != null)
+            {
+                Console.WriteLine($"Encoding {Path.GetRelativePath(repositoryRoot, videoPath)}...");
+            }
+
+            await encoder.EncodeAsync(
+                options.FfmpegCommand,
+                frameRecorder.InputPattern,
+                options.FrameRate,
+                options.Width,
+                gifPath,
+                videoPath).ConfigureAwait(false);
+
+            Console.WriteLine("Created:");
+            if (gifPath != null)
+            {
+                Console.WriteLine($"  {Path.GetRelativePath(repositoryRoot, gifPath)}");
+            }
+
+            if (videoPath != null)
+            {
+                Console.WriteLine($"  {Path.GetRelativePath(repositoryRoot, videoPath)}");
+            }
+
+            if (!options.KeepFrames && Directory.Exists(options.FramesDirectory))
+            {
+                Directory.Delete(options.FramesDirectory, recursive: true);
+            }
+
+            return 0;
+        }
+        catch (OperationCanceledException)
+        {
+            Console.Error.WriteLine("Recording was canceled.");
+            return 130;
+        }
+        catch (Exception exception)
+        {
+            Console.Error.WriteLine(exception.Message);
+            return 1;
+        }
+    }
+
+    private static IDemoScenario? CreateScenario(string name)
+    {
+        return StringComparer.OrdinalIgnoreCase.Equals(name, DemoRecorderOptions.DefaultScenario)
+            ? new ReadmeDemoScenario()
+            : null;
+    }
+
+    private static string FindRepositoryRoot(string startDirectory)
+    {
+        var directory = new DirectoryInfo(startDirectory);
+        while (directory != null)
+        {
+            if (File.Exists(Path.Combine(directory.FullName, "Hourglass.Linux.sln")))
+            {
+                return directory.FullName;
+            }
+
+            directory = directory.Parent;
+        }
+
+        return Directory.GetCurrentDirectory();
+    }
+
+    private static bool IsExecutableAvailable(string command)
+    {
+        if (Path.IsPathRooted(command) || command.Contains(Path.DirectorySeparatorChar, StringComparison.Ordinal))
+        {
+            return File.Exists(command);
+        }
+
+        string? path = Environment.GetEnvironmentVariable("PATH");
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return false;
+        }
+
+        return path
+            .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries)
+            .Select(directory => Path.Combine(directory, command))
+            .Any(File.Exists);
+    }
+}
