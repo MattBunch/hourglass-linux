@@ -208,14 +208,24 @@ public sealed class DemoContext : IAsyncDisposable
             return;
         }
 
-        this.disposed = true;
         if (!Dispatcher.UIThread.CheckAccess())
         {
-            await Dispatcher.UIThread.InvokeAsync(async () => await this.DisposeAsync()).ConfigureAwait(true);
+            await Dispatcher.UIThread.InvokeAsync(this.DisposeOnUiThread).GetTask().ConfigureAwait(true);
             return;
         }
 
-        await this.FlushAsync(CancellationToken.None).ConfigureAwait(true);
+        this.DisposeOnUiThread();
+    }
+
+    private void DisposeOnUiThread()
+    {
+        if (this.disposed)
+        {
+            return;
+        }
+
+        this.disposed = true;
+        this.FlushAsync(CancellationToken.None).GetAwaiter().GetResult();
         this.aboutWindow?.Close();
         this.Window.Close();
         this.viewModel.Dispose();

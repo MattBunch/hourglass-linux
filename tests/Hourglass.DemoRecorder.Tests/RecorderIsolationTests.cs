@@ -41,4 +41,29 @@ public sealed class RecorderIsolationTests
             }
         }
     }
+
+    [Fact]
+    public void DemoContextDefersDisposedFlagUntilUiThreadCleanup()
+    {
+        string sourcePath = Path.GetFullPath(Path.Combine(
+            AppContext.BaseDirectory,
+            "..",
+            "..",
+            "..",
+            "..",
+            "..",
+            "tools",
+            "Hourglass.DemoRecorder",
+            "DemoContext.cs"));
+        string source = File.ReadAllText(sourcePath);
+
+        int dispatchBranchIndex = source.IndexOf("if (!Dispatcher.UIThread.CheckAccess())", StringComparison.Ordinal);
+        int firstDisposedAssignmentIndex = source.IndexOf("this.disposed = true;", StringComparison.Ordinal);
+        int cleanupMethodIndex = source.IndexOf("private void DisposeOnUiThread()", StringComparison.Ordinal);
+
+        Assert.True(dispatchBranchIndex >= 0);
+        Assert.True(cleanupMethodIndex >= 0);
+        Assert.True(firstDisposedAssignmentIndex > cleanupMethodIndex);
+        Assert.True(dispatchBranchIndex < cleanupMethodIndex);
+    }
 }

@@ -21,11 +21,8 @@ public sealed class HeadlessSmokeTests : IDisposable
         recorder.PrepareEmptyDirectory();
         await using DemoContext context = await DemoContext.CreateAsync(options, recorder, new DemoPlatformServices());
 
-        await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(async () =>
-        {
-            await context.ShowWindowAsync();
-            await context.CaptureFrameAsync();
-        });
+        await context.ShowWindowAsync();
+        await context.CaptureFrameAsync();
 
         string framePath = Path.Combine(options.FramesDirectory, "frame-00000.png");
         var fileInfo = new FileInfo(framePath);

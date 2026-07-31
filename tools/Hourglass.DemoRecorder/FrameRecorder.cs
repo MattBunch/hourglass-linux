@@ -55,6 +55,23 @@ public sealed class FrameRecorder
         }
     }
 
+    public void CleanupRecordedFrames()
+    {
+        for (int index = FirstFrameIndex; index < this.nextFrameIndex; index++)
+        {
+            string framePath = Path.Combine(this.framesDirectory, GetFrameFileName(index));
+            if (File.Exists(framePath))
+            {
+                File.Delete(framePath);
+            }
+        }
+
+        if (Directory.Exists(this.framesDirectory) && !Directory.EnumerateFileSystemEntries(this.framesDirectory).Any())
+        {
+            Directory.Delete(this.framesDirectory);
+        }
+    }
+
     public string Capture(Window window)
     {
         ArgumentNullException.ThrowIfNull(window);

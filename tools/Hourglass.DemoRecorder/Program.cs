@@ -54,14 +54,12 @@ internal static class Program
             }
         }
 
+        FrameRecorder? frameRecorder = null;
+        int exitCode;
         try
         {
-            if (Directory.Exists(options.FramesDirectory))
-            {
-                Directory.Delete(options.FramesDirectory, recursive: true);
-            }
-
-            var frameRecorder = new FrameRecorder(options.FramesDirectory, options.Width, options.Height);
+            PrepareFramesDirectoryForRun(repositoryRoot, options);
+            frameRecorder = new FrameRecorder(options.FramesDirectory, options.Width, options.Height);
             frameRecorder.PrepareEmptyDirectory();
             DemoAppBuilder.BuildAvaloniaApp().SetupWithoutStarting();
 
@@ -106,23 +104,43 @@ internal static class Program
                 Console.WriteLine($"  {Path.GetRelativePath(repositoryRoot, videoPath)}");
             }
 
-            if (!options.KeepFrames && Directory.Exists(options.FramesDirectory))
-            {
-                Directory.Delete(options.FramesDirectory, recursive: true);
-            }
-
-            return 0;
+            exitCode = 0;
         }
         catch (OperationCanceledException)
         {
             Console.Error.WriteLine("Recording was canceled.");
-            return 130;
+            exitCode = 130;
         }
         catch (Exception exception)
         {
             Console.Error.WriteLine(exception.Message);
-            return 1;
+            exitCode = 1;
         }
+
+        if (!options.KeepFrames)
+        {
+            CleanupFramesDirectoryForRun(frameRecorder);
+        }
+
+        return exitCode;
+    }
+
+    internal static void PrepareFramesDirectoryForRun(string repositoryRoot, DemoRecorderOptions options)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(repositoryRoot);
+        ArgumentNullException.ThrowIfNull(options);
+
+        string defaultFramesDirectory = DemoRecorderOptions.Defaults(repositoryRoot).FramesDirectory;
+        if (Path.GetFullPath(options.FramesDirectory) == Path.GetFullPath(defaultFramesDirectory)
+            && Directory.Exists(options.FramesDirectory))
+        {
+            Directory.Delete(options.FramesDirectory, recursive: true);
+        }
+    }
+
+    private static void CleanupFramesDirectoryForRun(FrameRecorder? frameRecorder)
+    {
+        frameRecorder?.CleanupRecordedFrames();
     }
 
     private static IDemoScenario? CreateScenario(string name)

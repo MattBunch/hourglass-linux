@@ -26,11 +26,33 @@ public sealed class FrameRecorderTests : IDisposable
     {
         string frames = Path.Combine(this.temporaryDirectory, "frames");
         Directory.CreateDirectory(frames);
-        File.WriteAllText(Path.Combine(frames, "keep.txt"), "do not overwrite");
+        string unrelatedFile = Path.Combine(frames, "keep.txt");
+        File.WriteAllText(unrelatedFile, "do not overwrite");
         var recorder = new FrameRecorder(frames, 960, 540);
 
         InvalidOperationException exception = Assert.Throws<InvalidOperationException>(recorder.PrepareEmptyDirectory);
         Assert.Contains("not empty", exception.Message, StringComparison.Ordinal);
+        Assert.True(File.Exists(unrelatedFile));
+    }
+
+    [Fact]
+    public void ProgramDoesNotClearCustomFramesDirectoryBeforeRun()
+    {
+        string repositoryRoot = this.temporaryDirectory;
+        string frames = Path.Combine(this.temporaryDirectory, "custom frames");
+        Directory.CreateDirectory(frames);
+        string unrelatedFile = Path.Combine(frames, "keep.txt");
+        File.WriteAllText(unrelatedFile, "do not overwrite");
+        DemoRecorderOptions options = DemoRecorderOptions.Defaults(repositoryRoot) with
+        {
+            FramesDirectory = frames
+        };
+
+        Program.PrepareFramesDirectoryForRun(repositoryRoot, options);
+
+        Assert.True(File.Exists(unrelatedFile));
+        var recorder = new FrameRecorder(frames, 960, 540);
+        Assert.Throws<InvalidOperationException>(recorder.PrepareEmptyDirectory);
     }
 
     public void Dispose()
