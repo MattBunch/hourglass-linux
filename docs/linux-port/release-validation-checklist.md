@@ -19,7 +19,7 @@ Do not mark a desktop, package type, tray backend, dock backend, multi-monitor s
 | Field | Value |
 | --- | --- |
 | App version | `0.1.0` |
-| Commit SHA | Native/AppDir evidence: `41be4a1240604076ade5ff864af576dc000890cd`; Flatpak failed-layout evidence: `a19e5f9088ae87069755d87209afaca0a7e9a3f5`; Flatpak fixed-layout evidence: PR branch `agent/fix-flatpak-manifest-layout`, installed Flatpak commit `f441f0251cc2a1d14319eff79f6e24c361926c3008f7c0348fd0e13666774346`. |
+| Commit SHA | Native/AppDir evidence: `41be4a1240604076ade5ff864af576dc000890cd`; Flatpak failed-layout evidence: `a19e5f9088ae87069755d87209afaca0a7e9a3f5`; Flatpak fixed-layout source Git commit: `65ff66f10c5b170822ed3c8d8df578ab809c6141`; installed Flatpak/OSTree commit: `f441f0251cc2a1d14319eff79f6e24c361926c3008f7c0348fd0e13666774346`. |
 | CI/artifact source | Local publish: `scripts/publish-linux-release.sh --runtime linux-x64 --output /tmp/hourglass-linux-publish`; local AppDir: `packaging/appimage/build-appdir.sh /tmp/hourglass-linux-publish /tmp/hourglass-linux.AppDir`; failed-layout local Flatpak: `flatpak-builder --user --force-clean --install --install-deps-from=flathub /tmp/hourglass-flatpak-build /tmp/hourglass-flatpak-src.A3luNJ/packaging/flatpak/io.github.MattBunch.Hourglass.yml`; fixed-layout local Flatpak: `scripts/publish-linux-release.sh --runtime linux-x64 --output /tmp/hourglass-linux-publish`, then temp source copy `/tmp/hourglass-flatpak-src-pr.Q1d9xZ` and `flatpak-builder --user --force-clean --install --install-deps-from=flathub /tmp/hourglass-flatpak-build-pr /tmp/hourglass-flatpak-src-pr.Q1d9xZ/packaging/flatpak/io.github.MattBunch.Hourglass.yml`. |
 | Package type | Native publish, AppDir prototype, and Flatpak prototype. |
 | Tester | matt |
