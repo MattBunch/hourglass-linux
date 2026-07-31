@@ -476,6 +476,37 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
         await this.PrepareCoordinatorCloseOnUiThreadAsync().ConfigureAwait(false);
     }
 
+    internal Task CloseCoordinatedAsync()
+    {
+        if (Dispatcher.UIThread.CheckAccess())
+        {
+            return this.CloseCoordinatedOnUiThreadAsync();
+        }
+
+        var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        Dispatcher.UIThread.Post(async () =>
+        {
+            try
+            {
+                await this.CloseCoordinatedOnUiThreadAsync().ConfigureAwait(true);
+                completion.SetResult();
+            }
+            catch (Exception exception)
+            {
+                completion.SetException(exception);
+            }
+        });
+
+        return completion.Task;
+    }
+
+    private async Task CloseCoordinatedOnUiThreadAsync()
+    {
+        this.Close();
+        await this.closeCoordinator.PendingPreparation.ConfigureAwait(true);
+        Dispatcher.UIThread.RunJobs();
+    }
+
     private Task PrepareCoordinatorCloseOnUiThreadAsync()
     {
         if (Dispatcher.UIThread.CheckAccess())

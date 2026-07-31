@@ -66,4 +66,50 @@ public sealed class RecorderIsolationTests
         Assert.True(firstDisposedAssignmentIndex > cleanupMethodIndex);
         Assert.True(dispatchBranchIndex < cleanupMethodIndex);
     }
+
+    [Fact]
+    public void DemoAboutMetadataIsStableAcrossMachines()
+    {
+        Hourglass.Linux.Avalonia.ApplicationInfo applicationInfo = DemoContext.DemoApplicationInfo;
+
+        Assert.Equal("Hourglass Linux", applicationInfo.ProductName);
+        Assert.Equal("README demo", applicationInfo.Version);
+        Assert.Equal("README demo", applicationInfo.InformationalVersion);
+        Assert.Equal("Demo", applicationInfo.BuildConfiguration);
+        Assert.Equal("demo", applicationInfo.SourceRevision);
+        Assert.Equal(".NET", applicationInfo.RuntimeDescription);
+        Assert.Equal("Linux", applicationInfo.OperatingSystemDescription);
+        Assert.Equal("x64", applicationInfo.ProcessArchitecture);
+    }
+
+    [Fact]
+    public void DemoContextUsesCoordinatedWindowCloseDuringDisposal()
+    {
+        string contextSourcePath = Path.GetFullPath(Path.Combine(
+            AppContext.BaseDirectory,
+            "..",
+            "..",
+            "..",
+            "..",
+            "..",
+            "tools",
+            "Hourglass.DemoRecorder",
+            "DemoContext.cs"));
+        string windowSourcePath = Path.GetFullPath(Path.Combine(
+            AppContext.BaseDirectory,
+            "..",
+            "..",
+            "..",
+            "..",
+            "..",
+            "src",
+            "Hourglass.Linux.Avalonia",
+            "MainWindow.axaml.cs"));
+        string contextSource = File.ReadAllText(contextSourcePath);
+        string windowSource = File.ReadAllText(windowSourcePath);
+
+        Assert.Contains("this.Window.CloseCoordinatedAsync().GetAwaiter().GetResult();", contextSource, StringComparison.Ordinal);
+        Assert.Contains("await this.closeCoordinator.PendingPreparation.ConfigureAwait(true);", windowSource, StringComparison.Ordinal);
+        Assert.Contains("Dispatcher.UIThread.RunJobs();", windowSource, StringComparison.Ordinal);
+    }
 }

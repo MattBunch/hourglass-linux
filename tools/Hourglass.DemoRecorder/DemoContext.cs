@@ -11,6 +11,22 @@ namespace Hourglass.DemoRecorder;
 
 public sealed class DemoContext : IAsyncDisposable
 {
+    internal static ApplicationInfo DemoApplicationInfo { get; } = new(
+        ProductName: "Hourglass Linux",
+        Description: "A simple, polished timer for Linux.",
+        Version: "README demo",
+        InformationalVersion: "README demo",
+        BuildConfiguration: "Demo",
+        SourceRevision: "demo",
+        RuntimeDescription: ".NET",
+        OperatingSystemDescription: "Linux",
+        ProcessArchitecture: "x64",
+        DeveloperName: "Matt Bunch",
+        RepositoryUri: new Uri("https://github.com/MattBunch/hourglass-linux"),
+        DeveloperWebsiteUri: new Uri("https://mattbunch.dev"),
+        OriginalProjectUri: new Uri("http://chris.dziemborowicz.com/apps/hourglass/"),
+        LicenseName: "MIT");
+
     private readonly DemoRecorderOptions options;
     private readonly FrameRecorder frameRecorder;
     private readonly DemoPlatformServices services;
@@ -156,7 +172,7 @@ public sealed class DemoContext : IAsyncDisposable
     public async Task OpenAboutAsync(CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        this.aboutWindow ??= new AboutWindow(new ApplicationInfoProvider(typeof(App).Assembly).GetApplicationInfo(), this.services.ExternalUriLauncher)
+        this.aboutWindow ??= new AboutWindow(DemoApplicationInfo, this.services.ExternalUriLauncher)
         {
             Width = 460,
             Height = 430,
@@ -227,8 +243,8 @@ public sealed class DemoContext : IAsyncDisposable
         this.disposed = true;
         this.FlushAsync(CancellationToken.None).GetAwaiter().GetResult();
         this.aboutWindow?.Close();
-        this.Window.Close();
-        this.viewModel.Dispose();
+        this.Window.CloseCoordinatedAsync().GetAwaiter().GetResult();
+        this.FlushAsync(CancellationToken.None).GetAwaiter().GetResult();
     }
 
     private Task FlushAsync(CancellationToken cancellationToken)
