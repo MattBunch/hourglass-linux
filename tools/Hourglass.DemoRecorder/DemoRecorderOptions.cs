@@ -117,6 +117,11 @@ public sealed record DemoRecorderOptions(
 
         try
         {
+            if (EnabledOutputIsDirectoryShaped(options))
+            {
+                return ParseOptionsResult.Error("Enabled output paths must point to files, not directories. Choose --gif and --video file paths or skip that output.");
+            }
+
             if (EnabledOutputIsExistingDirectory(options))
             {
                 return ParseOptionsResult.Error("Enabled output paths must point to files, not existing directories. Choose --gif and --video file paths or skip that output.");
@@ -187,6 +192,27 @@ public sealed record DemoRecorderOptions(
     {
         return (!options.SkipGif && Directory.Exists(CreateResolvedOutputPath(options.GifPath)))
             || (!options.SkipVideo && Directory.Exists(CreateResolvedOutputPath(options.VideoPath)));
+    }
+
+    private static bool EnabledOutputIsDirectoryShaped(DemoRecorderOptions options)
+    {
+        return (!options.SkipGif && IsDirectoryShapedPath(options.GifPath))
+            || (!options.SkipVideo && IsDirectoryShapedPath(options.VideoPath));
+    }
+
+    private static bool IsDirectoryShapedPath(string path)
+    {
+        string trimmedPath = path.TrimEnd();
+        if (trimmedPath.Length == 0)
+        {
+            return false;
+        }
+
+        char lastCharacter = trimmedPath[^1];
+        return lastCharacter == Path.DirectorySeparatorChar
+            || lastCharacter == Path.AltDirectorySeparatorChar
+            || lastCharacter == '/'
+            || lastCharacter == '\\';
     }
 
     private static string ResolveFilePath(string path)
