@@ -66,6 +66,25 @@ public sealed class DemoRecorderOptionsTests : IDisposable
     }
 
     [Fact]
+    public void ParseNormalizesRootedOutputPathsBeforeEncoding()
+    {
+        Directory.CreateDirectory(this.temporaryDirectory);
+        string rawPath = Path.Combine(this.temporaryDirectory, "assets", "..", "demo.gif");
+
+        ParseOptionsResult result = DemoRecorderOptions.Parse(
+            [
+                "--gif",
+                rawPath,
+                "--skip-video"
+            ],
+            this.temporaryDirectory);
+
+        Assert.True(result.IsSuccess);
+        Assert.NotNull(result.Options);
+        Assert.Equal(Path.Combine(this.temporaryDirectory, "demo.gif"), result.Options.GifPath);
+    }
+
+    [Fact]
     public void ParseRejectsSymlinkedOutputPathCollision()
     {
         string realDirectory = Path.Combine(this.temporaryDirectory, "real");

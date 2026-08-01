@@ -143,7 +143,7 @@ public sealed record DemoRecorderOptions(
 
     private static string ToAbsolutePath(string repositoryRoot, string path)
     {
-        return Path.IsPathRooted(path) ? path : Path.GetFullPath(Path.Combine(repositoryRoot, path));
+        return Path.GetFullPath(Path.IsPathRooted(path) ? path : Path.Combine(repositoryRoot, path));
     }
 
     private static string CreateOutputPathIdentity(string path)

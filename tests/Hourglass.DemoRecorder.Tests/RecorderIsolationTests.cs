@@ -95,9 +95,21 @@ public sealed class RecorderIsolationTests
             "tools",
             "Hourglass.DemoRecorder",
             "DemoContext.cs"));
+        string projectSourcePath = Path.GetFullPath(Path.Combine(
+            AppContext.BaseDirectory,
+            "..",
+            "..",
+            "..",
+            "..",
+            "..",
+            "tools",
+            "Hourglass.DemoRecorder",
+            "Hourglass.DemoRecorder.csproj"));
         string contextSource = File.ReadAllText(contextSourcePath);
+        string projectSource = File.ReadAllText(projectSourcePath);
 
         Assert.Contains("avares://Avalonia.Fonts.Inter/Assets#Inter", contextSource, StringComparison.Ordinal);
+        Assert.Contains("PackageReference Include=\"Avalonia.Fonts.Inter\"", projectSource, StringComparison.Ordinal);
         Assert.Contains("ApplyDemoFont(this.Window);", contextSource, StringComparison.Ordinal);
         Assert.Contains("ApplyDemoFont(this.aboutWindow);", contextSource, StringComparison.Ordinal);
     }
