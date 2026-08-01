@@ -124,7 +124,8 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
         IDiagnosticSink? diagnosticSink = null,
         bool loadSettingsOnOpened = true,
         Func<MainWindow, Task>? prepareCoordinatorClose = null,
-        Func<Task>? requestApplicationExit = null)
+        Func<Task>? requestApplicationExit = null,
+        bool suppressExpiryVisualFeedback = false)
     {
         InitializeComponent();
         diagnosticSink ??= NoOpDiagnosticSink.Instance;
@@ -185,7 +186,11 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
         this.AddHandler(KeyDownEvent, this.WindowKeyDown, RoutingStrategies.Tunnel);
         this.viewModel.PropertyChanged += this.ViewModelPropertyChanged;
         this.viewModel.WindowAttentionRequested += this.WindowAttentionRequested;
-        this.viewModel.ExpiryVisualFeedbackRequested += this.ExpiryVisualFeedbackRequested;
+        if (!suppressExpiryVisualFeedback)
+        {
+            this.viewModel.ExpiryVisualFeedbackRequested += this.ExpiryVisualFeedbackRequested;
+        }
+
         this.viewModel.ValidationFeedbackRequested += this.ValidationFeedbackRequested;
         this.viewModel.CloseRequested += this.CloseRequested;
         this.viewModel.HideToNotificationAreaRequested += this.HideToNotificationAreaRequested;

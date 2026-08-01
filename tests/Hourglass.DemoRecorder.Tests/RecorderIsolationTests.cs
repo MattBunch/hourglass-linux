@@ -1,4 +1,5 @@
 using Hourglass.DemoRecorder.Services;
+using Avalonia.Controls;
 using Xunit;
 
 namespace Hourglass.DemoRecorder.Tests;
@@ -112,6 +113,69 @@ public sealed class RecorderIsolationTests
         Assert.Contains("PackageReference Include=\"Avalonia.Fonts.Inter\"", projectSource, StringComparison.Ordinal);
         Assert.Contains("ApplyDemoFont(this.Window);", contextSource, StringComparison.Ordinal);
         Assert.Contains("ApplyDemoFont(this.aboutWindow);", contextSource, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void DemoContextSuppressesRealTimeExpiryVisualFeedbackForRecordedVisuals()
+    {
+        string contextSourcePath = Path.GetFullPath(Path.Combine(
+            AppContext.BaseDirectory,
+            "..",
+            "..",
+            "..",
+            "..",
+            "..",
+            "tools",
+            "Hourglass.DemoRecorder",
+            "DemoContext.cs"));
+        string windowSourcePath = Path.GetFullPath(Path.Combine(
+            AppContext.BaseDirectory,
+            "..",
+            "..",
+            "..",
+            "..",
+            "..",
+            "src",
+            "Hourglass.Linux.Avalonia",
+            "MainWindow.axaml.cs"));
+        string contextSource = File.ReadAllText(contextSourcePath);
+        string windowSource = File.ReadAllText(windowSourcePath);
+
+        Assert.Contains("suppressExpiryVisualFeedback: true", contextSource, StringComparison.Ordinal);
+        Assert.Contains("bool suppressExpiryVisualFeedback = false", windowSource, StringComparison.Ordinal);
+        Assert.Contains("if (!suppressExpiryVisualFeedback)", windowSource, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task DemoRunDoesNotLeaveRealTimeExpiryFlashClassActive()
+    {
+        HeadlessTestHost.EnsureStarted();
+        string temporaryDirectory = Path.Combine(Path.GetTempPath(), $"hourglass-expiry-flash-tests-{Guid.NewGuid():N}");
+        try
+        {
+            DemoRecorderOptions options = DemoRecorderOptions.Defaults(Directory.GetCurrentDirectory()) with
+            {
+                FramesDirectory = Path.Combine(temporaryDirectory, "frames"),
+                SkipGif = true,
+                SkipVideo = true
+            };
+            var recorder = new FrameRecorder(options.FramesDirectory, options.Width, options.Height);
+            recorder.PrepareEmptyDirectory();
+            var services = new DemoPlatformServices();
+            await using DemoContext context = await DemoContext.CreateAsync(options, recorder, services);
+
+            await new DemoScenarioRunner(new Hourglass.DemoRecorder.Scenarios.ReadmeDemoScenario(), context).RunAsync();
+
+            Grid root = Assert.IsType<Grid>(context.Window.FindControl<Grid>("RootGrid"));
+            Assert.DoesNotContain("timer-expiry-flash", root.Classes);
+        }
+        finally
+        {
+            if (Directory.Exists(temporaryDirectory))
+            {
+                Directory.Delete(temporaryDirectory, recursive: true);
+            }
+        }
     }
 
     [Fact]

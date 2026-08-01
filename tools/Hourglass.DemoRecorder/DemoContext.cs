@@ -71,7 +71,8 @@ public sealed class DemoContext : IAsyncDisposable
             new ApplicationInfoProvider(typeof(App).Assembly),
             services.ExternalUriLauncher,
             createWindowAttentionService: _ => services.WindowAttentionService,
-            loadSettingsOnOpened: false);
+            loadSettingsOnOpened: false,
+            suppressExpiryVisualFeedback: true);
         this.Window.Width = options.Width;
         this.Window.Height = options.Height;
         this.Window.CanResize = false;
