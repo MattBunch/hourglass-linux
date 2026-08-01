@@ -220,8 +220,15 @@ public sealed record DemoRecorderOptions(
     private static bool EnabledOutputOverlapsFrameSequence(DemoRecorderOptions options)
     {
         string framesDirectory = ResolveDirectoryIdentity(options.FramesDirectory);
-        return (!options.SkipGif && IsGeneratedFramePath(CreateResolvedOutputPath(options.GifPath), framesDirectory))
-            || (!options.SkipVideo && IsGeneratedFramePath(CreateResolvedOutputPath(options.VideoPath), framesDirectory));
+        return (!options.SkipGif && OutputOverlapsFrameSequence(options.GifPath, framesDirectory))
+            || (!options.SkipVideo && OutputOverlapsFrameSequence(options.VideoPath, framesDirectory));
+    }
+
+    private static bool OutputOverlapsFrameSequence(string outputPath, string framesDirectory)
+    {
+        string resolvedOutputPath = CreateResolvedOutputPath(outputPath);
+        return IsGeneratedFramePath(resolvedOutputPath, framesDirectory)
+            || IsAncestorPath(resolvedOutputPath, framesDirectory);
     }
 
     private static bool IsGeneratedFramePath(string path, string framesDirectory)
@@ -242,6 +249,18 @@ public sealed record DemoRecorderOptions(
             && fileName.StartsWith(prefix, StringComparison.Ordinal)
             && fileName.EndsWith(suffix, StringComparison.Ordinal)
             && fileName.AsSpan(prefix.Length, digitCount).IndexOfAnyExceptInRange('0', '9') < 0;
+    }
+
+    private static bool IsAncestorPath(string candidateAncestor, string path)
+    {
+        string ancestor = Path.TrimEndingDirectorySeparator(Path.GetFullPath(candidateAncestor));
+        string descendant = Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
+        string relativePath = Path.GetRelativePath(ancestor, descendant);
+        return relativePath == "."
+            || (!Path.IsPathRooted(relativePath)
+                && relativePath != ".."
+                && !relativePath.StartsWith($"..{Path.DirectorySeparatorChar}", StringComparison.Ordinal)
+                && !relativePath.StartsWith($"..{Path.AltDirectorySeparatorChar}", StringComparison.Ordinal));
     }
 
     private static bool TryCreateExistingFileIdentity(string path, out string? identity)

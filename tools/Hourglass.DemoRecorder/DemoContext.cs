@@ -202,11 +202,15 @@ public sealed class DemoContext : IAsyncDisposable
             return;
         }
 
-        TimeSpan step = TimeSpan.FromTicks(duration.Ticks / frames);
+        long baseStepTicks = Math.DivRem(duration.Ticks, frames, out long remainderTicks);
+        long advancedTicks = 0;
         for (int frame = 0; frame < frames; frame++)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            long targetTicks = (baseStepTicks * (frame + 1)) + ((remainderTicks * (frame + 1)) / frames);
+            TimeSpan step = TimeSpan.FromTicks(targetTicks - advancedTicks);
             this.services.Clock.Advance(step);
+            advancedTicks = targetTicks;
             this.viewModel.Tick();
             await this.CaptureFrameAsync(cancellationToken).ConfigureAwait(true);
         }

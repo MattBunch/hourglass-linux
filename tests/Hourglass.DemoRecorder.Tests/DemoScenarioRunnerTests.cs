@@ -52,6 +52,28 @@ public sealed class DemoScenarioRunnerTests : IDisposable
         Assert.Contains("failed", exception.Message, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task HoldAsyncPreservesRequestedDurationAcrossFrameSteps()
+    {
+        HeadlessTestHost.EnsureStarted();
+        DemoRecorderOptions options = DemoRecorderOptions.Defaults(Directory.GetCurrentDirectory()) with
+        {
+            FramesDirectory = Path.Combine(this.temporaryDirectory, "duration-frames"),
+            SkipGif = true,
+            SkipVideo = true
+        };
+        var recorder = new FrameRecorder(options.FramesDirectory, options.Width, options.Height);
+        recorder.PrepareEmptyDirectory();
+        var services = new DemoPlatformServices();
+        await using DemoContext context = await DemoContext.CreateAsync(options, recorder, services);
+
+        await context.ShowWindowAsync();
+        await context.HoldAsync(TimeSpan.FromSeconds(1));
+
+        Assert.Equal(TimeSpan.FromSeconds(1), services.Clock.Elapsed);
+        Assert.Equal(12, context.FrameCount);
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(this.temporaryDirectory))
