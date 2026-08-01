@@ -117,6 +117,11 @@ public sealed record DemoRecorderOptions(
 
         try
         {
+            if (EnabledOutputIsExistingDirectory(options))
+            {
+                return ParseOptionsResult.Error("Enabled output paths must point to files, not existing directories. Choose --gif and --video file paths or skip that output.");
+            }
+
             if (!options.SkipGif
                 && !options.SkipVideo
                 && StringComparer.Ordinal.Equals(CreateOutputPathIdentity(options.GifPath), CreateOutputPathIdentity(options.VideoPath)))
@@ -176,6 +181,12 @@ public sealed record DemoRecorderOptions(
         string resolvedDirectory = ResolveDirectoryIdentity(directory);
         string resolvedPath = Path.Combine(resolvedDirectory, Path.GetFileName(fullPath));
         return ResolveFilePath(resolvedPath);
+    }
+
+    private static bool EnabledOutputIsExistingDirectory(DemoRecorderOptions options)
+    {
+        return (!options.SkipGif && Directory.Exists(CreateResolvedOutputPath(options.GifPath)))
+            || (!options.SkipVideo && Directory.Exists(CreateResolvedOutputPath(options.VideoPath)));
     }
 
     private static string ResolveFilePath(string path)

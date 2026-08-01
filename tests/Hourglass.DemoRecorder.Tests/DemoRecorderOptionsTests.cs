@@ -85,6 +85,65 @@ public sealed class DemoRecorderOptionsTests : IDisposable
     }
 
     [Fact]
+    public void ParseRejectsEnabledGifPathThatNamesExistingDirectory()
+    {
+        string outputDirectory = Path.Combine(this.temporaryDirectory, "gif-output");
+        Directory.CreateDirectory(outputDirectory);
+
+        ParseOptionsResult result = DemoRecorderOptions.Parse(
+            [
+                "--gif",
+                outputDirectory,
+                "--skip-video"
+            ],
+            this.temporaryDirectory);
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains("must point to files, not existing directories", result.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ParseRejectsEnabledVideoPathThatNamesExistingDirectory()
+    {
+        string outputDirectory = Path.Combine(this.temporaryDirectory, "video-output");
+        Directory.CreateDirectory(outputDirectory);
+
+        ParseOptionsResult result = DemoRecorderOptions.Parse(
+            [
+                "--video",
+                outputDirectory,
+                "--skip-gif"
+            ],
+            this.temporaryDirectory);
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains("must point to files, not existing directories", result.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ParseAllowsSkippedOutputPathThatNamesExistingDirectory()
+    {
+        string skippedOutputDirectory = Path.Combine(this.temporaryDirectory, "skipped-output");
+        string videoPath = Path.Combine(this.temporaryDirectory, "demo.mp4");
+        Directory.CreateDirectory(skippedOutputDirectory);
+
+        ParseOptionsResult result = DemoRecorderOptions.Parse(
+            [
+                "--gif",
+                skippedOutputDirectory,
+                "--video",
+                videoPath,
+                "--skip-gif"
+            ],
+            this.temporaryDirectory);
+
+        Assert.True(result.IsSuccess);
+        Assert.NotNull(result.Options);
+        Assert.True(result.Options.SkipGif);
+        Assert.Equal(videoPath, result.Options.VideoPath);
+    }
+
+    [Fact]
     public void ParseRejectsSymlinkedOutputPathCollision()
     {
         string realDirectory = Path.Combine(this.temporaryDirectory, "real");
