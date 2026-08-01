@@ -103,39 +103,49 @@ public sealed class FfmpegEncoder
         }
 
         string? palettePath = null;
+        string? temporaryGifPath = null;
+        string? temporaryVideoPath = null;
         try
         {
             if (!string.IsNullOrWhiteSpace(gifPath))
             {
                 Directory.CreateDirectory(Path.GetDirectoryName(gifPath)!);
                 palettePath = Path.Combine(Path.GetTempPath(), $"hourglass-demo-palette-{Guid.NewGuid():N}.png");
+                temporaryGifPath = CreateTemporaryOutputPath(gifPath);
                 await this.RunCheckedAsync(CreatePaletteStartInfo(ffmpegCommand, inputPattern, frameRate, width, palettePath), palettePath, cancellationToken)
                     .ConfigureAwait(false);
-                await this.RunCheckedAsync(CreateGifStartInfo(ffmpegCommand, inputPattern, palettePath, frameRate, width, gifPath), gifPath, cancellationToken)
+                await this.RunCheckedAsync(CreateGifStartInfo(ffmpegCommand, inputPattern, palettePath, frameRate, width, temporaryGifPath), temporaryGifPath, cancellationToken)
                     .ConfigureAwait(false);
             }
 
             if (!string.IsNullOrWhiteSpace(videoPath))
             {
                 Directory.CreateDirectory(Path.GetDirectoryName(videoPath)!);
+                temporaryVideoPath = CreateTemporaryOutputPath(videoPath);
                 try
                 {
-                    await this.RunCheckedAsync(CreateMp4StartInfo(ffmpegCommand, inputPattern, frameRate, videoPath), videoPath, cancellationToken)
+                    await this.RunCheckedAsync(CreateMp4StartInfo(ffmpegCommand, inputPattern, frameRate, temporaryVideoPath), temporaryVideoPath, cancellationToken)
                         .ConfigureAwait(false);
                 }
                 catch (InvalidOperationException exception) when (exception.Message.Contains("Unknown encoder 'libx264'", StringComparison.Ordinal))
                 {
-                    await this.RunCheckedAsync(CreateMp4StartInfo(ffmpegCommand, inputPattern, frameRate, videoPath, "libopenh264"), videoPath, cancellationToken)
+                    DeleteFileIfExists(temporaryVideoPath);
+                    await this.RunCheckedAsync(CreateMp4StartInfo(ffmpegCommand, inputPattern, frameRate, temporaryVideoPath, "libopenh264"), temporaryVideoPath, cancellationToken)
                         .ConfigureAwait(false);
                 }
             }
+
+            PublishSuccessfulOutputs(
+                string.IsNullOrWhiteSpace(gifPath) ? null : new EncodedOutput(temporaryGifPath!, gifPath),
+                string.IsNullOrWhiteSpace(videoPath) ? null : new EncodedOutput(temporaryVideoPath!, videoPath));
+            temporaryGifPath = null;
+            temporaryVideoPath = null;
         }
         finally
         {
-            if (palettePath != null && File.Exists(palettePath))
-            {
-                File.Delete(palettePath);
-            }
+            DeleteFileIfExists(palettePath);
+            DeleteFileIfExists(temporaryGifPath);
+            DeleteFileIfExists(temporaryVideoPath);
         }
     }
 
@@ -176,6 +186,8 @@ public sealed class FfmpegEncoder
         startInfo.ArgumentList.Add(palettePath);
         startInfo.ArgumentList.Add("-lavfi");
         startInfo.ArgumentList.Add($"scale={width}:-1:flags=lanczos[x];[x][1:v]paletteuse=dither=bayer:bayer_scale=4");
+        startInfo.ArgumentList.Add("-f");
+        startInfo.ArgumentList.Add("gif");
         startInfo.ArgumentList.Add(gifPath);
         return startInfo;
     }
@@ -210,8 +222,38 @@ public sealed class FfmpegEncoder
         startInfo.ArgumentList.Add("yuv420p");
         startInfo.ArgumentList.Add("-movflags");
         startInfo.ArgumentList.Add("+faststart");
+        startInfo.ArgumentList.Add("-f");
+        startInfo.ArgumentList.Add("mp4");
         startInfo.ArgumentList.Add(videoPath);
         return startInfo;
+    }
+
+    private static string CreateTemporaryOutputPath(string finalPath)
+    {
+        string directory = Path.GetDirectoryName(finalPath)!;
+        string fileName = Path.GetFileName(finalPath);
+        return Path.Combine(directory, $".{fileName}.hourglass-demo-{Guid.NewGuid():N}.tmp");
+    }
+
+    private static void PublishSuccessfulOutputs(params EncodedOutput?[] outputs)
+    {
+        foreach (EncodedOutput? output in outputs)
+        {
+            if (output is null)
+            {
+                continue;
+            }
+
+            File.Move(output.TemporaryPath, output.FinalPath, overwrite: true);
+        }
+    }
+
+    private static void DeleteFileIfExists(string? path)
+    {
+        if (!string.IsNullOrWhiteSpace(path) && File.Exists(path))
+        {
+            File.Delete(path);
+        }
     }
 
     private static ProcessStartInfo CreateBaseStartInfo(string ffmpegCommand)
@@ -249,4 +291,6 @@ public sealed class FfmpegEncoder
             throw new InvalidOperationException($"FFmpeg completed but did not create a non-empty output file: {expectedOutput}{Environment.NewLine}{result.StandardError}");
         }
     }
+
+    private sealed record EncodedOutput(string TemporaryPath, string FinalPath);
 }

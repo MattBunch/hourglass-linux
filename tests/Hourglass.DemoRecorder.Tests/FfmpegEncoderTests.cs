@@ -31,6 +31,21 @@ public sealed class FfmpegEncoderTests : IDisposable
         Assert.Contains("libx264", startInfo.ArgumentList);
         Assert.Contains("yuv420p", startInfo.ArgumentList);
         Assert.Contains("+faststart", startInfo.ArgumentList);
+        AssertArgumentPair(startInfo, "-f", "mp4");
+    }
+
+    [Fact]
+    public void GifCommandForcesGifMuxer()
+    {
+        ProcessStartInfo startInfo = FfmpegEncoder.CreateGifStartInfo(
+            "ffmpeg",
+            "frame-%05d.png",
+            "palette.png",
+            12,
+            960,
+            "demo");
+
+        AssertArgumentPair(startInfo, "-f", "gif");
     }
 
     [Fact]
@@ -68,19 +83,52 @@ public sealed class FfmpegEncoderTests : IDisposable
     {
         var runner = new RecordingProcessRunner(exitCode: 0, stderr: "", createOutputs: true);
         var encoder = new FfmpegEncoder(runner);
+        string gifPath = Path.Combine(this.temporaryDirectory, "demo.gif");
+        string videoPath = Path.Combine(this.temporaryDirectory, "demo.mp4");
 
         await encoder.EncodeAsync(
             "ffmpeg",
             "frame-%05d.png",
             12,
             960,
-            Path.Combine(this.temporaryDirectory, "demo.gif"),
-            Path.Combine(this.temporaryDirectory, "demo.mp4"));
+            gifPath,
+            videoPath);
 
         Assert.Equal(3, runner.StartInfos.Count);
         Assert.Contains("palettegen=max_colors=128", string.Join(" ", runner.StartInfos[0].ArgumentList), StringComparison.Ordinal);
         Assert.Contains("paletteuse=dither=bayer:bayer_scale=4", string.Join(" ", runner.StartInfos[1].ArgumentList), StringComparison.Ordinal);
+        AssertArgumentPair(runner.StartInfos[1], "-f", "gif");
         Assert.Contains("libx264", runner.StartInfos[2].ArgumentList);
+        AssertArgumentPair(runner.StartInfos[2], "-f", "mp4");
+        Assert.NotEqual(gifPath, runner.StartInfos[1].ArgumentList[^1]);
+        Assert.NotEqual(videoPath, runner.StartInfos[2].ArgumentList[^1]);
+        Assert.Equal("output", File.ReadAllText(gifPath));
+        Assert.Equal("output", File.ReadAllText(videoPath));
+        Assert.Empty(Directory.EnumerateFiles(this.temporaryDirectory, "*.tmp"));
+    }
+
+    [Fact]
+    public async Task EncodePreservesFinalOutputsWhenLaterPassFails()
+    {
+        Directory.CreateDirectory(this.temporaryDirectory);
+        string gifPath = Path.Combine(this.temporaryDirectory, "demo.gif");
+        string videoPath = Path.Combine(this.temporaryDirectory, "demo.mp4");
+        File.WriteAllText(gifPath, "existing gif");
+        File.WriteAllText(videoPath, "existing video");
+        var runner = new SequencedProcessRunner([0, 0, 1], stderr: "video failed");
+        var encoder = new FfmpegEncoder(runner);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => encoder.EncodeAsync(
+            "ffmpeg",
+            "frame-%05d.png",
+            12,
+            960,
+            gifPath,
+            videoPath));
+
+        Assert.Equal("existing gif", File.ReadAllText(gifPath));
+        Assert.Equal("existing video", File.ReadAllText(videoPath));
+        Assert.Empty(Directory.EnumerateFiles(this.temporaryDirectory, "*.tmp"));
     }
 
     [Fact]
@@ -147,5 +195,12 @@ public sealed class FfmpegEncoderTests : IDisposable
 
             return Task.FromResult(new ProcessResult(exitCode, "", stderr));
         }
+    }
+
+    private static void AssertArgumentPair(ProcessStartInfo startInfo, string option, string value)
+    {
+        int index = startInfo.ArgumentList.IndexOf(option);
+        Assert.InRange(index, 0, startInfo.ArgumentList.Count - 2);
+        Assert.Equal(value, startInfo.ArgumentList[index + 1]);
     }
 }
