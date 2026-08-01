@@ -121,6 +121,11 @@ public sealed record DemoRecorderOptions(
             return ParseOptionsResult.Error("--gif and --video must point to different files when both outputs are enabled.");
         }
 
+        if (EnabledOutputOverlapsFrameSequence(options))
+        {
+            return ParseOptionsResult.Error("Enabled output paths must not point to generated frame files. Choose --gif and --video paths outside --frames-dir.");
+        }
+
         return ParseOptionsResult.Success(options);
     }
 
@@ -142,33 +147,77 @@ public sealed record DemoRecorderOptions(
 
     private static string CreateOutputPathIdentity(string path)
     {
-        string fullPath = Path.GetFullPath(path);
-        string? directory = Path.GetDirectoryName(fullPath);
-        if (string.IsNullOrWhiteSpace(directory))
-        {
-            return ResolveFileIdentity(fullPath);
-        }
-
-        string resolvedDirectory = ResolveDirectoryIdentity(directory);
-        string resolvedPath = Path.Combine(resolvedDirectory, Path.GetFileName(fullPath));
-        return ResolveFileIdentity(resolvedPath);
-    }
-
-    private static string ResolveFileIdentity(string path)
-    {
-        var info = new FileInfo(path);
-        FileSystemInfo? target = string.IsNullOrEmpty(info.LinkTarget)
-            ? null
-            : info.ResolveLinkTarget(returnFinalTarget: true);
-        string resolvedPath = target == null
-            ? Path.GetFullPath(path)
-            : Path.GetFullPath(target.FullName);
+        string resolvedPath = CreateResolvedOutputPath(path);
         if (TryCreateExistingFileIdentity(resolvedPath, out string? identity) && identity is not null)
         {
             return identity;
         }
 
         return resolvedPath;
+    }
+
+    private static string CreateResolvedOutputPath(string path)
+    {
+        string fullPath = Path.GetFullPath(path);
+        string? directory = Path.GetDirectoryName(fullPath);
+        if (string.IsNullOrWhiteSpace(directory))
+        {
+            return ResolveFilePath(fullPath);
+        }
+
+        string resolvedDirectory = ResolveDirectoryIdentity(directory);
+        string resolvedPath = Path.Combine(resolvedDirectory, Path.GetFileName(fullPath));
+        return ResolveFilePath(resolvedPath);
+    }
+
+    private static string ResolveFilePath(string path)
+    {
+        var info = new FileInfo(path);
+        if (string.IsNullOrEmpty(info.LinkTarget))
+        {
+            return Path.GetFullPath(path);
+        }
+
+        FileSystemInfo? target = info.ResolveLinkTarget(returnFinalTarget: true);
+        if (target != null)
+        {
+            return Path.GetFullPath(target.FullName);
+        }
+
+        string targetPath = Path.IsPathRooted(info.LinkTarget)
+            ? info.LinkTarget
+            : Path.Combine(Path.GetDirectoryName(Path.GetFullPath(path)) ?? string.Empty, info.LinkTarget);
+        string fullTargetPath = Path.GetFullPath(targetPath);
+        string? targetDirectory = Path.GetDirectoryName(fullTargetPath);
+        return string.IsNullOrWhiteSpace(targetDirectory)
+            ? fullTargetPath
+            : Path.Combine(ResolveDirectoryIdentity(targetDirectory), Path.GetFileName(fullTargetPath));
+    }
+
+    private static bool EnabledOutputOverlapsFrameSequence(DemoRecorderOptions options)
+    {
+        string framesDirectory = ResolveDirectoryIdentity(options.FramesDirectory);
+        return (!options.SkipGif && IsGeneratedFramePath(CreateResolvedOutputPath(options.GifPath), framesDirectory))
+            || (!options.SkipVideo && IsGeneratedFramePath(CreateResolvedOutputPath(options.VideoPath), framesDirectory));
+    }
+
+    private static bool IsGeneratedFramePath(string path, string framesDirectory)
+    {
+        string? directory = Path.GetDirectoryName(Path.GetFullPath(path));
+        return directory != null
+            && StringComparer.Ordinal.Equals(ResolveDirectoryIdentity(directory), framesDirectory)
+            && IsGeneratedFrameFileName(Path.GetFileName(path));
+    }
+
+    private static bool IsGeneratedFrameFileName(string fileName)
+    {
+        const string prefix = "frame-";
+        const string suffix = ".png";
+        const int digits = 5;
+        return fileName.Length == prefix.Length + digits + suffix.Length
+            && fileName.StartsWith(prefix, StringComparison.Ordinal)
+            && fileName.EndsWith(suffix, StringComparison.Ordinal)
+            && fileName.AsSpan(prefix.Length, digits).IndexOfAnyExceptInRange('0', '9') < 0;
     }
 
     private static bool TryCreateExistingFileIdentity(string path, out string? identity)

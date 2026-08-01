@@ -155,6 +155,83 @@ public sealed class DemoRecorderOptionsTests : IDisposable
     }
 
     [Fact]
+    public void ParseRejectsOutputPathInsideGeneratedFrameSequence()
+    {
+        string framesDirectory = Path.Combine(this.temporaryDirectory, "frames");
+        string framePath = Path.Combine(framesDirectory, FrameRecorder.GetFrameFileName(0));
+
+        ParseOptionsResult result = DemoRecorderOptions.Parse(
+            [
+                "--gif",
+                framePath,
+                "--frames-dir",
+                framesDirectory,
+                "--skip-video"
+            ],
+            this.temporaryDirectory);
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains("must not point to generated frame files", result.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ParseRejectsDanglingSymlinkOutputPathInsideGeneratedFrameSequence()
+    {
+        Directory.CreateDirectory(this.temporaryDirectory);
+        string framesDirectory = Path.Combine(this.temporaryDirectory, "frames");
+        Directory.CreateDirectory(framesDirectory);
+        string framePath = Path.Combine(framesDirectory, FrameRecorder.GetFrameFileName(0));
+        string aliasPath = Path.Combine(this.temporaryDirectory, "alias.gif");
+
+        try
+        {
+            File.CreateSymbolicLink(aliasPath, framePath);
+        }
+        catch (Exception exception) when (exception is IOException
+            or PlatformNotSupportedException
+            or UnauthorizedAccessException)
+        {
+            return;
+        }
+
+        ParseOptionsResult result = DemoRecorderOptions.Parse(
+            [
+                "--gif",
+                aliasPath,
+                "--frames-dir",
+                framesDirectory,
+                "--skip-video"
+            ],
+            this.temporaryDirectory);
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains("must not point to generated frame files", result.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ParseAllowsSkippedOutputPathInsideGeneratedFrameSequence()
+    {
+        string framesDirectory = Path.Combine(this.temporaryDirectory, "frames");
+        string framePath = Path.Combine(framesDirectory, FrameRecorder.GetFrameFileName(0));
+
+        ParseOptionsResult result = DemoRecorderOptions.Parse(
+            [
+                "--gif",
+                framePath,
+                "--video",
+                Path.Combine(this.temporaryDirectory, "demo.mp4"),
+                "--frames-dir",
+                framesDirectory,
+                "--skip-gif"
+            ],
+            this.temporaryDirectory);
+
+        Assert.True(result.IsSuccess);
+        Assert.NotNull(result.Options);
+        Assert.True(result.Options.SkipGif);
+    }
+
+    [Fact]
     public void ParseAllowsCollidingOutputPathWhenGifIsSkipped()
     {
         string outputPath = Path.Combine(Directory.GetCurrentDirectory(), "demo-output");
