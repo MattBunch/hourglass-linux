@@ -132,6 +132,31 @@ public sealed class FfmpegEncoderTests : IDisposable
     }
 
     [Fact]
+    public async Task EncodeRollsBackFirstPublishedOutputWhenSecondPublishFails()
+    {
+        Directory.CreateDirectory(this.temporaryDirectory);
+        string gifPath = Path.Combine(this.temporaryDirectory, "demo.gif");
+        string videoPath = Path.Combine(this.temporaryDirectory, "demo.mp4");
+        File.WriteAllText(gifPath, "existing gif");
+        File.WriteAllText(videoPath, "existing video");
+        var runner = new RecordingProcessRunner(exitCode: 0, stderr: "", createOutputs: true);
+        var fileOperations = new FailingPublishFileOperations(videoPath);
+        var encoder = new FfmpegEncoder(runner, fileOperations);
+
+        await Assert.ThrowsAsync<IOException>(() => encoder.EncodeAsync(
+            "ffmpeg",
+            "frame-%05d.png",
+            12,
+            960,
+            gifPath,
+            videoPath));
+
+        Assert.Equal("existing gif", File.ReadAllText(gifPath));
+        Assert.Equal("existing video", File.ReadAllText(videoPath));
+        Assert.Empty(Directory.EnumerateFiles(this.temporaryDirectory, "*.tmp"));
+    }
+
+    [Fact]
     public async Task EncodeDeletesPaletteWhenGifEncodingFails()
     {
         var runner = new SequencedProcessRunner([0, 1], stderr: "gif failed");
@@ -194,6 +219,31 @@ public sealed class FfmpegEncoderTests : IDisposable
             }
 
             return Task.FromResult(new ProcessResult(exitCode, "", stderr));
+        }
+    }
+
+    private sealed class FailingPublishFileOperations(string failingFinalPath) : IFileOperations
+    {
+        public bool Exists(string path)
+        {
+            return File.Exists(path);
+        }
+
+        public void Delete(string path)
+        {
+            File.Delete(path);
+        }
+
+        public void Move(string sourceFileName, string destFileName, bool overwrite)
+        {
+            if (StringComparer.Ordinal.Equals(destFileName, failingFinalPath)
+                && sourceFileName.Contains(".hourglass-demo-", StringComparison.Ordinal)
+                && !sourceFileName.Contains(".hourglass-demo-backup-", StringComparison.Ordinal))
+            {
+                throw new IOException("simulated publish failure");
+            }
+
+            File.Move(sourceFileName, destFileName, overwrite);
         }
     }
 

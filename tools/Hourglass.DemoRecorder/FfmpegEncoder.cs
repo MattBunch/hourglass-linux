@@ -74,10 +74,19 @@ public sealed class SystemProcessRunner : IProcessRunner
 public sealed class FfmpegEncoder
 {
     private readonly IProcessRunner processRunner;
+    private readonly IFileOperations fileOperations;
 
     public FfmpegEncoder(IProcessRunner? processRunner = null)
+        : this(processRunner, new SystemFileOperations())
     {
+    }
+
+    internal FfmpegEncoder(IProcessRunner? processRunner, IFileOperations fileOperations)
+    {
+        ArgumentNullException.ThrowIfNull(fileOperations);
+
         this.processRunner = processRunner ?? new SystemProcessRunner();
+        this.fileOperations = fileOperations;
     }
 
     public async Task EncodeAsync(
@@ -129,13 +138,13 @@ public sealed class FfmpegEncoder
                 }
                 catch (InvalidOperationException exception) when (exception.Message.Contains("Unknown encoder 'libx264'", StringComparison.Ordinal))
                 {
-                    DeleteFileIfExists(temporaryVideoPath);
+                    this.DeleteFileIfExists(temporaryVideoPath);
                     await this.RunCheckedAsync(CreateMp4StartInfo(ffmpegCommand, inputPattern, frameRate, temporaryVideoPath, "libopenh264"), temporaryVideoPath, cancellationToken)
                         .ConfigureAwait(false);
                 }
             }
 
-            PublishSuccessfulOutputs(
+            this.PublishSuccessfulOutputs(
                 string.IsNullOrWhiteSpace(gifPath) ? null : new EncodedOutput(temporaryGifPath!, gifPath),
                 string.IsNullOrWhiteSpace(videoPath) ? null : new EncodedOutput(temporaryVideoPath!, videoPath));
             temporaryGifPath = null;
@@ -143,9 +152,9 @@ public sealed class FfmpegEncoder
         }
         finally
         {
-            DeleteFileIfExists(palettePath);
-            DeleteFileIfExists(temporaryGifPath);
-            DeleteFileIfExists(temporaryVideoPath);
+            this.DeleteFileIfExists(palettePath);
+            this.DeleteFileIfExists(temporaryGifPath);
+            this.DeleteFileIfExists(temporaryVideoPath);
         }
     }
 
@@ -235,24 +244,70 @@ public sealed class FfmpegEncoder
         return Path.Combine(directory, $".{fileName}.hourglass-demo-{Guid.NewGuid():N}.tmp");
     }
 
-    private static void PublishSuccessfulOutputs(params EncodedOutput?[] outputs)
+    private void PublishSuccessfulOutputs(params EncodedOutput?[] outputs)
     {
-        foreach (EncodedOutput? output in outputs)
+        List<PublishedOutput> publishedOutputs = [];
+        List<BackedUpOutput> backedUpOutputs = [];
+        try
         {
-            if (output is null)
+            foreach (EncodedOutput? output in outputs)
             {
-                continue;
-            }
+                if (output is null)
+                {
+                    continue;
+                }
 
-            File.Move(output.TemporaryPath, output.FinalPath, overwrite: true);
+                string backupPath = CreateBackupOutputPath(output.FinalPath);
+                if (this.fileOperations.Exists(output.FinalPath))
+                {
+                    this.fileOperations.Move(output.FinalPath, backupPath, overwrite: true);
+                    backedUpOutputs.Add(new BackedUpOutput(output.FinalPath, backupPath));
+                }
+
+                this.fileOperations.Move(output.TemporaryPath, output.FinalPath, overwrite: false);
+                publishedOutputs.Add(new PublishedOutput(output.FinalPath));
+            }
+        }
+        catch
+        {
+            this.RollBackPublishedOutputs(publishedOutputs, backedUpOutputs);
+            throw;
+        }
+
+        foreach (BackedUpOutput output in backedUpOutputs)
+        {
+            this.DeleteFileIfExists(output.BackupPath);
         }
     }
 
-    private static void DeleteFileIfExists(string? path)
+    private void RollBackPublishedOutputs(
+        IEnumerable<PublishedOutput> publishedOutputs,
+        IEnumerable<BackedUpOutput> backedUpOutputs)
     {
-        if (!string.IsNullOrWhiteSpace(path) && File.Exists(path))
+        foreach (PublishedOutput output in publishedOutputs.Reverse())
         {
-            File.Delete(path);
+            this.DeleteFileIfExists(output.FinalPath);
+        }
+
+        foreach (BackedUpOutput output in backedUpOutputs.Reverse())
+        {
+            this.DeleteFileIfExists(output.FinalPath);
+            this.fileOperations.Move(output.BackupPath, output.FinalPath, overwrite: false);
+        }
+    }
+
+    private static string CreateBackupOutputPath(string finalPath)
+    {
+        string directory = Path.GetDirectoryName(finalPath)!;
+        string fileName = Path.GetFileName(finalPath);
+        return Path.Combine(directory, $".{fileName}.hourglass-demo-backup-{Guid.NewGuid():N}.tmp");
+    }
+
+    private void DeleteFileIfExists(string? path)
+    {
+        if (!string.IsNullOrWhiteSpace(path) && this.fileOperations.Exists(path))
+        {
+            this.fileOperations.Delete(path);
         }
     }
 
@@ -293,4 +348,35 @@ public sealed class FfmpegEncoder
     }
 
     private sealed record EncodedOutput(string TemporaryPath, string FinalPath);
+
+    private sealed record BackedUpOutput(string FinalPath, string BackupPath);
+
+    private sealed record PublishedOutput(string FinalPath);
+}
+
+internal interface IFileOperations
+{
+    bool Exists(string path);
+
+    void Delete(string path);
+
+    void Move(string sourceFileName, string destFileName, bool overwrite);
+}
+
+internal sealed class SystemFileOperations : IFileOperations
+{
+    public bool Exists(string path)
+    {
+        return File.Exists(path);
+    }
+
+    public void Delete(string path)
+    {
+        File.Delete(path);
+    }
+
+    public void Move(string sourceFileName, string destFileName, bool overwrite)
+    {
+        File.Move(sourceFileName, destFileName, overwrite);
+    }
 }
