@@ -59,7 +59,7 @@ public sealed class RecorderIsolationTests
 
         int dispatchBranchIndex = source.IndexOf("if (!Dispatcher.UIThread.CheckAccess())", StringComparison.Ordinal);
         int firstDisposedAssignmentIndex = source.IndexOf("this.disposed = true;", StringComparison.Ordinal);
-        int cleanupMethodIndex = source.IndexOf("private void DisposeOnUiThread()", StringComparison.Ordinal);
+        int cleanupMethodIndex = source.IndexOf("private async Task DisposeOnUiThreadAsync()", StringComparison.Ordinal);
 
         Assert.True(dispatchBranchIndex >= 0);
         Assert.True(cleanupMethodIndex >= 0);
@@ -108,8 +108,41 @@ public sealed class RecorderIsolationTests
         string contextSource = File.ReadAllText(contextSourcePath);
         string windowSource = File.ReadAllText(windowSourcePath);
 
-        Assert.Contains("this.Window.CloseCoordinatedAsync().GetAwaiter().GetResult();", contextSource, StringComparison.Ordinal);
+        Assert.Contains("await this.Window.CloseCoordinatedWithPreapprovedExitAsync().ConfigureAwait(true);", contextSource, StringComparison.Ordinal);
         Assert.Contains("await this.closeCoordinator.PendingPreparation.ConfigureAwait(true);", windowSource, StringComparison.Ordinal);
         Assert.Contains("Dispatcher.UIThread.RunJobs();", windowSource, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void DemoContextPreapprovesWindowCloseDuringDisposal()
+    {
+        string contextSourcePath = Path.GetFullPath(Path.Combine(
+            AppContext.BaseDirectory,
+            "..",
+            "..",
+            "..",
+            "..",
+            "..",
+            "tools",
+            "Hourglass.DemoRecorder",
+            "DemoContext.cs"));
+        string windowSourcePath = Path.GetFullPath(Path.Combine(
+            AppContext.BaseDirectory,
+            "..",
+            "..",
+            "..",
+            "..",
+            "..",
+            "src",
+            "Hourglass.Linux.Avalonia",
+            "MainWindow.axaml.cs"));
+        string contextSource = File.ReadAllText(contextSourcePath);
+        string windowSource = File.ReadAllText(windowSourcePath);
+
+        Assert.Contains("CloseCoordinatedWithPreapprovedExitAsync", contextSource, StringComparison.Ordinal);
+        Assert.Contains("internal Task CloseCoordinatedWithPreapprovedExitAsync()", windowSource, StringComparison.Ordinal);
+        Assert.Contains("return this.CloseCoordinatedAsync(preapproveExit: true);", windowSource, StringComparison.Ordinal);
+        Assert.Contains("this.CloseWithPreapprovedExit();", windowSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("CloseCoordinatedAsync().GetAwaiter().GetResult()", contextSource, StringComparison.Ordinal);
     }
 }

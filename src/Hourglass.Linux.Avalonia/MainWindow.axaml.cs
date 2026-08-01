@@ -478,9 +478,19 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
 
     internal Task CloseCoordinatedAsync()
     {
+        return this.CloseCoordinatedAsync(preapproveExit: false);
+    }
+
+    internal Task CloseCoordinatedWithPreapprovedExitAsync()
+    {
+        return this.CloseCoordinatedAsync(preapproveExit: true);
+    }
+
+    private Task CloseCoordinatedAsync(bool preapproveExit)
+    {
         if (Dispatcher.UIThread.CheckAccess())
         {
-            return this.CloseCoordinatedOnUiThreadAsync();
+            return this.CloseCoordinatedOnUiThreadAsync(preapproveExit);
         }
 
         var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -488,7 +498,7 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
         {
             try
             {
-                await this.CloseCoordinatedOnUiThreadAsync().ConfigureAwait(true);
+                await this.CloseCoordinatedOnUiThreadAsync(preapproveExit).ConfigureAwait(true);
                 completion.SetResult();
             }
             catch (Exception exception)
@@ -500,9 +510,17 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
         return completion.Task;
     }
 
-    private async Task CloseCoordinatedOnUiThreadAsync()
+    private async Task CloseCoordinatedOnUiThreadAsync(bool preapproveExit)
     {
-        this.Close();
+        if (preapproveExit)
+        {
+            this.CloseWithPreapprovedExit();
+        }
+        else
+        {
+            this.Close();
+        }
+
         await this.closeCoordinator.PendingPreparation.ConfigureAwait(true);
         Dispatcher.UIThread.RunJobs();
     }

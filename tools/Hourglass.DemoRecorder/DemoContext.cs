@@ -226,14 +226,28 @@ public sealed class DemoContext : IAsyncDisposable
 
         if (!Dispatcher.UIThread.CheckAccess())
         {
-            await Dispatcher.UIThread.InvokeAsync(this.DisposeOnUiThread).GetTask().ConfigureAwait(true);
+            var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            Dispatcher.UIThread.Post(async () =>
+            {
+                try
+                {
+                    await this.DisposeOnUiThreadAsync().ConfigureAwait(true);
+                    completion.SetResult();
+                }
+                catch (Exception exception)
+                {
+                    completion.SetException(exception);
+                }
+            });
+
+            await completion.Task.ConfigureAwait(true);
             return;
         }
 
-        this.DisposeOnUiThread();
+        await this.DisposeOnUiThreadAsync().ConfigureAwait(true);
     }
 
-    private void DisposeOnUiThread()
+    private async Task DisposeOnUiThreadAsync()
     {
         if (this.disposed)
         {
@@ -241,10 +255,10 @@ public sealed class DemoContext : IAsyncDisposable
         }
 
         this.disposed = true;
-        this.FlushAsync(CancellationToken.None).GetAwaiter().GetResult();
+        await this.FlushAsync(CancellationToken.None).ConfigureAwait(true);
         this.aboutWindow?.Close();
-        this.Window.CloseCoordinatedAsync().GetAwaiter().GetResult();
-        this.FlushAsync(CancellationToken.None).GetAwaiter().GetResult();
+        await this.Window.CloseCoordinatedWithPreapprovedExitAsync().ConfigureAwait(true);
+        await this.FlushAsync(CancellationToken.None).ConfigureAwait(true);
     }
 
     private Task FlushAsync(CancellationToken cancellationToken)
