@@ -144,10 +144,23 @@ public sealed record DemoRecorderOptions(
         string? directory = Path.GetDirectoryName(fullPath);
         if (string.IsNullOrWhiteSpace(directory))
         {
-            return fullPath;
+            return ResolveFileIdentity(fullPath);
         }
 
-        return Path.Combine(ResolveDirectoryIdentity(directory), Path.GetFileName(fullPath));
+        string resolvedDirectory = ResolveDirectoryIdentity(directory);
+        string resolvedPath = Path.Combine(resolvedDirectory, Path.GetFileName(fullPath));
+        return ResolveFileIdentity(resolvedPath);
+    }
+
+    private static string ResolveFileIdentity(string path)
+    {
+        var info = new FileInfo(path);
+        FileSystemInfo? target = string.IsNullOrEmpty(info.LinkTarget)
+            ? null
+            : info.ResolveLinkTarget(returnFinalTarget: true);
+        return target == null
+            ? Path.GetFullPath(path)
+            : Path.GetFullPath(target.FullName);
     }
 
     private static string ResolveDirectoryIdentity(string directory)

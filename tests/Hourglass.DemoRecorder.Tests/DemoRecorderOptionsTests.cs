@@ -96,6 +96,38 @@ public sealed class DemoRecorderOptionsTests : IDisposable
     }
 
     [Fact]
+    public void ParseRejectsLeafSymlinkOutputPathCollision()
+    {
+        Directory.CreateDirectory(this.temporaryDirectory);
+        string realPath = Path.Combine(this.temporaryDirectory, "real.mp4");
+        string aliasPath = Path.Combine(this.temporaryDirectory, "alias.gif");
+        File.WriteAllText(realPath, "existing output");
+
+        try
+        {
+            File.CreateSymbolicLink(aliasPath, realPath);
+        }
+        catch (Exception exception) when (exception is IOException
+            or PlatformNotSupportedException
+            or UnauthorizedAccessException)
+        {
+            return;
+        }
+
+        ParseOptionsResult result = DemoRecorderOptions.Parse(
+            [
+                "--gif",
+                aliasPath,
+                "--video",
+                realPath
+            ],
+            this.temporaryDirectory);
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains("--gif and --video must point to different files", result.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void ParseAllowsCollidingOutputPathWhenGifIsSkipped()
     {
         string outputPath = Path.Combine(Directory.GetCurrentDirectory(), "demo-output");
