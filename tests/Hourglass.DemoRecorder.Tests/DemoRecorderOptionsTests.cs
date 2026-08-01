@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using Xunit;
 
 namespace Hourglass.DemoRecorder.Tests;
@@ -128,6 +129,32 @@ public sealed class DemoRecorderOptionsTests : IDisposable
     }
 
     [Fact]
+    public void ParseRejectsHardLinkedOutputPathCollision()
+    {
+        Directory.CreateDirectory(this.temporaryDirectory);
+        string realPath = Path.Combine(this.temporaryDirectory, "real.mp4");
+        string aliasPath = Path.Combine(this.temporaryDirectory, "alias.gif");
+        File.WriteAllText(realPath, "existing output");
+
+        if (!TryCreateHardLink(aliasPath, realPath))
+        {
+            return;
+        }
+
+        ParseOptionsResult result = DemoRecorderOptions.Parse(
+            [
+                "--gif",
+                aliasPath,
+                "--video",
+                realPath
+            ],
+            this.temporaryDirectory);
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains("--gif and --video must point to different files", result.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void ParseAllowsCollidingOutputPathWhenGifIsSkipped()
     {
         string outputPath = Path.Combine(Directory.GetCurrentDirectory(), "demo-output");
@@ -162,4 +189,12 @@ public sealed class DemoRecorderOptionsTests : IDisposable
             Directory.Delete(this.temporaryDirectory, recursive: true);
         }
     }
+
+    private static bool TryCreateHardLink(string linkPath, string targetPath)
+    {
+        return OperatingSystem.IsLinux() && Link(targetPath, linkPath) == 0;
+    }
+
+    [DllImport("libc", EntryPoint = "link", SetLastError = true)]
+    private static extern int Link(string targetPath, string linkPath);
 }

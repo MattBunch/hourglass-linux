@@ -1,3 +1,5 @@
+using System.Runtime.InteropServices;
+
 namespace Hourglass.DemoRecorder;
 
 public sealed record DemoRecorderOptions(
@@ -158,9 +160,32 @@ public sealed record DemoRecorderOptions(
         FileSystemInfo? target = string.IsNullOrEmpty(info.LinkTarget)
             ? null
             : info.ResolveLinkTarget(returnFinalTarget: true);
-        return target == null
+        string resolvedPath = target == null
             ? Path.GetFullPath(path)
             : Path.GetFullPath(target.FullName);
+        if (TryCreateExistingFileIdentity(resolvedPath, out string? identity) && identity is not null)
+        {
+            return identity;
+        }
+
+        return resolvedPath;
+    }
+
+    private static bool TryCreateExistingFileIdentity(string path, out string? identity)
+    {
+        identity = null;
+        if (!OperatingSystem.IsLinux() || !File.Exists(path))
+        {
+            return false;
+        }
+
+        if (Stat(path, out StatBuffer buffer) != 0)
+        {
+            return false;
+        }
+
+        identity = $"linux-file:{buffer.Device}:{buffer.Inode}";
+        return true;
     }
 
     private static string ResolveDirectoryIdentity(string directory)
@@ -203,6 +228,38 @@ public sealed record DemoRecorderOptions(
         }
 
         return Path.GetFullPath(current);
+    }
+
+    [DllImport("libc", EntryPoint = "stat", SetLastError = true)]
+    private static extern int Stat(string path, out StatBuffer buffer);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private readonly struct StatBuffer
+    {
+        public readonly ulong Device;
+        public readonly ulong Inode;
+        public readonly ulong LinkCount;
+        public readonly uint Mode;
+        public readonly uint UserId;
+        public readonly uint GroupId;
+        public readonly int Padding;
+        public readonly ulong DeviceId;
+        public readonly long Size;
+        public readonly long BlockSize;
+        public readonly long Blocks;
+        public readonly StatTimestamp AccessTime;
+        public readonly StatTimestamp ModificationTime;
+        public readonly StatTimestamp ChangeTime;
+        public readonly long Reserved0;
+        public readonly long Reserved1;
+        public readonly long Reserved2;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private readonly struct StatTimestamp
+    {
+        public readonly long Seconds;
+        public readonly long Nanoseconds;
     }
 
     private static string CreateHelpText()
