@@ -83,6 +83,26 @@ public sealed class RecorderIsolationTests
     }
 
     [Fact]
+    public void DemoContextPinsBundledInterFontForRecordedVisuals()
+    {
+        string contextSourcePath = Path.GetFullPath(Path.Combine(
+            AppContext.BaseDirectory,
+            "..",
+            "..",
+            "..",
+            "..",
+            "..",
+            "tools",
+            "Hourglass.DemoRecorder",
+            "DemoContext.cs"));
+        string contextSource = File.ReadAllText(contextSourcePath);
+
+        Assert.Contains("avares://Avalonia.Fonts.Inter/Assets#Inter", contextSource, StringComparison.Ordinal);
+        Assert.Contains("ApplyDemoFont(this.Window);", contextSource, StringComparison.Ordinal);
+        Assert.Contains("ApplyDemoFont(this.aboutWindow);", contextSource, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void DemoContextUsesCoordinatedWindowCloseDuringDisposal()
     {
         string contextSourcePath = Path.GetFullPath(Path.Combine(

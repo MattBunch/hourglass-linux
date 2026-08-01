@@ -103,34 +103,39 @@ public sealed class FfmpegEncoder
         }
 
         string? palettePath = null;
-        if (!string.IsNullOrWhiteSpace(gifPath))
+        try
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(gifPath)!);
-            palettePath = Path.Combine(Path.GetTempPath(), $"hourglass-demo-palette-{Guid.NewGuid():N}.png");
-            await this.RunCheckedAsync(CreatePaletteStartInfo(ffmpegCommand, inputPattern, frameRate, width, palettePath), palettePath, cancellationToken)
-                .ConfigureAwait(false);
-            await this.RunCheckedAsync(CreateGifStartInfo(ffmpegCommand, inputPattern, palettePath, frameRate, width, gifPath), gifPath, cancellationToken)
-                .ConfigureAwait(false);
-        }
-
-        if (!string.IsNullOrWhiteSpace(videoPath))
-        {
-            Directory.CreateDirectory(Path.GetDirectoryName(videoPath)!);
-            try
+            if (!string.IsNullOrWhiteSpace(gifPath))
             {
-                await this.RunCheckedAsync(CreateMp4StartInfo(ffmpegCommand, inputPattern, frameRate, videoPath), videoPath, cancellationToken)
+                Directory.CreateDirectory(Path.GetDirectoryName(gifPath)!);
+                palettePath = Path.Combine(Path.GetTempPath(), $"hourglass-demo-palette-{Guid.NewGuid():N}.png");
+                await this.RunCheckedAsync(CreatePaletteStartInfo(ffmpegCommand, inputPattern, frameRate, width, palettePath), palettePath, cancellationToken)
+                    .ConfigureAwait(false);
+                await this.RunCheckedAsync(CreateGifStartInfo(ffmpegCommand, inputPattern, palettePath, frameRate, width, gifPath), gifPath, cancellationToken)
                     .ConfigureAwait(false);
             }
-            catch (InvalidOperationException exception) when (exception.Message.Contains("Unknown encoder 'libx264'", StringComparison.Ordinal))
+
+            if (!string.IsNullOrWhiteSpace(videoPath))
             {
-                await this.RunCheckedAsync(CreateMp4StartInfo(ffmpegCommand, inputPattern, frameRate, videoPath, "libopenh264"), videoPath, cancellationToken)
-                    .ConfigureAwait(false);
+                Directory.CreateDirectory(Path.GetDirectoryName(videoPath)!);
+                try
+                {
+                    await this.RunCheckedAsync(CreateMp4StartInfo(ffmpegCommand, inputPattern, frameRate, videoPath), videoPath, cancellationToken)
+                        .ConfigureAwait(false);
+                }
+                catch (InvalidOperationException exception) when (exception.Message.Contains("Unknown encoder 'libx264'", StringComparison.Ordinal))
+                {
+                    await this.RunCheckedAsync(CreateMp4StartInfo(ffmpegCommand, inputPattern, frameRate, videoPath, "libopenh264"), videoPath, cancellationToken)
+                        .ConfigureAwait(false);
+                }
             }
         }
-
-        if (palettePath != null && File.Exists(palettePath))
+        finally
         {
-            File.Delete(palettePath);
+            if (palettePath != null && File.Exists(palettePath))
+            {
+                File.Delete(palettePath);
+            }
         }
     }
 

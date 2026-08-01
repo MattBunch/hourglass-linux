@@ -1,7 +1,10 @@
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Input;
+using Avalonia.Media;
 using Avalonia.Styling;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using Hourglass.DemoRecorder.Services;
 using Hourglass.Linux.Avalonia;
 using Hourglass.Platform;
@@ -11,6 +14,8 @@ namespace Hourglass.DemoRecorder;
 
 public sealed class DemoContext : IAsyncDisposable
 {
+    private static readonly FontFamily DemoFontFamily = new("avares://Avalonia.Fonts.Inter/Assets#Inter");
+
     internal static ApplicationInfo DemoApplicationInfo { get; } = new(
         ProductName: "Hourglass Linux",
         Description: "A simple, polished timer for Linux.",
@@ -70,6 +75,7 @@ public sealed class DemoContext : IAsyncDisposable
         this.Window.Width = options.Width;
         this.Window.Height = options.Height;
         this.Window.CanResize = false;
+        ApplyDemoFont(this.Window);
     }
 
     public MainWindow Window { get; }
@@ -178,6 +184,7 @@ public sealed class DemoContext : IAsyncDisposable
             Height = 430,
             CanResize = false
         };
+        ApplyDemoFont(this.aboutWindow);
         this.aboutWindow.Show(this.Window);
         await this.FlushAsync(cancellationToken).ConfigureAwait(true);
     }
@@ -215,6 +222,26 @@ public sealed class DemoContext : IAsyncDisposable
         cancellationToken.ThrowIfCancellationRequested();
         await this.FlushAsync(cancellationToken).ConfigureAwait(true);
         this.frameRecorder.Capture(this.aboutWindow?.IsVisible == true ? this.aboutWindow : this.Window);
+    }
+
+    private static void ApplyDemoFont(Control control)
+    {
+        if (control is TextBlock textBlock)
+        {
+            textBlock.FontFamily = DemoFontFamily;
+        }
+        else if (control is TemplatedControl templatedControl)
+        {
+            templatedControl.FontFamily = DemoFontFamily;
+        }
+
+        foreach (Avalonia.Visual child in control.GetVisualChildren())
+        {
+            if (child is Control childControl)
+            {
+                ApplyDemoFont(childControl);
+            }
+        }
     }
 
     public async ValueTask DisposeAsync()

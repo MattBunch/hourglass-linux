@@ -83,6 +83,24 @@ public sealed class FfmpegEncoderTests : IDisposable
         Assert.Contains("libx264", runner.StartInfos[2].ArgumentList);
     }
 
+    [Fact]
+    public async Task EncodeDeletesPaletteWhenGifEncodingFails()
+    {
+        var runner = new SequencedProcessRunner([0, 1], stderr: "gif failed");
+        var encoder = new FfmpegEncoder(runner);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => encoder.EncodeAsync(
+            "ffmpeg",
+            "frame-%05d.png",
+            12,
+            960,
+            Path.Combine(this.temporaryDirectory, "demo.gif"),
+            null));
+
+        string palettePath = runner.StartInfos[0].ArgumentList[^1];
+        Assert.False(File.Exists(palettePath));
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(this.temporaryDirectory))
@@ -99,6 +117,28 @@ public sealed class FfmpegEncoderTests : IDisposable
         {
             this.StartInfos.Add(startInfo);
             if (createOutputs && startInfo.ArgumentList.Count > 0)
+            {
+                string output = startInfo.ArgumentList[^1];
+                Directory.CreateDirectory(Path.GetDirectoryName(output)!);
+                File.WriteAllText(output, "output");
+            }
+
+            return Task.FromResult(new ProcessResult(exitCode, "", stderr));
+        }
+    }
+
+    private sealed class SequencedProcessRunner(IReadOnlyList<int> exitCodes, string stderr) : IProcessRunner
+    {
+        private int index;
+
+        public List<ProcessStartInfo> StartInfos { get; } = [];
+
+        public Task<ProcessResult> RunAsync(ProcessStartInfo startInfo, CancellationToken cancellationToken = default)
+        {
+            this.StartInfos.Add(startInfo);
+            int exitCode = exitCodes[Math.Min(this.index, exitCodes.Count - 1)];
+            this.index++;
+            if (exitCode == 0 && startInfo.ArgumentList.Count > 0)
             {
                 string output = startInfo.ArgumentList[^1];
                 Directory.CreateDirectory(Path.GetDirectoryName(output)!);

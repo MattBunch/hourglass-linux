@@ -19,6 +19,7 @@ public sealed record DemoRecorderOptions(
     public const int DefaultFrameRate = 12;
     public const int DefaultWidth = 960;
     public const int DefaultHeight = 540;
+    private const int MaxLinkResolutionDepth = 32;
 
     public static DemoRecorderOptions Defaults(string repositoryRoot)
     {
@@ -172,10 +173,21 @@ public sealed record DemoRecorderOptions(
 
     private static string ResolveFilePath(string path)
     {
+        return ResolveFilePath(path, [], depth: 0);
+    }
+
+    private static string ResolveFilePath(string path, HashSet<string> visitedPaths, int depth)
+    {
         var info = new FileInfo(path);
+        string fullPath = Path.GetFullPath(path);
+        if (depth >= MaxLinkResolutionDepth || !visitedPaths.Add(fullPath))
+        {
+            return fullPath;
+        }
+
         if (string.IsNullOrEmpty(info.LinkTarget))
         {
-            return Path.GetFullPath(path);
+            return fullPath;
         }
 
         FileSystemInfo? target = info.ResolveLinkTarget(returnFinalTarget: true);
@@ -186,12 +198,8 @@ public sealed record DemoRecorderOptions(
 
         string targetPath = Path.IsPathRooted(info.LinkTarget)
             ? info.LinkTarget
-            : Path.Combine(Path.GetDirectoryName(Path.GetFullPath(path)) ?? string.Empty, info.LinkTarget);
-        string fullTargetPath = Path.GetFullPath(targetPath);
-        string? targetDirectory = Path.GetDirectoryName(fullTargetPath);
-        return string.IsNullOrWhiteSpace(targetDirectory)
-            ? fullTargetPath
-            : Path.Combine(ResolveDirectoryIdentity(targetDirectory), Path.GetFileName(fullTargetPath));
+            : Path.Combine(Path.GetDirectoryName(fullPath) ?? string.Empty, info.LinkTarget);
+        return ResolveFilePath(targetPath, visitedPaths, depth + 1);
     }
 
     private static bool EnabledOutputOverlapsFrameSequence(DemoRecorderOptions options)

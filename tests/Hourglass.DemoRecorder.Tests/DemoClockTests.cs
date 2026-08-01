@@ -22,7 +22,7 @@ public sealed class DemoClockTests
     [Fact]
     public void RejectsBackwardMovement()
     {
-        var clock = new DemoClock(DateTime.Now);
+        var clock = new DemoClock(new DateTime(2026, 1, 1, 12, 0, 0, DateTimeKind.Local));
 
         Assert.Throws<ArgumentOutOfRangeException>(() => clock.Advance(TimeSpan.FromMilliseconds(-1)));
     }

@@ -209,6 +209,42 @@ public sealed class DemoRecorderOptionsTests : IDisposable
     }
 
     [Fact]
+    public void ParseRejectsDanglingSymlinkChainOutputPathInsideGeneratedFrameSequence()
+    {
+        Directory.CreateDirectory(this.temporaryDirectory);
+        string framesDirectory = Path.Combine(this.temporaryDirectory, "frames");
+        Directory.CreateDirectory(framesDirectory);
+        string framePath = Path.Combine(framesDirectory, FrameRecorder.GetFrameFileName(0));
+        string secondLinkPath = Path.Combine(this.temporaryDirectory, "second-link");
+        string aliasPath = Path.Combine(this.temporaryDirectory, "alias.gif");
+
+        try
+        {
+            File.CreateSymbolicLink(secondLinkPath, framePath);
+            File.CreateSymbolicLink(aliasPath, secondLinkPath);
+        }
+        catch (Exception exception) when (exception is IOException
+            or PlatformNotSupportedException
+            or UnauthorizedAccessException)
+        {
+            return;
+        }
+
+        ParseOptionsResult result = DemoRecorderOptions.Parse(
+            [
+                "--gif",
+                aliasPath,
+                "--frames-dir",
+                framesDirectory,
+                "--skip-video"
+            ],
+            this.temporaryDirectory);
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains("must not point to generated frame files", result.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void ParseAllowsSkippedOutputPathInsideGeneratedFrameSequence()
     {
         string framesDirectory = Path.Combine(this.temporaryDirectory, "frames");
