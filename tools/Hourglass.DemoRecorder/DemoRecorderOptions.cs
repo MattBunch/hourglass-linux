@@ -187,7 +187,10 @@ public sealed record DemoRecorderOptions(
 
         if (string.IsNullOrEmpty(info.LinkTarget))
         {
-            return fullPath;
+            string? directory = Path.GetDirectoryName(fullPath);
+            return string.IsNullOrWhiteSpace(directory)
+                ? fullPath
+                : Path.Combine(ResolveDirectoryIdentity(directory), Path.GetFileName(fullPath));
         }
 
         FileSystemInfo? target = info.ResolveLinkTarget(returnFinalTarget: true);
@@ -247,7 +250,17 @@ public sealed record DemoRecorderOptions(
 
     private static string ResolveDirectoryIdentity(string directory)
     {
+        return ResolveDirectoryIdentity(directory, [], depth: 0);
+    }
+
+    private static string ResolveDirectoryIdentity(string directory, HashSet<string> visitedPaths, int depth)
+    {
         string fullDirectory = Path.GetFullPath(directory);
+        if (depth >= MaxLinkResolutionDepth || !visitedPaths.Add(fullDirectory))
+        {
+            return fullDirectory;
+        }
+
         string? root = Path.GetPathRoot(fullDirectory);
         if (string.IsNullOrEmpty(root))
         {
@@ -269,19 +282,24 @@ public sealed record DemoRecorderOptions(
             }
 
             string candidate = Path.Combine(current, part);
-            if (!Directory.Exists(candidate))
+            var info = new DirectoryInfo(candidate);
+            if (string.IsNullOrEmpty(info.LinkTarget))
             {
                 current = candidate;
                 continue;
             }
 
-            var info = new DirectoryInfo(candidate);
-            FileSystemInfo? target = string.IsNullOrEmpty(info.LinkTarget)
-                ? null
-                : info.ResolveLinkTarget(returnFinalTarget: true);
-            current = target == null
-                ? candidate
-                : Path.GetFullPath(target.FullName);
+            FileSystemInfo? target = info.ResolveLinkTarget(returnFinalTarget: true);
+            if (target != null)
+            {
+                current = Path.GetFullPath(target.FullName);
+                continue;
+            }
+
+            string targetPath = Path.IsPathRooted(info.LinkTarget)
+                ? info.LinkTarget
+                : Path.Combine(current, info.LinkTarget);
+            current = ResolveDirectoryIdentity(targetPath, visitedPaths, depth + 1);
         }
 
         return Path.GetFullPath(current);

@@ -55,6 +55,37 @@ public sealed class FrameRecorderTests : IDisposable
         Assert.Throws<InvalidOperationException>(recorder.PrepareEmptyDirectory);
     }
 
+    [Fact]
+    public void ProgramRejectsDefaultFramesDirectoryWithSymlinkedAncestor()
+    {
+        string repositoryRoot = Path.Combine(this.temporaryDirectory, "repo");
+        string externalRoot = Path.Combine(this.temporaryDirectory, "external");
+        string defaultRoot = Path.Combine(repositoryRoot, ".tmp", "readme-demo");
+        string externalFrames = Path.Combine(externalRoot, "frames");
+        Directory.CreateDirectory(Path.Combine(repositoryRoot, ".tmp"));
+        Directory.CreateDirectory(externalFrames);
+        string unrelatedFile = Path.Combine(externalFrames, "keep.txt");
+        File.WriteAllText(unrelatedFile, "do not overwrite");
+
+        try
+        {
+            Directory.CreateSymbolicLink(defaultRoot, externalRoot);
+        }
+        catch (Exception exception) when (exception is IOException
+            or PlatformNotSupportedException
+            or UnauthorizedAccessException)
+        {
+            return;
+        }
+
+        DemoRecorderOptions options = DemoRecorderOptions.Defaults(repositoryRoot);
+
+        InvalidOperationException cleanupException = Assert.Throws<InvalidOperationException>(() => Program.PrepareFramesDirectoryForRun(repositoryRoot, options));
+
+        Assert.Contains("symlinked ancestor", cleanupException.Message, StringComparison.Ordinal);
+        Assert.True(File.Exists(unrelatedFile));
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(this.temporaryDirectory))

@@ -134,8 +134,47 @@ internal static class Program
         if (Path.GetFullPath(options.FramesDirectory) == Path.GetFullPath(defaultFramesDirectory)
             && Directory.Exists(options.FramesDirectory))
         {
+            if (PathContainsSymlink(defaultFramesDirectory))
+            {
+                throw new InvalidOperationException("The default frames directory has a symlinked ancestor. Remove the symlink or choose a safe --frames-dir path before recording.");
+            }
+
             Directory.Delete(options.FramesDirectory, recursive: true);
         }
+    }
+
+    private static bool PathContainsSymlink(string path)
+    {
+        string fullPath = Path.GetFullPath(path);
+        string? root = Path.GetPathRoot(fullPath);
+        if (string.IsNullOrEmpty(root))
+        {
+            return false;
+        }
+
+        string relative = Path.GetRelativePath(root, fullPath);
+        if (relative == ".")
+        {
+            return false;
+        }
+
+        string current = root;
+        foreach (string part in relative.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar))
+        {
+            if (string.IsNullOrEmpty(part) || part == ".")
+            {
+                continue;
+            }
+
+            current = Path.Combine(current, part);
+            var info = new DirectoryInfo(current);
+            if (!string.IsNullOrEmpty(info.LinkTarget))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static void CleanupFramesDirectoryForRun(FrameRecorder? frameRecorder)
