@@ -112,6 +112,13 @@ public sealed record DemoRecorderOptions(
             return ParseOptionsResult.Error("MP4 output requires even --width and --height values because yuv420p video cannot encode odd dimensions. Use even dimensions or pass --skip-video.");
         }
 
+        if (!options.SkipGif
+            && !options.SkipVideo
+            && StringComparer.Ordinal.Equals(Path.GetFullPath(options.GifPath), Path.GetFullPath(options.VideoPath)))
+        {
+            return ParseOptionsResult.Error("--gif and --video must point to different files when both outputs are enabled.");
+        }
+
         return ParseOptionsResult.Success(options);
     }
 
