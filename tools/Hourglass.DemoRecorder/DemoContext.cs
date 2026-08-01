@@ -199,6 +199,13 @@ public sealed class DemoContext : IAsyncDisposable
         int frames = (int)Math.Round(duration.TotalSeconds * this.options.FrameRate, MidpointRounding.AwayFromZero);
         if (frames == 0)
         {
+            if (duration > TimeSpan.Zero)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                this.services.Clock.Advance(duration);
+                this.viewModel.Tick();
+            }
+
             return;
         }
 

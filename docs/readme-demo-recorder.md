@@ -10,14 +10,6 @@ The default command is:
 ./scripts/record-readme-demo.sh
 ```
 
-## Why not Node.js?
-
-The Digital Rain project uses Node.js because it is a browser application and Playwright directly automates Chromium.
-
-Hourglass is a native Avalonia desktop application. A Node.js helper would mostly supervise `dotnet` and `ffmpeg`, and would not provide a reliable cross-desktop Linux UI automation layer.
-
-C# provides direct access to the real application, reuse of view models and services, deterministic clock injection, Avalonia headless APIs, fewer repository toolchains, and compile-time integration.
-
 ## Scenario Timeline
 
 The `readme` scenario lasts 16 seconds at 12 FPS. It shows the idle window, enters `10 sec` with title `Demo timer`, starts through the existing start command path, shows countdown, pauses, resumes, opens the real context menu and toggles always-on-top, advances to completion, then opens the real About window.
