@@ -194,6 +194,26 @@ public sealed class DemoRecorderOptionsTests : IDisposable
     }
 
     [Fact]
+    public void ParseRejectsOutputPathInsideWideGeneratedFrameSequence()
+    {
+        string framesDirectory = Path.Combine(this.temporaryDirectory, "frames");
+        string framePath = Path.Combine(framesDirectory, "frame-100000.png");
+
+        ParseOptionsResult result = DemoRecorderOptions.Parse(
+            [
+                "--gif",
+                framePath,
+                "--frames-dir",
+                framesDirectory,
+                "--skip-video"
+            ],
+            this.temporaryDirectory);
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains("must not point to generated frame files", result.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void ParseRejectsDanglingSymlinkOutputPathInsideGeneratedFrameSequence()
     {
         Directory.CreateDirectory(this.temporaryDirectory);
@@ -261,6 +281,46 @@ public sealed class DemoRecorderOptionsTests : IDisposable
 
         Assert.False(result.IsSuccess);
         Assert.Contains("must not point to generated frame files", result.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ParseRejectsOutputPathWhenDanglingSymlinkChainExceedsResolverLimit()
+    {
+        Directory.CreateDirectory(this.temporaryDirectory);
+        string framesDirectory = Path.Combine(this.temporaryDirectory, "frames");
+        Directory.CreateDirectory(framesDirectory);
+        string aliasPath = Path.Combine(this.temporaryDirectory, "alias-00.gif");
+
+        try
+        {
+            for (int index = 0; index < 33; index++)
+            {
+                string linkPath = Path.Combine(this.temporaryDirectory, $"alias-{index:00}.gif");
+                string targetPath = index == 32
+                    ? Path.Combine(framesDirectory, FrameRecorder.GetFrameFileName(0))
+                    : Path.Combine(this.temporaryDirectory, $"alias-{index + 1:00}.gif");
+                File.CreateSymbolicLink(linkPath, targetPath);
+            }
+        }
+        catch (Exception exception) when (exception is IOException
+            or PlatformNotSupportedException
+            or UnauthorizedAccessException)
+        {
+            return;
+        }
+
+        ParseOptionsResult result = DemoRecorderOptions.Parse(
+            [
+                "--gif",
+                aliasPath,
+                "--frames-dir",
+                framesDirectory,
+                "--skip-video"
+            ],
+            this.temporaryDirectory);
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains("too many symbolic links", result.Message, StringComparison.Ordinal);
     }
 
     [Fact]

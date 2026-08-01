@@ -115,16 +115,23 @@ public sealed record DemoRecorderOptions(
             return ParseOptionsResult.Error("MP4 output requires even --width and --height values because yuv420p video cannot encode odd dimensions. Use even dimensions or pass --skip-video.");
         }
 
-        if (!options.SkipGif
-            && !options.SkipVideo
-            && StringComparer.Ordinal.Equals(CreateOutputPathIdentity(options.GifPath), CreateOutputPathIdentity(options.VideoPath)))
+        try
         {
-            return ParseOptionsResult.Error("--gif and --video must point to different files when both outputs are enabled.");
-        }
+            if (!options.SkipGif
+                && !options.SkipVideo
+                && StringComparer.Ordinal.Equals(CreateOutputPathIdentity(options.GifPath), CreateOutputPathIdentity(options.VideoPath)))
+            {
+                return ParseOptionsResult.Error("--gif and --video must point to different files when both outputs are enabled.");
+            }
 
-        if (EnabledOutputOverlapsFrameSequence(options))
+            if (EnabledOutputOverlapsFrameSequence(options))
+            {
+                return ParseOptionsResult.Error("Enabled output paths must not point to generated frame files. Choose --gif and --video paths outside --frames-dir.");
+            }
+        }
+        catch (PathResolutionException exception)
         {
-            return ParseOptionsResult.Error("Enabled output paths must not point to generated frame files. Choose --gif and --video paths outside --frames-dir.");
+            return ParseOptionsResult.Error(exception.Message);
         }
 
         return ParseOptionsResult.Success(options);
@@ -180,9 +187,14 @@ public sealed record DemoRecorderOptions(
     {
         var info = new FileInfo(path);
         string fullPath = Path.GetFullPath(path);
-        if (depth >= MaxLinkResolutionDepth || !visitedPaths.Add(fullPath))
+        if (depth >= MaxLinkResolutionDepth)
         {
-            return fullPath;
+            throw new PathResolutionException($"Output path '{path}' contains too many symbolic links to resolve safely.");
+        }
+
+        if (!visitedPaths.Add(fullPath))
+        {
+            throw new PathResolutionException($"Output path '{path}' contains a symbolic link cycle.");
         }
 
         if (string.IsNullOrEmpty(info.LinkTarget))
@@ -193,10 +205,10 @@ public sealed record DemoRecorderOptions(
                 : Path.Combine(ResolveDirectoryIdentity(directory), Path.GetFileName(fullPath));
         }
 
-        FileSystemInfo? target = info.ResolveLinkTarget(returnFinalTarget: true);
+        FileSystemInfo? target = info.ResolveLinkTarget(returnFinalTarget: false);
         if (target != null)
         {
-            return Path.GetFullPath(target.FullName);
+            return ResolveFilePath(target.FullName, visitedPaths, depth + 1);
         }
 
         string targetPath = Path.IsPathRooted(info.LinkTarget)
@@ -224,11 +236,12 @@ public sealed record DemoRecorderOptions(
     {
         const string prefix = "frame-";
         const string suffix = ".png";
-        const int digits = 5;
-        return fileName.Length == prefix.Length + digits + suffix.Length
+        const int minimumDigits = 5;
+        int digitCount = fileName.Length - prefix.Length - suffix.Length;
+        return digitCount >= minimumDigits
             && fileName.StartsWith(prefix, StringComparison.Ordinal)
             && fileName.EndsWith(suffix, StringComparison.Ordinal)
-            && fileName.AsSpan(prefix.Length, digits).IndexOfAnyExceptInRange('0', '9') < 0;
+            && fileName.AsSpan(prefix.Length, digitCount).IndexOfAnyExceptInRange('0', '9') < 0;
     }
 
     private static bool TryCreateExistingFileIdentity(string path, out string? identity)
@@ -256,9 +269,14 @@ public sealed record DemoRecorderOptions(
     private static string ResolveDirectoryIdentity(string directory, HashSet<string> visitedPaths, int depth)
     {
         string fullDirectory = Path.GetFullPath(directory);
-        if (depth >= MaxLinkResolutionDepth || !visitedPaths.Add(fullDirectory))
+        if (depth >= MaxLinkResolutionDepth)
         {
-            return fullDirectory;
+            throw new PathResolutionException($"Directory path '{directory}' contains too many symbolic links to resolve safely.");
+        }
+
+        if (!visitedPaths.Add(fullDirectory))
+        {
+            throw new PathResolutionException($"Directory path '{directory}' contains a symbolic link cycle.");
         }
 
         string? root = Path.GetPathRoot(fullDirectory);
@@ -289,10 +307,10 @@ public sealed record DemoRecorderOptions(
                 continue;
             }
 
-            FileSystemInfo? target = info.ResolveLinkTarget(returnFinalTarget: true);
+            FileSystemInfo? target = info.ResolveLinkTarget(returnFinalTarget: false);
             if (target != null)
             {
-                current = Path.GetFullPath(target.FullName);
+                current = ResolveDirectoryIdentity(target.FullName, visitedPaths, depth + 1);
                 continue;
             }
 
@@ -336,6 +354,8 @@ public sealed record DemoRecorderOptions(
         public readonly long Seconds;
         public readonly long Nanoseconds;
     }
+
+    private sealed class PathResolutionException(string message) : Exception(message);
 
     private static string CreateHelpText()
     {
