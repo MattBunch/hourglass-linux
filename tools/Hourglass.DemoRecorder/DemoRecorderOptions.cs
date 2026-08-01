@@ -114,7 +114,7 @@ public sealed record DemoRecorderOptions(
 
         if (!options.SkipGif
             && !options.SkipVideo
-            && StringComparer.Ordinal.Equals(Path.GetFullPath(options.GifPath), Path.GetFullPath(options.VideoPath)))
+            && StringComparer.Ordinal.Equals(CreateOutputPathIdentity(options.GifPath), CreateOutputPathIdentity(options.VideoPath)))
         {
             return ParseOptionsResult.Error("--gif and --video must point to different files when both outputs are enabled.");
         }
@@ -136,6 +136,60 @@ public sealed record DemoRecorderOptions(
     private static string ToAbsolutePath(string repositoryRoot, string path)
     {
         return Path.IsPathRooted(path) ? path : Path.GetFullPath(Path.Combine(repositoryRoot, path));
+    }
+
+    private static string CreateOutputPathIdentity(string path)
+    {
+        string fullPath = Path.GetFullPath(path);
+        string? directory = Path.GetDirectoryName(fullPath);
+        if (string.IsNullOrWhiteSpace(directory))
+        {
+            return fullPath;
+        }
+
+        return Path.Combine(ResolveDirectoryIdentity(directory), Path.GetFileName(fullPath));
+    }
+
+    private static string ResolveDirectoryIdentity(string directory)
+    {
+        string fullDirectory = Path.GetFullPath(directory);
+        string? root = Path.GetPathRoot(fullDirectory);
+        if (string.IsNullOrEmpty(root))
+        {
+            return fullDirectory;
+        }
+
+        string relative = Path.GetRelativePath(root, fullDirectory);
+        if (relative == ".")
+        {
+            return root;
+        }
+
+        string current = root;
+        foreach (string part in relative.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar))
+        {
+            if (string.IsNullOrEmpty(part) || part == ".")
+            {
+                continue;
+            }
+
+            string candidate = Path.Combine(current, part);
+            if (!Directory.Exists(candidate))
+            {
+                current = candidate;
+                continue;
+            }
+
+            var info = new DirectoryInfo(candidate);
+            FileSystemInfo? target = string.IsNullOrEmpty(info.LinkTarget)
+                ? null
+                : info.ResolveLinkTarget(returnFinalTarget: true);
+            current = target == null
+                ? candidate
+                : Path.GetFullPath(target.FullName);
+        }
+
+        return Path.GetFullPath(current);
     }
 
     private static string CreateHelpText()

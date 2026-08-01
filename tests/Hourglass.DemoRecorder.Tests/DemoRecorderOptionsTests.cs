@@ -2,8 +2,10 @@ using Xunit;
 
 namespace Hourglass.DemoRecorder.Tests;
 
-public sealed class DemoRecorderOptionsTests
+public sealed class DemoRecorderOptionsTests : IDisposable
 {
+    private readonly string temporaryDirectory = Path.Combine(Path.GetTempPath(), $"hourglass-options-tests-{Guid.NewGuid():N}");
+
     [Fact]
     public void ParseRejectsOddWidthWhenVideoIsEnabled()
     {
@@ -63,6 +65,37 @@ public sealed class DemoRecorderOptionsTests
     }
 
     [Fact]
+    public void ParseRejectsSymlinkedOutputPathCollision()
+    {
+        string realDirectory = Path.Combine(this.temporaryDirectory, "real");
+        string aliasDirectory = Path.Combine(this.temporaryDirectory, "alias");
+        Directory.CreateDirectory(realDirectory);
+
+        try
+        {
+            Directory.CreateSymbolicLink(aliasDirectory, realDirectory);
+        }
+        catch (Exception exception) when (exception is IOException
+            or PlatformNotSupportedException
+            or UnauthorizedAccessException)
+        {
+            return;
+        }
+
+        ParseOptionsResult result = DemoRecorderOptions.Parse(
+            [
+                "--gif",
+                Path.Combine(realDirectory, "demo"),
+                "--video",
+                Path.Combine(aliasDirectory, "demo")
+            ],
+            this.temporaryDirectory);
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains("--gif and --video must point to different files", result.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void ParseAllowsCollidingOutputPathWhenGifIsSkipped()
     {
         string outputPath = Path.Combine(Directory.GetCurrentDirectory(), "demo-output");
@@ -88,5 +121,13 @@ public sealed class DemoRecorderOptionsTests
         Assert.True(result.IsSuccess);
         Assert.NotNull(result.Options);
         Assert.True(result.Options.SkipVideo);
+    }
+
+    public void Dispose()
+    {
+        if (Directory.Exists(this.temporaryDirectory))
+        {
+            Directory.Delete(this.temporaryDirectory, recursive: true);
+        }
     }
 }
