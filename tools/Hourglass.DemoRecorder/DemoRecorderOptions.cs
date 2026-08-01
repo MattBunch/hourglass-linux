@@ -107,6 +107,11 @@ public sealed record DemoRecorderOptions(
             return ParseOptionsResult.Error("At least one output must be enabled; remove --skip-gif or --skip-video.");
         }
 
+        if (!options.SkipVideo && (options.Width % 2 != 0 || options.Height % 2 != 0))
+        {
+            return ParseOptionsResult.Error("MP4 output requires even --width and --height values because yuv420p video cannot encode odd dimensions. Use even dimensions or pass --skip-video.");
+        }
+
         return ParseOptionsResult.Success(options);
     }
 
