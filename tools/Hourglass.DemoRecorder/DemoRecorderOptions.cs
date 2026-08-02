@@ -127,6 +127,11 @@ public sealed record DemoRecorderOptions(
                 return ParseOptionsResult.Error("Enabled output paths must point to files, not existing directories. Choose --gif and --video file paths or skip that output.");
             }
 
+            if (FramesDirectoryIsDanglingSymbolicLink(options.FramesDirectory))
+            {
+                return ParseOptionsResult.Error("--frames-dir must not be a dangling symbolic link. Create the symlink target directory or choose a real frames directory.");
+            }
+
             if (!options.SkipGif
                 && !options.SkipVideo
                 && StringComparer.Ordinal.Equals(CreateOutputPathIdentity(options.GifPath), CreateOutputPathIdentity(options.VideoPath)))
@@ -284,6 +289,24 @@ public sealed record DemoRecorderOptions(
 
         return (!options.SkipGif && IsAncestorPath(framesDirectory, CreateResolvedOutputPath(options.GifPath)))
             || (!options.SkipVideo && IsAncestorPath(framesDirectory, CreateResolvedOutputPath(options.VideoPath)));
+    }
+
+    private static bool FramesDirectoryIsDanglingSymbolicLink(string framesDirectory)
+    {
+        var info = new DirectoryInfo(Path.GetFullPath(framesDirectory));
+        if (string.IsNullOrEmpty(info.LinkTarget))
+        {
+            return false;
+        }
+
+        try
+        {
+            return info.ResolveLinkTarget(returnFinalTarget: true) is null;
+        }
+        catch (IOException)
+        {
+            return true;
+        }
     }
 
     private static bool IsGeneratedFramePath(string path, string framesDirectory)
