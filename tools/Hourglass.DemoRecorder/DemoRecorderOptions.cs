@@ -127,7 +127,7 @@ public sealed record DemoRecorderOptions(
                 return ParseOptionsResult.Error("Enabled output paths must point to files, not existing directories. Choose --gif and --video file paths or skip that output.");
             }
 
-            if (FramesDirectoryContainsDanglingSymbolicLink(options.FramesDirectory))
+            if (DirectoryPathContainsDanglingSymbolicLink(options.FramesDirectory))
             {
                 return ParseOptionsResult.Error("--frames-dir must not contain a dangling symbolic link. Create the symlink target directory or choose a real frames directory.");
             }
@@ -142,6 +142,11 @@ public sealed record DemoRecorderOptions(
             if (EnabledOutputOverlapsFrameSequence(options))
             {
                 return ParseOptionsResult.Error("Enabled output paths must not point to generated frame files. Choose --gif and --video paths outside --frames-dir.");
+            }
+
+            if (EnabledOutputContainsDanglingSymbolicLink(options))
+            {
+                return ParseOptionsResult.Error("Enabled output paths must not contain dangling symbolic links. Create the symlink target or choose a real output file path.");
             }
 
             if (EnabledOutputIsUnderDefaultFramesCleanupDirectory(options, repositoryRoot))
@@ -291,9 +296,23 @@ public sealed record DemoRecorderOptions(
             || (!options.SkipVideo && IsAncestorPath(framesDirectory, CreateResolvedOutputPath(options.VideoPath)));
     }
 
-    private static bool FramesDirectoryContainsDanglingSymbolicLink(string framesDirectory)
+    private static bool EnabledOutputContainsDanglingSymbolicLink(DemoRecorderOptions options)
     {
-        string fullDirectory = Path.GetFullPath(framesDirectory);
+        return (!options.SkipGif && OutputPathContainsDanglingSymbolicLink(options.GifPath))
+            || (!options.SkipVideo && OutputPathContainsDanglingSymbolicLink(options.VideoPath));
+    }
+
+    private static bool OutputPathContainsDanglingSymbolicLink(string outputPath)
+    {
+        string fullPath = Path.GetFullPath(outputPath);
+        string? directory = Path.GetDirectoryName(fullPath);
+        return (!string.IsNullOrWhiteSpace(directory) && DirectoryPathContainsDanglingSymbolicLink(directory))
+            || FileLinkIsDangling(fullPath);
+    }
+
+    private static bool DirectoryPathContainsDanglingSymbolicLink(string directory)
+    {
+        string fullDirectory = Path.GetFullPath(directory);
         string? root = Path.GetPathRoot(fullDirectory);
         if (string.IsNullOrEmpty(root))
         {
@@ -322,6 +341,24 @@ public sealed record DemoRecorderOptions(
         }
 
         return false;
+    }
+
+    private static bool FileLinkIsDangling(string path)
+    {
+        var info = new FileInfo(path);
+        if (string.IsNullOrEmpty(info.LinkTarget))
+        {
+            return false;
+        }
+
+        try
+        {
+            return info.ResolveLinkTarget(returnFinalTarget: true) is null;
+        }
+        catch (IOException)
+        {
+            return true;
+        }
     }
 
     private static bool DirectoryLinkIsDangling(string directory)
