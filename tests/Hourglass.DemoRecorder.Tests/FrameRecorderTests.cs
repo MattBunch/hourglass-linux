@@ -86,6 +86,32 @@ public sealed class FrameRecorderTests : IDisposable
         Assert.True(File.Exists(unrelatedFile));
     }
 
+    [Fact]
+    public void ProgramRejectsExplicitNonExecutableFfmpegFile()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        string ffmpegPath = Path.Combine(this.temporaryDirectory, "ffmpeg");
+        Directory.CreateDirectory(this.temporaryDirectory);
+        File.WriteAllText(ffmpegPath, "not executable");
+
+        try
+        {
+            File.SetUnixFileMode(ffmpegPath, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+        }
+        catch (Exception exception) when (exception is IOException
+            or PlatformNotSupportedException
+            or UnauthorizedAccessException)
+        {
+            return;
+        }
+
+        Assert.False(Program.IsExecutableAvailable(ffmpegPath));
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(this.temporaryDirectory))

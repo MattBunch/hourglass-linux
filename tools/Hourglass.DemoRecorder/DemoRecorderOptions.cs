@@ -151,6 +151,11 @@ public sealed record DemoRecorderOptions(
                 return ParseOptionsResult.Error("--gif and --video must point to different files when both outputs are enabled.");
             }
 
+            if (EnabledOutputsContainEachOther(options))
+            {
+                return ParseOptionsResult.Error("--gif and --video must not contain each other when both outputs are enabled. Choose separate output file paths.");
+            }
+
             if (EnabledOutputOverlapsFrameSequence(options))
             {
                 return ParseOptionsResult.Error("Enabled output paths must not point to generated frame files. Choose --gif and --video paths outside --frames-dir.");
@@ -210,6 +215,18 @@ public sealed record DemoRecorderOptions(
     private static string ToAbsolutePath(string repositoryRoot, string path)
     {
         return Path.GetFullPath(Path.IsPathRooted(path) ? path : Path.Combine(repositoryRoot, path));
+    }
+
+    private static bool EnabledOutputsContainEachOther(DemoRecorderOptions options)
+    {
+        if (options.SkipGif || options.SkipVideo)
+        {
+            return false;
+        }
+
+        string gifPath = CreateResolvedOutputPath(options.GifPath);
+        string videoPath = CreateResolvedOutputPath(options.VideoPath);
+        return IsAncestorPath(gifPath, videoPath) || IsAncestorPath(videoPath, gifPath);
     }
 
     private static string CreateOutputPathIdentity(string path)

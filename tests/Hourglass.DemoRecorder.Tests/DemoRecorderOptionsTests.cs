@@ -94,6 +94,24 @@ public sealed class DemoRecorderOptionsTests : IDisposable
     }
 
     [Fact]
+    public void ParseRejectsEnabledOutputPathThatContainsOtherEnabledOutput()
+    {
+        string outputPath = Path.Combine(this.temporaryDirectory, "result");
+
+        ParseOptionsResult result = DemoRecorderOptions.Parse(
+            [
+                "--gif",
+                outputPath,
+                "--video",
+                Path.Combine(outputPath, "demo.mp4")
+            ],
+            this.temporaryDirectory);
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains("--gif and --video must not contain each other", result.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void ParseNormalizesRootedOutputPathsBeforeEncoding()
     {
         Directory.CreateDirectory(this.temporaryDirectory);

@@ -205,11 +205,11 @@ internal static class Program
         return Directory.GetCurrentDirectory();
     }
 
-    private static bool IsExecutableAvailable(string command)
+    internal static bool IsExecutableAvailable(string command)
     {
         if (Path.IsPathRooted(command) || command.Contains(Path.DirectorySeparatorChar, StringComparison.Ordinal))
         {
-            return File.Exists(command);
+            return IsExecutableFile(command);
         }
 
         string? path = Environment.GetEnvironmentVariable("PATH");
@@ -221,6 +221,33 @@ internal static class Program
         return path
             .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries)
             .Select(directory => Path.Combine(directory, command))
-            .Any(File.Exists);
+            .Any(IsExecutableFile);
+    }
+
+    private static bool IsExecutableFile(string path)
+    {
+        try
+        {
+            if (!File.Exists(path) || Directory.Exists(path))
+            {
+                return false;
+            }
+
+            if (OperatingSystem.IsWindows())
+            {
+                return true;
+            }
+
+            const UnixFileMode executeBits = UnixFileMode.UserExecute
+                | UnixFileMode.GroupExecute
+                | UnixFileMode.OtherExecute;
+            return (File.GetUnixFileMode(path) & executeBits) != 0;
+        }
+        catch (Exception exception) when (exception is IOException
+            or UnauthorizedAccessException
+            or PlatformNotSupportedException)
+        {
+            return false;
+        }
     }
 }
