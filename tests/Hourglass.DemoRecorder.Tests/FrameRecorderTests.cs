@@ -100,6 +100,34 @@ public sealed class FrameRecorderTests : IDisposable
     }
 
     [Fact]
+    public void ProgramRejectsDefaultFramesDirectoryWithSymlinkedAncestorBeforeFramesDirectoryExists()
+    {
+        string repositoryRoot = Path.Combine(this.temporaryDirectory, "repo");
+        string externalRoot = Path.Combine(this.temporaryDirectory, "external");
+        string repositoryTemporaryRoot = Path.Combine(repositoryRoot, ".tmp");
+        Directory.CreateDirectory(repositoryRoot);
+        Directory.CreateDirectory(externalRoot);
+
+        try
+        {
+            Directory.CreateSymbolicLink(repositoryTemporaryRoot, externalRoot);
+        }
+        catch (Exception exception) when (exception is IOException
+            or PlatformNotSupportedException
+            or UnauthorizedAccessException)
+        {
+            return;
+        }
+
+        DemoRecorderOptions options = DemoRecorderOptions.Defaults(repositoryRoot);
+
+        InvalidOperationException cleanupException = Assert.Throws<InvalidOperationException>(() => Program.PrepareFramesDirectoryForRun(repositoryRoot, options));
+
+        Assert.Contains("symlinked ancestor", cleanupException.Message, StringComparison.Ordinal);
+        Assert.False(Directory.Exists(Path.Combine(externalRoot, "readme-demo", "frames")));
+    }
+
+    [Fact]
     public void ProgramRejectsExplicitNonExecutableFfmpegFile()
     {
         if (OperatingSystem.IsWindows())

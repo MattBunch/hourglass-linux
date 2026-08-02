@@ -131,15 +131,17 @@ internal static class Program
         ArgumentNullException.ThrowIfNull(options);
 
         string defaultFramesDirectory = DemoRecorderOptions.Defaults(repositoryRoot).FramesDirectory;
-        if (Path.GetFullPath(options.FramesDirectory) == Path.GetFullPath(defaultFramesDirectory)
-            && Directory.Exists(options.FramesDirectory))
+        if (Path.GetFullPath(options.FramesDirectory) == Path.GetFullPath(defaultFramesDirectory))
         {
             if (PathContainsSymlink(defaultFramesDirectory))
             {
                 throw new InvalidOperationException("The default frames directory has a symlinked ancestor. Remove the symlink or choose a safe --frames-dir path before recording.");
             }
 
-            Directory.Delete(options.FramesDirectory, recursive: true);
+            if (Directory.Exists(options.FramesDirectory))
+            {
+                Directory.Delete(options.FramesDirectory, recursive: true);
+            }
         }
     }
 
