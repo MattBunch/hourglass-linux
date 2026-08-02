@@ -157,6 +157,32 @@ public sealed class FfmpegEncoderTests : IDisposable
     }
 
     [Fact]
+    public async Task EncodeAttemptsEveryBackupRestoreWhenOneRollbackRestoreFails()
+    {
+        Directory.CreateDirectory(this.temporaryDirectory);
+        string gifPath = Path.Combine(this.temporaryDirectory, "demo.gif");
+        string videoPath = Path.Combine(this.temporaryDirectory, "demo.mp4");
+        File.WriteAllText(gifPath, "existing gif");
+        File.WriteAllText(videoPath, "existing video");
+        var runner = new RecordingProcessRunner(exitCode: 0, stderr: "", createOutputs: true);
+        var fileOperations = new FailingRestoreFileOperations(videoPath);
+        var encoder = new FfmpegEncoder(runner, fileOperations);
+
+        AggregateException exception = await Assert.ThrowsAsync<AggregateException>(() => encoder.EncodeAsync(
+            "ffmpeg",
+            "frame-%05d.png",
+            12,
+            960,
+            gifPath,
+            videoPath));
+
+        Assert.Contains("rollback did not fully restore", exception.Message, StringComparison.Ordinal);
+        Assert.Equal("existing gif", File.ReadAllText(gifPath));
+        Assert.False(File.Exists(videoPath));
+        Assert.Single(Directory.EnumerateFiles(this.temporaryDirectory, ".demo.mp4.hourglass-demo-backup-*.tmp"));
+    }
+
+    [Fact]
     public async Task EncodeDeletesPaletteWhenGifEncodingFails()
     {
         var runner = new SequencedProcessRunner([0, 1], stderr: "gif failed");
@@ -236,6 +262,37 @@ public sealed class FfmpegEncoderTests : IDisposable
 
         public void Move(string sourceFileName, string destFileName, bool overwrite)
         {
+            if (StringComparer.Ordinal.Equals(destFileName, failingFinalPath)
+                && sourceFileName.Contains(".hourglass-demo-", StringComparison.Ordinal)
+                && !sourceFileName.Contains(".hourglass-demo-backup-", StringComparison.Ordinal))
+            {
+                throw new IOException("simulated publish failure");
+            }
+
+            File.Move(sourceFileName, destFileName, overwrite);
+        }
+    }
+
+    private sealed class FailingRestoreFileOperations(string failingFinalPath) : IFileOperations
+    {
+        public bool Exists(string path)
+        {
+            return File.Exists(path);
+        }
+
+        public void Delete(string path)
+        {
+            File.Delete(path);
+        }
+
+        public void Move(string sourceFileName, string destFileName, bool overwrite)
+        {
+            if (StringComparer.Ordinal.Equals(destFileName, failingFinalPath)
+                && sourceFileName.Contains(".hourglass-demo-backup-", StringComparison.Ordinal))
+            {
+                throw new IOException("simulated restore failure");
+            }
+
             if (StringComparer.Ordinal.Equals(destFileName, failingFinalPath)
                 && sourceFileName.Contains(".hourglass-demo-", StringComparison.Ordinal)
                 && !sourceFileName.Contains(".hourglass-demo-backup-", StringComparison.Ordinal))

@@ -268,9 +268,15 @@ public sealed class FfmpegEncoder
                 publishedOutputs.Add(new PublishedOutput(output.FinalPath));
             }
         }
-        catch
+        catch (Exception publishException)
         {
-            this.RollBackPublishedOutputs(publishedOutputs, backedUpOutputs);
+            IReadOnlyList<Exception> rollbackFailures = this.RollBackPublishedOutputs(publishedOutputs, backedUpOutputs);
+            if (rollbackFailures.Count > 0)
+            {
+                List<Exception> failures = [publishException, .. rollbackFailures];
+                throw new AggregateException("Failed to publish encoded demo outputs, and rollback did not fully restore the previous outputs.", failures);
+            }
+
             throw;
         }
 
@@ -280,20 +286,46 @@ public sealed class FfmpegEncoder
         }
     }
 
-    private void RollBackPublishedOutputs(
+    private IReadOnlyList<Exception> RollBackPublishedOutputs(
         IEnumerable<PublishedOutput> publishedOutputs,
         IEnumerable<BackedUpOutput> backedUpOutputs)
     {
+        List<Exception> failures = [];
+
         foreach (PublishedOutput output in publishedOutputs.Reverse())
         {
-            this.DeleteFileIfExists(output.FinalPath);
+            try
+            {
+                this.DeleteFileIfExists(output.FinalPath);
+            }
+            catch (Exception exception)
+            {
+                failures.Add(new IOException($"Failed to delete partially published demo output '{output.FinalPath}'.", exception));
+            }
         }
 
         foreach (BackedUpOutput output in backedUpOutputs.Reverse())
         {
-            this.DeleteFileIfExists(output.FinalPath);
-            this.fileOperations.Move(output.BackupPath, output.FinalPath, overwrite: false);
+            try
+            {
+                this.DeleteFileIfExists(output.FinalPath);
+            }
+            catch (Exception exception)
+            {
+                failures.Add(new IOException($"Failed to clear demo output path '{output.FinalPath}' before restoring its backup.", exception));
+            }
+
+            try
+            {
+                this.fileOperations.Move(output.BackupPath, output.FinalPath, overwrite: false);
+            }
+            catch (Exception exception)
+            {
+                failures.Add(new IOException($"Failed to restore previous demo output from '{output.BackupPath}' to '{output.FinalPath}'.", exception));
+            }
         }
+
+        return failures;
     }
 
     private static string CreateBackupOutputPath(string finalPath)
