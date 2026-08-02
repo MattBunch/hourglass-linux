@@ -551,8 +551,8 @@ public sealed record DemoRecorderOptions(
                 continue;
             }
 
-            string linkPath = Path.GetFullPath(candidate);
-            if (!activeLinks.Add(linkPath))
+            string activeLinkState = CreateActiveLinkState(candidate, components, index + 1);
+            if (!activeLinks.Add(activeLinkState))
             {
                 throw new PathResolutionException($"Directory path '{originalDirectory}' contains a symbolic link cycle.");
             }
@@ -586,11 +586,19 @@ public sealed record DemoRecorderOptions(
             }
             finally
             {
-                activeLinks.Remove(linkPath);
+                activeLinks.Remove(activeLinkState);
             }
         }
 
         return CombineRootAndParts(root, resolvedParts);
+    }
+
+    private static string CreateActiveLinkState(
+        string linkPath,
+        IReadOnlyList<string> components,
+        int remainingStartIndex)
+    {
+        return string.Join('\0', [Path.GetFullPath(linkPath), .. components.Skip(remainingStartIndex)]);
     }
 
     private static string[] SplitPathComponents(string path)

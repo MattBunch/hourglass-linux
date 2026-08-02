@@ -316,6 +316,36 @@ public sealed class DemoRecorderOptionsTests : IDisposable
     }
 
     [Fact]
+    public void ParseAllowsValidPathThatTraversesSameSymlinkSequentially()
+    {
+        string selfPath = Path.Combine(this.temporaryDirectory, "self");
+        Directory.CreateDirectory(this.temporaryDirectory);
+
+        try
+        {
+            Directory.CreateSymbolicLink(selfPath, ".");
+        }
+        catch (Exception exception) when (exception is IOException
+            or PlatformNotSupportedException
+            or UnauthorizedAccessException)
+        {
+            return;
+        }
+
+        ParseOptionsResult result = DemoRecorderOptions.Parse(
+            [
+                "--gif",
+                Path.Combine(selfPath, "self", "demo.gif"),
+                "--skip-video"
+            ],
+            this.temporaryDirectory);
+
+        Assert.True(result.IsSuccess);
+        Assert.NotNull(result.Options);
+        Assert.Equal(Path.Combine(selfPath, "self", "demo.gif"), result.Options.GifPath);
+    }
+
+    [Fact]
     public void ParseRejectsLeafSymlinkOutputPathCollision()
     {
         Directory.CreateDirectory(this.temporaryDirectory);
