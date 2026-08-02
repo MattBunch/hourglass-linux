@@ -249,6 +249,73 @@ public sealed class DemoRecorderOptionsTests : IDisposable
     }
 
     [Fact]
+    public void ParseResolvesDotDotInsideSymlinkTargetAfterNestedSymlink()
+    {
+        string leftDirectory = Path.Combine(this.temporaryDirectory, "left");
+        string anchorDirectory = Path.Combine(this.temporaryDirectory, "anchor");
+        string realDirectory = Path.Combine(this.temporaryDirectory, "real");
+        Directory.CreateDirectory(leftDirectory);
+        Directory.CreateDirectory(anchorDirectory);
+        Directory.CreateDirectory(realDirectory);
+
+        try
+        {
+            Directory.CreateSymbolicLink(Path.Combine(leftDirectory, "bridge"), Path.Combine("..", "anchor"));
+            Directory.CreateSymbolicLink(Path.Combine(leftDirectory, "out"), Path.Combine("bridge", "..", "real"));
+        }
+        catch (Exception exception) when (exception is IOException
+            or PlatformNotSupportedException
+            or UnauthorizedAccessException)
+        {
+            return;
+        }
+
+        ParseOptionsResult result = DemoRecorderOptions.Parse(
+            [
+                "--gif",
+                Path.Combine(leftDirectory, "out", "demo"),
+                "--video",
+                Path.Combine(realDirectory, "demo")
+            ],
+            this.temporaryDirectory);
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains("--gif and --video must point to different files", result.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ParseAllowsValidPathThatRevisitsDirectoryAfterAnotherSymlink()
+    {
+        string realDirectory = Path.Combine(this.temporaryDirectory, "real");
+        string aliasDirectory = Path.Combine(this.temporaryDirectory, "alias");
+        Directory.CreateDirectory(realDirectory);
+
+        try
+        {
+            Directory.CreateSymbolicLink(aliasDirectory, realDirectory);
+            Directory.CreateSymbolicLink(Path.Combine(realDirectory, "self"), realDirectory);
+        }
+        catch (Exception exception) when (exception is IOException
+            or PlatformNotSupportedException
+            or UnauthorizedAccessException)
+        {
+            return;
+        }
+
+        ParseOptionsResult result = DemoRecorderOptions.Parse(
+            [
+                "--gif",
+                Path.Combine(aliasDirectory, "self", "demo.gif"),
+                "--skip-video"
+            ],
+            this.temporaryDirectory);
+
+        Assert.True(result.IsSuccess);
+        Assert.NotNull(result.Options);
+        Assert.Equal(Path.Combine(aliasDirectory, "self", "demo.gif"), result.Options.GifPath);
+    }
+
+    [Fact]
     public void ParseRejectsLeafSymlinkOutputPathCollision()
     {
         Directory.CreateDirectory(this.temporaryDirectory);

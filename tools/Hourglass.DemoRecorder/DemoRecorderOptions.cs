@@ -495,17 +495,7 @@ public sealed record DemoRecorderOptions(
     private static string ResolveDirectoryIdentity(string directory)
     {
         int depth = 0;
-        return ResolveDirectoryIdentity(directory, [], ref depth);
-    }
-
-    private static string ResolveDirectoryIdentity(string directory, HashSet<string> visitedPaths, ref int depth)
-    {
         string fullDirectory = Path.GetFullPath(directory);
-        if (!visitedPaths.Add(fullDirectory))
-        {
-            throw new PathResolutionException($"Directory path '{directory}' contains a symbolic link cycle.");
-        }
-
         string? root = Path.GetPathRoot(fullDirectory);
         if (string.IsNullOrEmpty(root))
         {
@@ -518,39 +508,104 @@ public sealed record DemoRecorderOptions(
             return root;
         }
 
-        string current = root;
-        foreach (string part in relative.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar))
+        return ResolveDirectoryComponents(
+            root,
+            [],
+            SplitPathComponents(relative),
+            [],
+            ref depth,
+            directory);
+    }
+
+    private static string ResolveDirectoryComponents(
+        string root,
+        List<string> resolvedParts,
+        IReadOnlyList<string> components,
+        HashSet<string> activeLinks,
+        ref int depth,
+        string originalDirectory)
+    {
+        for (int index = 0; index < components.Count; index++)
         {
+            string part = components[index];
             if (string.IsNullOrEmpty(part) || part == ".")
             {
                 continue;
             }
 
-            string candidate = Path.Combine(current, part);
+            if (part == "..")
+            {
+                if (resolvedParts.Count > 0)
+                {
+                    resolvedParts.RemoveAt(resolvedParts.Count - 1);
+                }
+
+                continue;
+            }
+
+            string candidate = CombineRootAndParts(root, [.. resolvedParts, part]);
             var info = new DirectoryInfo(candidate);
             if (string.IsNullOrEmpty(info.LinkTarget))
             {
-                current = candidate;
+                resolvedParts.Add(part);
                 continue;
+            }
+
+            string linkPath = Path.GetFullPath(candidate);
+            if (!activeLinks.Add(linkPath))
+            {
+                throw new PathResolutionException($"Directory path '{originalDirectory}' contains a symbolic link cycle.");
             }
 
             if (depth >= MaxLinkResolutionDepth)
             {
-                throw new PathResolutionException($"Directory path '{directory}' contains too many symbolic links to resolve safely.");
+                throw new PathResolutionException($"Directory path '{originalDirectory}' contains too many symbolic links to resolve safely.");
             }
 
             depth++;
-            FileSystemInfo? target = info.ResolveLinkTarget(returnFinalTarget: false);
-            if (target != null)
+            try
             {
-                current = ResolveDirectoryIdentity(target.FullName, visitedPaths, ref depth);
-                continue;
-            }
+                string targetRoot = root;
+                List<string> targetBaseParts = [.. resolvedParts];
+                string target = info.LinkTarget;
+                if (Path.IsPathRooted(target))
+                {
+                    targetRoot = Path.GetPathRoot(target) ?? root;
+                    targetBaseParts = [];
+                    target = target[targetRoot.Length..];
+                }
 
-            string targetPath = Path.IsPathRooted(info.LinkTarget)
-                ? info.LinkTarget
-                : Path.Combine(current, info.LinkTarget);
-            current = ResolveDirectoryIdentity(targetPath, visitedPaths, ref depth);
+                string[] remainingComponents = [.. SplitPathComponents(target), .. components.Skip(index + 1)];
+                return ResolveDirectoryComponents(
+                    targetRoot,
+                    targetBaseParts,
+                    remainingComponents,
+                    activeLinks,
+                    ref depth,
+                    originalDirectory);
+            }
+            finally
+            {
+                activeLinks.Remove(linkPath);
+            }
+        }
+
+        return CombineRootAndParts(root, resolvedParts);
+    }
+
+    private static string[] SplitPathComponents(string path)
+    {
+        return path.Split(
+            [Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar],
+            StringSplitOptions.RemoveEmptyEntries);
+    }
+
+    private static string CombineRootAndParts(string root, IReadOnlyList<string> parts)
+    {
+        string current = root;
+        foreach (string part in parts)
+        {
+            current = Path.Combine(current, part);
         }
 
         return Path.GetFullPath(current);
