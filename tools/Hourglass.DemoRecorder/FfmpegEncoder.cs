@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Runtime.ExceptionServices;
 using System.Text;
 
 namespace Hourglass.DemoRecorder;
@@ -114,6 +115,7 @@ public sealed class FfmpegEncoder
         string? palettePath = null;
         string? temporaryGifPath = null;
         string? temporaryVideoPath = null;
+        Exception? encodeFailure = null;
         try
         {
             if (!string.IsNullOrWhiteSpace(gifPath))
@@ -150,11 +152,26 @@ public sealed class FfmpegEncoder
             temporaryGifPath = null;
             temporaryVideoPath = null;
         }
-        finally
+        catch (Exception exception)
         {
-            this.DeleteFileIfExists(palettePath);
-            this.DeleteFileIfExists(temporaryGifPath);
-            this.DeleteFileIfExists(temporaryVideoPath);
+            encodeFailure = exception;
+        }
+
+        IReadOnlyList<Exception> cleanupFailures = this.CleanUpTemporaryFiles(palettePath, temporaryGifPath, temporaryVideoPath);
+        if (encodeFailure is not null)
+        {
+            if (cleanupFailures.Count > 0)
+            {
+                List<Exception> failures = [encodeFailure, .. cleanupFailures];
+                throw new AggregateException("Demo output encoding failed, and temporary output cleanup did not fully complete.", failures);
+            }
+
+            ExceptionDispatchInfo.Capture(encodeFailure).Throw();
+        }
+
+        if (cleanupFailures.Count > 0)
+        {
+            throw new AggregateException("Demo output encoding completed, but temporary output cleanup did not fully complete.", cleanupFailures);
         }
     }
 
@@ -341,6 +358,24 @@ public sealed class FfmpegEncoder
         {
             this.fileOperations.Delete(path);
         }
+    }
+
+    private IReadOnlyList<Exception> CleanUpTemporaryFiles(params string?[] paths)
+    {
+        List<Exception> failures = [];
+        foreach (string? path in paths)
+        {
+            try
+            {
+                this.DeleteFileIfExists(path);
+            }
+            catch (Exception exception)
+            {
+                failures.Add(new IOException($"Failed to delete temporary demo output file '{path}'.", exception));
+            }
+        }
+
+        return failures;
     }
 
     private static ProcessStartInfo CreateBaseStartInfo(string ffmpegCommand)
