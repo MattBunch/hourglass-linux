@@ -557,6 +557,41 @@ public sealed class DemoRecorderOptionsTests : IDisposable
     }
 
     [Fact]
+    public void ParseAllowsOutputPathUnderSymlinkedCustomFramesDirectory()
+    {
+        DemoRecorderOptions defaults = DemoRecorderOptions.Defaults(this.temporaryDirectory);
+        string aliasFramesDirectory = Path.Combine(this.temporaryDirectory, "frames-alias");
+        Directory.CreateDirectory(Path.GetDirectoryName(defaults.FramesDirectory)!);
+
+        try
+        {
+            Directory.CreateSymbolicLink(aliasFramesDirectory, defaults.FramesDirectory);
+        }
+        catch (Exception exception) when (exception is IOException
+            or PlatformNotSupportedException
+            or UnauthorizedAccessException)
+        {
+            return;
+        }
+
+        string outputPath = Path.Combine(aliasFramesDirectory, "archive.gif");
+        ParseOptionsResult result = DemoRecorderOptions.Parse(
+            [
+                "--frames-dir",
+                aliasFramesDirectory,
+                "--gif",
+                outputPath,
+                "--skip-video"
+            ],
+            this.temporaryDirectory);
+
+        Assert.True(result.IsSuccess);
+        Assert.NotNull(result.Options);
+        Assert.Equal(Path.GetFullPath(aliasFramesDirectory), result.Options.FramesDirectory);
+        Assert.Equal(Path.GetFullPath(outputPath), result.Options.GifPath);
+    }
+
+    [Fact]
     public void ParseAllowsCollidingOutputPathWhenGifIsSkipped()
     {
         string outputPath = Path.Combine(Directory.GetCurrentDirectory(), "demo-output");

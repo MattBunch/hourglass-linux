@@ -275,8 +275,8 @@ public sealed record DemoRecorderOptions(
 
     private static bool EnabledOutputIsUnderDefaultFramesCleanupDirectory(DemoRecorderOptions options, string repositoryRoot)
     {
-        string framesDirectory = ResolveDirectoryIdentity(options.FramesDirectory);
-        string defaultFramesDirectory = ResolveDirectoryIdentity(Defaults(repositoryRoot).FramesDirectory);
+        string framesDirectory = Path.GetFullPath(options.FramesDirectory);
+        string defaultFramesDirectory = Path.GetFullPath(Defaults(repositoryRoot).FramesDirectory);
         if (!StringComparer.Ordinal.Equals(framesDirectory, defaultFramesDirectory))
         {
             return false;
