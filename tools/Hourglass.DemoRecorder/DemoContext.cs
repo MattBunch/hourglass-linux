@@ -72,7 +72,8 @@ public sealed class DemoContext : IAsyncDisposable
             services.ExternalUriLauncher,
             createWindowAttentionService: _ => services.WindowAttentionService,
             loadSettingsOnOpened: false,
-            suppressExpiryVisualFeedback: true);
+            suppressExpiryVisualFeedback: true,
+            suppressCommandPanelTransitions: true);
         this.Window.Width = options.Width;
         this.Window.Height = options.Height;
         this.Window.CanResize = false;

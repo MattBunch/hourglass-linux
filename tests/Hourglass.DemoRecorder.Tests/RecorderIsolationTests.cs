@@ -144,6 +144,39 @@ public sealed class RecorderIsolationTests
         Assert.Contains("suppressExpiryVisualFeedback: true", contextSource, StringComparison.Ordinal);
         Assert.Contains("bool suppressExpiryVisualFeedback = false", windowSource, StringComparison.Ordinal);
         Assert.Contains("if (!suppressExpiryVisualFeedback)", windowSource, StringComparison.Ordinal);
+        Assert.Contains("suppressCommandPanelTransitions: true", contextSource, StringComparison.Ordinal);
+        Assert.Contains("bool suppressCommandPanelTransitions = false", windowSource, StringComparison.Ordinal);
+        Assert.Contains("this.CommandPanel.Transitions = null;", windowSource, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task DemoContextDisablesCommandPanelTransitionsForRecordedVisuals()
+    {
+        HeadlessTestHost.EnsureStarted();
+        string temporaryDirectory = Path.Combine(Path.GetTempPath(), $"hourglass-command-panel-tests-{Guid.NewGuid():N}");
+        try
+        {
+            DemoRecorderOptions options = DemoRecorderOptions.Defaults(Directory.GetCurrentDirectory()) with
+            {
+                FramesDirectory = Path.Combine(temporaryDirectory, "frames"),
+                SkipGif = true,
+                SkipVideo = true
+            };
+            var recorder = new FrameRecorder(options.FramesDirectory, options.Width, options.Height);
+            recorder.PrepareEmptyDirectory();
+            var services = new DemoPlatformServices();
+            await using DemoContext context = await DemoContext.CreateAsync(options, recorder, services);
+
+            StackPanel commandPanel = Assert.IsType<StackPanel>(context.Window.FindControl<StackPanel>("CommandPanel"));
+            Assert.Null(commandPanel.Transitions);
+        }
+        finally
+        {
+            if (Directory.Exists(temporaryDirectory))
+            {
+                Directory.Delete(temporaryDirectory, recursive: true);
+            }
+        }
     }
 
     [Fact]

@@ -181,13 +181,30 @@ public sealed record DemoRecorderOptions(
 
     private static string ReadValue(string[] args, ref int index, string option)
     {
-        if (index + 1 >= args.Length || args[index + 1].StartsWith("--", StringComparison.Ordinal))
+        if (index + 1 >= args.Length || IsRecognizedOptionToken(args[index + 1]))
         {
             throw new ArgumentException($"{option} requires a value.");
         }
 
         index++;
         return args[index];
+    }
+
+    private static bool IsRecognizedOptionToken(string value)
+    {
+        return value is "--scenario"
+            or "--gif"
+            or "--video"
+            or "--frames-dir"
+            or "--frame-rate"
+            or "--width"
+            or "--height"
+            or "--keep-frames"
+            or "--skip-gif"
+            or "--skip-video"
+            or "--ffmpeg"
+            or "--help"
+            or "-h";
     }
 
     private static string ToAbsolutePath(string repositoryRoot, string path)

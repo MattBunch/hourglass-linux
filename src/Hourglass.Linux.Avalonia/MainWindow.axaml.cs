@@ -125,9 +125,15 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
         bool loadSettingsOnOpened = true,
         Func<MainWindow, Task>? prepareCoordinatorClose = null,
         Func<Task>? requestApplicationExit = null,
-        bool suppressExpiryVisualFeedback = false)
+        bool suppressExpiryVisualFeedback = false,
+        bool suppressCommandPanelTransitions = false)
     {
         InitializeComponent();
+        if (suppressCommandPanelTransitions)
+        {
+            this.CommandPanel.Transitions = null;
+        }
+
         diagnosticSink ??= NoOpDiagnosticSink.Instance;
 
         this.viewModel = viewModel ?? throw new ArgumentNullException(nameof(viewModel));

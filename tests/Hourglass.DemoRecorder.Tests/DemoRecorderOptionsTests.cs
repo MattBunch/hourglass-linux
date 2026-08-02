@@ -26,6 +26,16 @@ public sealed class DemoRecorderOptionsTests : IDisposable
     }
 
     [Fact]
+    public void ParseRejectsMissingOptionValueBeforeShortHelpWithoutShowingHelp()
+    {
+        ParseOptionsResult result = DemoRecorderOptions.Parse(["--gif", "-h"], Directory.GetCurrentDirectory());
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains("--gif requires a value", result.Message, StringComparison.Ordinal);
+        Assert.False(result.IsHelp);
+    }
+
+    [Fact]
     public void ParseRejectsOddWidthWhenVideoIsEnabled()
     {
         ParseOptionsResult result = DemoRecorderOptions.Parse(["--width", "961"], Directory.GetCurrentDirectory());
