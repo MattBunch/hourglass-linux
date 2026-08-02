@@ -44,65 +44,72 @@ public sealed record DemoRecorderOptions(
         ArgumentNullException.ThrowIfNull(args);
 
         DemoRecorderOptions options = Defaults(repositoryRoot);
-        for (int index = 0; index < args.Length; index++)
+        try
         {
-            string arg = args[index];
-            switch (arg)
+            for (int index = 0; index < args.Length; index++)
             {
-                case "--help":
-                case "-h":
-                    return ParseOptionsResult.Help(CreateHelpText());
-                case "--scenario":
-                    options = options with { Scenario = ReadValue(args, ref index, arg) };
-                    break;
-                case "--gif":
-                    options = options with { GifPath = ToAbsolutePath(repositoryRoot, ReadValue(args, ref index, arg)) };
-                    break;
-                case "--video":
-                    options = options with { VideoPath = ToAbsolutePath(repositoryRoot, ReadValue(args, ref index, arg)) };
-                    break;
-                case "--frames-dir":
-                    options = options with { FramesDirectory = ToAbsolutePath(repositoryRoot, ReadValue(args, ref index, arg)) };
-                    break;
-                case "--frame-rate":
-                    if (!int.TryParse(ReadValue(args, ref index, arg), out int frameRate) || frameRate <= 0)
-                    {
-                        return ParseOptionsResult.Error("--frame-rate must be a positive integer.");
-                    }
+                string arg = args[index];
+                switch (arg)
+                {
+                    case "--help":
+                    case "-h":
+                        return ParseOptionsResult.Help(CreateHelpText());
+                    case "--scenario":
+                        options = options with { Scenario = ReadValue(args, ref index, arg) };
+                        break;
+                    case "--gif":
+                        options = options with { GifPath = ToAbsolutePath(repositoryRoot, ReadValue(args, ref index, arg)) };
+                        break;
+                    case "--video":
+                        options = options with { VideoPath = ToAbsolutePath(repositoryRoot, ReadValue(args, ref index, arg)) };
+                        break;
+                    case "--frames-dir":
+                        options = options with { FramesDirectory = ToAbsolutePath(repositoryRoot, ReadValue(args, ref index, arg)) };
+                        break;
+                    case "--frame-rate":
+                        if (!int.TryParse(ReadValue(args, ref index, arg), out int frameRate) || frameRate <= 0)
+                        {
+                            return ParseOptionsResult.Error("--frame-rate must be a positive integer.");
+                        }
 
-                    options = options with { FrameRate = frameRate };
-                    break;
-                case "--width":
-                    if (!int.TryParse(ReadValue(args, ref index, arg), out int width) || width <= 0)
-                    {
-                        return ParseOptionsResult.Error("--width must be a positive integer.");
-                    }
+                        options = options with { FrameRate = frameRate };
+                        break;
+                    case "--width":
+                        if (!int.TryParse(ReadValue(args, ref index, arg), out int width) || width <= 0)
+                        {
+                            return ParseOptionsResult.Error("--width must be a positive integer.");
+                        }
 
-                    options = options with { Width = width };
-                    break;
-                case "--height":
-                    if (!int.TryParse(ReadValue(args, ref index, arg), out int height) || height <= 0)
-                    {
-                        return ParseOptionsResult.Error("--height must be a positive integer.");
-                    }
+                        options = options with { Width = width };
+                        break;
+                    case "--height":
+                        if (!int.TryParse(ReadValue(args, ref index, arg), out int height) || height <= 0)
+                        {
+                            return ParseOptionsResult.Error("--height must be a positive integer.");
+                        }
 
-                    options = options with { Height = height };
-                    break;
-                case "--keep-frames":
-                    options = options with { KeepFrames = true };
-                    break;
-                case "--skip-gif":
-                    options = options with { SkipGif = true };
-                    break;
-                case "--skip-video":
-                    options = options with { SkipVideo = true };
-                    break;
-                case "--ffmpeg":
-                    options = options with { FfmpegCommand = ReadValue(args, ref index, arg) };
-                    break;
-                default:
-                    return ParseOptionsResult.Error($"Unknown argument '{arg}'. Use --help for usage.");
+                        options = options with { Height = height };
+                        break;
+                    case "--keep-frames":
+                        options = options with { KeepFrames = true };
+                        break;
+                    case "--skip-gif":
+                        options = options with { SkipGif = true };
+                        break;
+                    case "--skip-video":
+                        options = options with { SkipVideo = true };
+                        break;
+                    case "--ffmpeg":
+                        options = options with { FfmpegCommand = ReadValue(args, ref index, arg) };
+                        break;
+                    default:
+                        return ParseOptionsResult.Error($"Unknown argument '{arg}'. Use --help for usage.");
+                }
             }
+        }
+        catch (ArgumentException exception)
+        {
+            return ParseOptionsResult.Error(exception.Message);
         }
 
         if (options.SkipGif && options.SkipVideo)
@@ -132,6 +139,11 @@ public sealed record DemoRecorderOptions(
                 return ParseOptionsResult.Error("--frames-dir must not contain a dangling symbolic link. Create the symlink target directory or choose a real frames directory.");
             }
 
+            if (DirectoryPathContainsNonDirectoryAncestor(options.FramesDirectory))
+            {
+                return ParseOptionsResult.Error("--frames-dir must not contain existing non-directory path components. Choose a real frames directory path.");
+            }
+
             if (!options.SkipGif
                 && !options.SkipVideo
                 && StringComparer.Ordinal.Equals(CreateOutputPathIdentity(options.GifPath), CreateOutputPathIdentity(options.VideoPath)))
@@ -147,6 +159,11 @@ public sealed record DemoRecorderOptions(
             if (EnabledOutputContainsDanglingSymbolicLink(options))
             {
                 return ParseOptionsResult.Error("Enabled output paths must not contain dangling symbolic links. Create the symlink target or choose a real output file path.");
+            }
+
+            if (EnabledOutputContainsNonDirectoryAncestor(options))
+            {
+                return ParseOptionsResult.Error("Enabled output parent directories must not contain existing non-directory path components. Choose a real output file path.");
             }
 
             if (EnabledOutputIsUnderDefaultFramesCleanupDirectory(options, repositoryRoot))
@@ -302,12 +319,26 @@ public sealed record DemoRecorderOptions(
             || (!options.SkipVideo && OutputPathContainsDanglingSymbolicLink(options.VideoPath));
     }
 
+    private static bool EnabledOutputContainsNonDirectoryAncestor(DemoRecorderOptions options)
+    {
+        return (!options.SkipGif && OutputPathContainsNonDirectoryAncestor(options.GifPath))
+            || (!options.SkipVideo && OutputPathContainsNonDirectoryAncestor(options.VideoPath));
+    }
+
     private static bool OutputPathContainsDanglingSymbolicLink(string outputPath)
     {
         string fullPath = Path.GetFullPath(outputPath);
         string? directory = Path.GetDirectoryName(fullPath);
         return (!string.IsNullOrWhiteSpace(directory) && DirectoryPathContainsDanglingSymbolicLink(directory))
             || FileLinkIsDangling(fullPath);
+    }
+
+    private static bool OutputPathContainsNonDirectoryAncestor(string outputPath)
+    {
+        string fullPath = Path.GetFullPath(outputPath);
+        string? directory = Path.GetDirectoryName(fullPath);
+        return !string.IsNullOrWhiteSpace(directory)
+            && DirectoryPathContainsNonDirectoryAncestor(directory);
     }
 
     private static bool DirectoryPathContainsDanglingSymbolicLink(string directory)
@@ -335,6 +366,39 @@ public sealed record DemoRecorderOptions(
 
             current = Path.Combine(current, part);
             if (DirectoryLinkIsDangling(current))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool DirectoryPathContainsNonDirectoryAncestor(string directory)
+    {
+        string fullDirectory = Path.GetFullPath(directory);
+        string? root = Path.GetPathRoot(fullDirectory);
+        if (string.IsNullOrEmpty(root))
+        {
+            return false;
+        }
+
+        string relative = Path.GetRelativePath(root, fullDirectory);
+        if (relative == ".")
+        {
+            return false;
+        }
+
+        string current = root;
+        foreach (string part in relative.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar))
+        {
+            if (string.IsNullOrEmpty(part) || part == ".")
+            {
+                continue;
+            }
+
+            current = Path.Combine(current, part);
+            if (File.Exists(current) && !Directory.Exists(current))
             {
                 return true;
             }
@@ -430,17 +494,13 @@ public sealed record DemoRecorderOptions(
 
     private static string ResolveDirectoryIdentity(string directory)
     {
-        return ResolveDirectoryIdentity(directory, [], depth: 0);
+        int depth = 0;
+        return ResolveDirectoryIdentity(directory, [], ref depth);
     }
 
-    private static string ResolveDirectoryIdentity(string directory, HashSet<string> visitedPaths, int depth)
+    private static string ResolveDirectoryIdentity(string directory, HashSet<string> visitedPaths, ref int depth)
     {
         string fullDirectory = Path.GetFullPath(directory);
-        if (depth >= MaxLinkResolutionDepth)
-        {
-            throw new PathResolutionException($"Directory path '{directory}' contains too many symbolic links to resolve safely.");
-        }
-
         if (!visitedPaths.Add(fullDirectory))
         {
             throw new PathResolutionException($"Directory path '{directory}' contains a symbolic link cycle.");
@@ -474,17 +534,23 @@ public sealed record DemoRecorderOptions(
                 continue;
             }
 
+            if (depth >= MaxLinkResolutionDepth)
+            {
+                throw new PathResolutionException($"Directory path '{directory}' contains too many symbolic links to resolve safely.");
+            }
+
+            depth++;
             FileSystemInfo? target = info.ResolveLinkTarget(returnFinalTarget: false);
             if (target != null)
             {
-                current = ResolveDirectoryIdentity(target.FullName, visitedPaths, depth + 1);
+                current = ResolveDirectoryIdentity(target.FullName, visitedPaths, ref depth);
                 continue;
             }
 
             string targetPath = Path.IsPathRooted(info.LinkTarget)
                 ? info.LinkTarget
                 : Path.Combine(current, info.LinkTarget);
-            current = ResolveDirectoryIdentity(targetPath, visitedPaths, depth + 1);
+            current = ResolveDirectoryIdentity(targetPath, visitedPaths, ref depth);
         }
 
         return Path.GetFullPath(current);

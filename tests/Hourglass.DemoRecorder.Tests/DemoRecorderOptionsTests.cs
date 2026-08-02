@@ -8,6 +8,24 @@ public sealed class DemoRecorderOptionsTests : IDisposable
     private readonly string temporaryDirectory = Path.Combine(Path.GetTempPath(), $"hourglass-options-tests-{Guid.NewGuid():N}");
 
     [Fact]
+    public void ParseRejectsMissingOptionValueAtEndWithoutThrowing()
+    {
+        ParseOptionsResult result = DemoRecorderOptions.Parse(["--gif"], Directory.GetCurrentDirectory());
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains("--gif requires a value", result.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ParseRejectsMissingOptionValueBeforeAnotherOptionWithoutThrowing()
+    {
+        ParseOptionsResult result = DemoRecorderOptions.Parse(["--gif", "--skip-video"], Directory.GetCurrentDirectory());
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains("--gif requires a value", result.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void ParseRejectsOddWidthWhenVideoIsEnabled()
     {
         ParseOptionsResult result = DemoRecorderOptions.Parse(["--width", "961"], Directory.GetCurrentDirectory());
@@ -551,6 +569,25 @@ public sealed class DemoRecorderOptionsTests : IDisposable
     }
 
     [Fact]
+    public void ParseRejectsOutputPathUnderFileValuedAncestor()
+    {
+        string blockerPath = Path.Combine(this.temporaryDirectory, "blocker");
+        Directory.CreateDirectory(this.temporaryDirectory);
+        File.WriteAllText(blockerPath, "not a directory");
+
+        ParseOptionsResult result = DemoRecorderOptions.Parse(
+            [
+                "--gif",
+                Path.Combine(blockerPath, "demo.gif"),
+                "--skip-video"
+            ],
+            this.temporaryDirectory);
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains("Enabled output parent directories must not contain existing non-directory path components", result.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void ParseAllowsSkippedOutputPathInsideGeneratedFrameSequence()
     {
         string framesDirectory = Path.Combine(this.temporaryDirectory, "frames");
@@ -741,6 +778,65 @@ public sealed class DemoRecorderOptionsTests : IDisposable
 
         Assert.False(result.IsSuccess);
         Assert.Contains("--frames-dir must not contain a dangling symbolic link", result.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ParseRejectsFramesDirectoryUnderFileValuedAncestor()
+    {
+        string blockerPath = Path.Combine(this.temporaryDirectory, "blocker");
+        Directory.CreateDirectory(this.temporaryDirectory);
+        File.WriteAllText(blockerPath, "not a directory");
+
+        ParseOptionsResult result = DemoRecorderOptions.Parse(
+            [
+                "--frames-dir",
+                Path.Combine(blockerPath, "frames"),
+                "--gif",
+                Path.Combine(this.temporaryDirectory, "demo.gif"),
+                "--skip-video"
+            ],
+            this.temporaryDirectory);
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains("--frames-dir must not contain existing non-directory path components", result.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ParseRejectsOutputPathWhenDirectorySymlinkComponentsExceedResolverLimit()
+    {
+        Directory.CreateDirectory(this.temporaryDirectory);
+        string realParent = this.temporaryDirectory;
+        string aliasParent = this.temporaryDirectory;
+
+        try
+        {
+            for (int index = 0; index < 41; index++)
+            {
+                string targetDirectory = Path.Combine(realParent, $"real-{index:00}");
+                string linkDirectory = Path.Combine(realParent, $"link-{index:00}");
+                Directory.CreateDirectory(targetDirectory);
+                Directory.CreateSymbolicLink(linkDirectory, targetDirectory);
+                realParent = targetDirectory;
+                aliasParent = Path.Combine(aliasParent, $"link-{index:00}");
+            }
+        }
+        catch (Exception exception) when (exception is IOException
+            or PlatformNotSupportedException
+            or UnauthorizedAccessException)
+        {
+            return;
+        }
+
+        ParseOptionsResult result = DemoRecorderOptions.Parse(
+            [
+                "--gif",
+                Path.Combine(aliasParent, "demo.gif"),
+                "--skip-video"
+            ],
+            this.temporaryDirectory);
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains("too many symbolic links", result.Message, StringComparison.Ordinal);
     }
 
     [Fact]
