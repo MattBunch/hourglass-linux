@@ -424,6 +424,26 @@ public sealed class DemoRecorderOptionsTests : IDisposable
     }
 
     [Fact]
+    public void ParseRejectsOutputPathNestedBelowGeneratedFrameFile()
+    {
+        string framesDirectory = Path.Combine(this.temporaryDirectory, "frames");
+        string outputPath = Path.Combine(framesDirectory, FrameRecorder.GetFrameFileName(0), "archive.gif");
+
+        ParseOptionsResult result = DemoRecorderOptions.Parse(
+            [
+                "--gif",
+                outputPath,
+                "--frames-dir",
+                framesDirectory,
+                "--skip-video"
+            ],
+            this.temporaryDirectory);
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains("must not point to generated frame files", result.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void ParseRejectsFrameDirectoryNestedUnderEnabledOutputPath()
     {
         string outputPath = Path.Combine(this.temporaryDirectory, "result");

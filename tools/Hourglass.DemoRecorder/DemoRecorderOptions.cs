@@ -297,7 +297,24 @@ public sealed record DemoRecorderOptions(
     {
         string resolvedOutputPath = CreateResolvedOutputPath(outputPath);
         return IsGeneratedFramePath(resolvedOutputPath, framesDirectory)
-            || IsAncestorPath(resolvedOutputPath, framesDirectory);
+            || IsAncestorPath(resolvedOutputPath, framesDirectory)
+            || HasGeneratedFramePathAncestor(resolvedOutputPath, framesDirectory);
+    }
+
+    private static bool HasGeneratedFramePathAncestor(string path, string framesDirectory)
+    {
+        string? directory = Path.GetDirectoryName(Path.GetFullPath(path));
+        while (!string.IsNullOrEmpty(directory) && IsAncestorPath(framesDirectory, directory))
+        {
+            if (IsGeneratedFramePath(directory, framesDirectory))
+            {
+                return true;
+            }
+
+            directory = Path.GetDirectoryName(directory);
+        }
+
+        return false;
     }
 
     private static bool EnabledOutputIsUnderDefaultFramesCleanupDirectory(DemoRecorderOptions options, string repositoryRoot)
