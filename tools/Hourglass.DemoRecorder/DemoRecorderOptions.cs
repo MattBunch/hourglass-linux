@@ -127,9 +127,9 @@ public sealed record DemoRecorderOptions(
                 return ParseOptionsResult.Error("Enabled output paths must point to files, not existing directories. Choose --gif and --video file paths or skip that output.");
             }
 
-            if (FramesDirectoryIsDanglingSymbolicLink(options.FramesDirectory))
+            if (FramesDirectoryContainsDanglingSymbolicLink(options.FramesDirectory))
             {
-                return ParseOptionsResult.Error("--frames-dir must not be a dangling symbolic link. Create the symlink target directory or choose a real frames directory.");
+                return ParseOptionsResult.Error("--frames-dir must not contain a dangling symbolic link. Create the symlink target directory or choose a real frames directory.");
             }
 
             if (!options.SkipGif
@@ -291,9 +291,42 @@ public sealed record DemoRecorderOptions(
             || (!options.SkipVideo && IsAncestorPath(framesDirectory, CreateResolvedOutputPath(options.VideoPath)));
     }
 
-    private static bool FramesDirectoryIsDanglingSymbolicLink(string framesDirectory)
+    private static bool FramesDirectoryContainsDanglingSymbolicLink(string framesDirectory)
     {
-        var info = new DirectoryInfo(Path.GetFullPath(framesDirectory));
+        string fullDirectory = Path.GetFullPath(framesDirectory);
+        string? root = Path.GetPathRoot(fullDirectory);
+        if (string.IsNullOrEmpty(root))
+        {
+            return false;
+        }
+
+        string relative = Path.GetRelativePath(root, fullDirectory);
+        if (relative == ".")
+        {
+            return false;
+        }
+
+        string current = root;
+        foreach (string part in relative.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar))
+        {
+            if (string.IsNullOrEmpty(part) || part == ".")
+            {
+                continue;
+            }
+
+            current = Path.Combine(current, part);
+            if (DirectoryLinkIsDangling(current))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool DirectoryLinkIsDangling(string directory)
+    {
+        var info = new DirectoryInfo(directory);
         if (string.IsNullOrEmpty(info.LinkTarget))
         {
             return false;

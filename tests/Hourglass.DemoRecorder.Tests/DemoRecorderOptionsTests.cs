@@ -619,7 +619,38 @@ public sealed class DemoRecorderOptionsTests : IDisposable
             this.temporaryDirectory);
 
         Assert.False(result.IsSuccess);
-        Assert.Contains("--frames-dir must not be a dangling symbolic link", result.Message, StringComparison.Ordinal);
+        Assert.Contains("--frames-dir must not contain a dangling symbolic link", result.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ParseRejectsFramesDirectoryUnderDanglingSymlinkAncestor()
+    {
+        string missingFramesParent = Path.Combine(this.temporaryDirectory, "missing-parent");
+        string aliasFramesParent = Path.Combine(this.temporaryDirectory, "frames-parent-alias");
+
+        try
+        {
+            Directory.CreateSymbolicLink(aliasFramesParent, missingFramesParent);
+        }
+        catch (Exception exception) when (exception is IOException
+            or PlatformNotSupportedException
+            or UnauthorizedAccessException)
+        {
+            return;
+        }
+
+        ParseOptionsResult result = DemoRecorderOptions.Parse(
+            [
+                "--frames-dir",
+                Path.Combine(aliasFramesParent, "frames"),
+                "--gif",
+                Path.Combine(this.temporaryDirectory, "demo.gif"),
+                "--skip-video"
+            ],
+            this.temporaryDirectory);
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains("--frames-dir must not contain a dangling symbolic link", result.Message, StringComparison.Ordinal);
     }
 
     [Fact]
