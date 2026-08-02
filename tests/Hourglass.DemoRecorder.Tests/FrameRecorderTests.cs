@@ -36,6 +36,19 @@ public sealed class FrameRecorderTests : IDisposable
     }
 
     [Fact]
+    public void CleanupRecordedFramesRetainsPreExistingEmptyFramesDirectory()
+    {
+        string frames = Path.Combine(this.temporaryDirectory, "frames");
+        Directory.CreateDirectory(frames);
+        var recorder = new FrameRecorder(frames, 960, 540);
+        recorder.PrepareEmptyDirectory();
+
+        recorder.CleanupRecordedFrames();
+
+        Assert.True(Directory.Exists(frames));
+    }
+
+    [Fact]
     public void ProgramDoesNotClearCustomFramesDirectoryBeforeRun()
     {
         string repositoryRoot = this.temporaryDirectory;
@@ -112,11 +125,66 @@ public sealed class FrameRecorderTests : IDisposable
         Assert.False(Program.IsExecutableAvailable(ffmpegPath));
     }
 
+    [Fact]
+    public void ProgramRejectsFfmpegFileNotExecutableByCurrentUser()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        string ffmpegPath = Path.Combine(this.temporaryDirectory, "ffmpeg");
+        Directory.CreateDirectory(this.temporaryDirectory);
+        File.WriteAllText(ffmpegPath, "#!/usr/bin/env sh\nexit 0\n");
+
+        try
+        {
+            File.SetUnixFileMode(
+                ffmpegPath,
+                UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.OtherExecute);
+        }
+        catch (Exception exception) when (exception is IOException
+            or PlatformNotSupportedException
+            or UnauthorizedAccessException)
+        {
+            return;
+        }
+
+        Assert.False(Program.IsExecutableAvailable(ffmpegPath));
+    }
+
+    [Fact]
+    public void WrapperPreflightUsesForwardedFfmpegCommand()
+    {
+        string script = File.ReadAllText(FindRepositoryFile("scripts/record-readme-demo.sh"));
+
+        Assert.Contains("ffmpeg_command=\"${args[$next_index]}\"", script, StringComparison.Ordinal);
+        Assert.Contains("command -v \"$ffmpeg_command\"", script, StringComparison.Ordinal);
+        Assert.DoesNotContain("command -v ffmpeg", script, StringComparison.Ordinal);
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(this.temporaryDirectory))
         {
             Directory.Delete(this.temporaryDirectory, recursive: true);
         }
+    }
+
+    private static string FindRepositoryFile(string relativePath)
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory != null)
+        {
+            string path = Path.Combine(directory.FullName, relativePath);
+            if (File.Exists(path))
+            {
+                return path;
+            }
+
+            directory = directory.Parent;
+        }
+
+        throw new FileNotFoundException($"Could not find repository file '{relativePath}'.");
     }
 }

@@ -12,6 +12,7 @@ public sealed class FrameRecorder
     private readonly string framesDirectory;
     private readonly int width;
     private readonly int height;
+    private bool deleteFramesDirectoryOnCleanup;
     private int nextFrameIndex;
 
     public FrameRecorder(string framesDirectory, int width, int height)
@@ -48,11 +49,14 @@ public sealed class FrameRecorder
 
     public void PrepareEmptyDirectory()
     {
+        bool framesDirectoryExists = Directory.Exists(this.framesDirectory);
         Directory.CreateDirectory(this.framesDirectory);
         if (Directory.EnumerateFileSystemEntries(this.framesDirectory).Any())
         {
             throw new InvalidOperationException($"Frames directory '{this.framesDirectory}' is not empty.");
         }
+
+        this.deleteFramesDirectoryOnCleanup = !framesDirectoryExists;
     }
 
     public void CleanupRecordedFrames()
@@ -66,7 +70,9 @@ public sealed class FrameRecorder
             }
         }
 
-        if (Directory.Exists(this.framesDirectory) && !Directory.EnumerateFileSystemEntries(this.framesDirectory).Any())
+        if (this.deleteFramesDirectoryOnCleanup
+            && Directory.Exists(this.framesDirectory)
+            && !Directory.EnumerateFileSystemEntries(this.framesDirectory).Any())
         {
             Directory.Delete(this.framesDirectory);
         }

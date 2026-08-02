@@ -49,7 +49,7 @@ internal static class Program
         {
             if (!IsExecutableAvailable(options.FfmpegCommand))
             {
-                Console.Error.WriteLine("FFmpeg was not found on PATH. Install ffmpeg and rerun ./scripts/record-readme-demo.sh.");
+                Console.Error.WriteLine($"FFmpeg command '{options.FfmpegCommand}' was not found or is not executable. Install ffmpeg and rerun ./scripts/record-readme-demo.sh.");
                 return 1;
             }
         }
@@ -238,14 +238,48 @@ internal static class Program
                 return true;
             }
 
-            const UnixFileMode executeBits = UnixFileMode.UserExecute
-                | UnixFileMode.GroupExecute
-                | UnixFileMode.OtherExecute;
-            return (File.GetUnixFileMode(path) & executeBits) != 0;
+            return ProbeExecutable(path);
         }
         catch (Exception exception) when (exception is IOException
             or UnauthorizedAccessException
             or PlatformNotSupportedException)
+        {
+            return false;
+        }
+    }
+
+    private static bool ProbeExecutable(string path)
+    {
+        try
+        {
+            using var process = new System.Diagnostics.Process();
+            process.StartInfo = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = path,
+                RedirectStandardError = true,
+                RedirectStandardOutput = true,
+                UseShellExecute = false
+            };
+            process.StartInfo.ArgumentList.Add("-version");
+
+            if (!process.Start())
+            {
+                return false;
+            }
+
+            const int preflightTimeoutMilliseconds = 5000;
+            if (!process.WaitForExit(preflightTimeoutMilliseconds))
+            {
+                process.Kill(entireProcessTree: true);
+                return false;
+            }
+
+            return process.ExitCode == 0;
+        }
+        catch (Exception exception) when (exception is InvalidOperationException
+            or System.ComponentModel.Win32Exception
+            or IOException
+            or UnauthorizedAccessException)
         {
             return false;
         }

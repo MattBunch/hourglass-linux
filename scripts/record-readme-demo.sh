@@ -15,10 +15,33 @@ if ! command -v dotnet >/dev/null 2>&1; then
   exit 1
 fi
 
-if ! command -v ffmpeg >/dev/null 2>&1; then
-  echo "ffmpeg was not found on PATH. Install ffmpeg and rerun this script." >&2
-  echo "Fedora: sudo dnf install ffmpeg" >&2
-  exit 1
+ffmpeg_command=ffmpeg
+check_ffmpeg=true
+args=("$@")
+for ((index = 0; index < ${#args[@]}; index++)); do
+  if [[ "${args[$index]}" == "--ffmpeg" ]]; then
+    next_index=$((index + 1))
+    if ((next_index < ${#args[@]})); then
+      ffmpeg_command="${args[$next_index]}"
+    else
+      check_ffmpeg=false
+    fi
+    break
+  fi
+done
+
+if [[ "$check_ffmpeg" == true ]]; then
+  if [[ "$ffmpeg_command" == */* ]]; then
+    if [[ ! -x "$ffmpeg_command" || ! -f "$ffmpeg_command" ]]; then
+      echo "ffmpeg command '$ffmpeg_command' was not found or is not executable. Install ffmpeg and rerun this script." >&2
+      echo "Fedora: sudo dnf install ffmpeg" >&2
+      exit 1
+    fi
+  elif ! command -v "$ffmpeg_command" >/dev/null 2>&1; then
+    echo "ffmpeg command '$ffmpeg_command' was not found on PATH. Install ffmpeg and rerun this script." >&2
+    echo "Fedora: sudo dnf install ffmpeg" >&2
+    exit 1
+  fi
 fi
 
 echo "Building Hourglass demo recorder..."
