@@ -138,6 +138,11 @@ public sealed record DemoRecorderOptions(
             {
                 return ParseOptionsResult.Error("Enabled output paths must not point to generated frame files. Choose --gif and --video paths outside --frames-dir.");
             }
+
+            if (EnabledOutputIsUnderDefaultFramesCleanupDirectory(options, repositoryRoot))
+            {
+                return ParseOptionsResult.Error("Enabled output paths must not be inside the default frames directory because it is cleared before recording. Choose --gif and --video paths outside .tmp/readme-demo/frames or pass --frames-dir.");
+            }
         }
         catch (PathResolutionException exception)
         {
@@ -266,6 +271,19 @@ public sealed record DemoRecorderOptions(
         string resolvedOutputPath = CreateResolvedOutputPath(outputPath);
         return IsGeneratedFramePath(resolvedOutputPath, framesDirectory)
             || IsAncestorPath(resolvedOutputPath, framesDirectory);
+    }
+
+    private static bool EnabledOutputIsUnderDefaultFramesCleanupDirectory(DemoRecorderOptions options, string repositoryRoot)
+    {
+        string framesDirectory = ResolveDirectoryIdentity(options.FramesDirectory);
+        string defaultFramesDirectory = ResolveDirectoryIdentity(Defaults(repositoryRoot).FramesDirectory);
+        if (!StringComparer.Ordinal.Equals(framesDirectory, defaultFramesDirectory))
+        {
+            return false;
+        }
+
+        return (!options.SkipGif && IsAncestorPath(framesDirectory, CreateResolvedOutputPath(options.GifPath)))
+            || (!options.SkipVideo && IsAncestorPath(framesDirectory, CreateResolvedOutputPath(options.VideoPath)));
     }
 
     private static bool IsGeneratedFramePath(string path, string framesDirectory)

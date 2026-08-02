@@ -516,6 +516,47 @@ public sealed class DemoRecorderOptionsTests : IDisposable
     }
 
     [Fact]
+    public void ParseRejectsEnabledOutputPathUnderDefaultFramesDirectory()
+    {
+        DemoRecorderOptions defaults = DemoRecorderOptions.Defaults(this.temporaryDirectory);
+        string outputPath = Path.Combine(defaults.FramesDirectory, "archive.gif");
+
+        ParseOptionsResult result = DemoRecorderOptions.Parse(
+            [
+                "--gif",
+                outputPath,
+                "--skip-video"
+            ],
+            this.temporaryDirectory);
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains("must not be inside the default frames directory", result.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ParseAllowsSkippedOutputPathUnderDefaultFramesDirectory()
+    {
+        DemoRecorderOptions defaults = DemoRecorderOptions.Defaults(this.temporaryDirectory);
+        string skippedOutputPath = Path.Combine(defaults.FramesDirectory, "archive.gif");
+        string videoPath = Path.Combine(this.temporaryDirectory, "docs", "assets", "demo.mp4");
+
+        ParseOptionsResult result = DemoRecorderOptions.Parse(
+            [
+                "--gif",
+                skippedOutputPath,
+                "--video",
+                videoPath,
+                "--skip-gif"
+            ],
+            this.temporaryDirectory);
+
+        Assert.True(result.IsSuccess);
+        Assert.NotNull(result.Options);
+        Assert.True(result.Options.SkipGif);
+        Assert.Equal(videoPath, result.Options.VideoPath);
+    }
+
+    [Fact]
     public void ParseAllowsCollidingOutputPathWhenGifIsSkipped()
     {
         string outputPath = Path.Combine(Directory.GetCurrentDirectory(), "demo-output");
