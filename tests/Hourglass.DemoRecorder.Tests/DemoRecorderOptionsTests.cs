@@ -406,6 +406,73 @@ public sealed class DemoRecorderOptionsTests : IDisposable
     }
 
     [Fact]
+    public void ParseRejectsEnabledLeafSymlinkOutputPath()
+    {
+        Directory.CreateDirectory(this.temporaryDirectory);
+        string realPath = Path.Combine(this.temporaryDirectory, "real.gif");
+        string aliasPath = Path.Combine(this.temporaryDirectory, "alias.gif");
+        File.WriteAllText(realPath, "existing output");
+
+        try
+        {
+            File.CreateSymbolicLink(aliasPath, realPath);
+        }
+        catch (Exception exception) when (exception is IOException
+            or PlatformNotSupportedException
+            or UnauthorizedAccessException)
+        {
+            return;
+        }
+
+        ParseOptionsResult result = DemoRecorderOptions.Parse(
+            [
+                "--gif",
+                aliasPath,
+                "--skip-video"
+            ],
+            this.temporaryDirectory);
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains("Enabled output paths must not be symbolic links", result.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ParseAllowsSkippedLeafSymlinkOutputPath()
+    {
+        Directory.CreateDirectory(this.temporaryDirectory);
+        string realPath = Path.Combine(this.temporaryDirectory, "real.gif");
+        string aliasPath = Path.Combine(this.temporaryDirectory, "alias.gif");
+        string videoPath = Path.Combine(this.temporaryDirectory, "demo.mp4");
+        File.WriteAllText(realPath, "existing output");
+
+        try
+        {
+            File.CreateSymbolicLink(aliasPath, realPath);
+        }
+        catch (Exception exception) when (exception is IOException
+            or PlatformNotSupportedException
+            or UnauthorizedAccessException)
+        {
+            return;
+        }
+
+        ParseOptionsResult result = DemoRecorderOptions.Parse(
+            [
+                "--gif",
+                aliasPath,
+                "--video",
+                videoPath,
+                "--skip-gif"
+            ],
+            this.temporaryDirectory);
+
+        Assert.True(result.IsSuccess);
+        Assert.NotNull(result.Options);
+        Assert.True(result.Options.SkipGif);
+        Assert.Equal(videoPath, result.Options.VideoPath);
+    }
+
+    [Fact]
     public void ParseRejectsHardLinkedOutputPathCollision()
     {
         Directory.CreateDirectory(this.temporaryDirectory);

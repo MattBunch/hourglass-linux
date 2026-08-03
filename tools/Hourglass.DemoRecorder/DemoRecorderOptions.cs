@@ -166,6 +166,11 @@ public sealed record DemoRecorderOptions(
                 return ParseOptionsResult.Error("Enabled output paths must not contain dangling symbolic links. Create the symlink target or choose a real output file path.");
             }
 
+            if (EnabledOutputIsLeafSymbolicLink(options))
+            {
+                return ParseOptionsResult.Error("Enabled output paths must not be symbolic links. Choose a regular output path or the symlink target path.");
+            }
+
             if (EnabledOutputContainsNonDirectoryAncestor(options))
             {
                 return ParseOptionsResult.Error("Enabled output parent directories must not contain existing non-directory path components. Choose a real output file path.");
@@ -376,6 +381,12 @@ public sealed record DemoRecorderOptions(
             || (!options.SkipVideo && OutputPathContainsNonDirectoryAncestor(options.VideoPath));
     }
 
+    private static bool EnabledOutputIsLeafSymbolicLink(DemoRecorderOptions options)
+    {
+        return (!options.SkipGif && OutputPathIsLeafSymbolicLink(options.GifPath))
+            || (!options.SkipVideo && OutputPathIsLeafSymbolicLink(options.VideoPath));
+    }
+
     private static bool OutputPathContainsDanglingSymbolicLink(string outputPath)
     {
         string fullPath = Path.GetFullPath(outputPath);
@@ -390,6 +401,12 @@ public sealed record DemoRecorderOptions(
         string? directory = Path.GetDirectoryName(fullPath);
         return !string.IsNullOrWhiteSpace(directory)
             && DirectoryPathContainsNonDirectoryAncestor(directory);
+    }
+
+    private static bool OutputPathIsLeafSymbolicLink(string outputPath)
+    {
+        var info = new FileInfo(Path.GetFullPath(outputPath));
+        return !string.IsNullOrEmpty(info.LinkTarget);
     }
 
     private static bool DirectoryPathContainsDanglingSymbolicLink(string directory)

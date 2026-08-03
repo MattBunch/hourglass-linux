@@ -37,6 +37,7 @@ public sealed class DemoContext : IAsyncDisposable
     private readonly DemoPlatformServices services;
     private readonly MainWindowViewModel viewModel;
     private AboutWindow? aboutWindow;
+    private long pendingFrameNumerator;
     private bool disposed;
 
     private DemoContext(DemoRecorderOptions options, FrameRecorder frameRecorder, DemoPlatformServices services)
@@ -198,7 +199,9 @@ public sealed class DemoContext : IAsyncDisposable
             throw new ArgumentOutOfRangeException(nameof(duration));
         }
 
-        int frames = (int)Math.Round(duration.TotalSeconds * this.options.FrameRate, MidpointRounding.AwayFromZero);
+        long frameNumerator = checked((duration.Ticks * this.options.FrameRate) + this.pendingFrameNumerator);
+        int frames = checked((int)(frameNumerator / TimeSpan.TicksPerSecond));
+        this.pendingFrameNumerator = frameNumerator % TimeSpan.TicksPerSecond;
         if (frames == 0)
         {
             if (duration > TimeSpan.Zero)

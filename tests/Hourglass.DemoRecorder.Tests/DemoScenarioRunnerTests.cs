@@ -95,6 +95,53 @@ public sealed class DemoScenarioRunnerTests : IDisposable
         Assert.Equal(0, context.FrameCount);
     }
 
+    [Fact]
+    public async Task HoldAsyncCarriesFractionalFramesAcrossCalls()
+    {
+        HeadlessTestHost.EnsureStarted();
+        DemoRecorderOptions options = DemoRecorderOptions.Defaults(Directory.GetCurrentDirectory()) with
+        {
+            FramesDirectory = Path.Combine(this.temporaryDirectory, "fractional-frame-duration-frames"),
+            FrameRate = 1,
+            SkipGif = true,
+            SkipVideo = true
+        };
+        var recorder = new FrameRecorder(options.FramesDirectory, options.Width, options.Height);
+        recorder.PrepareEmptyDirectory();
+        var services = new DemoPlatformServices();
+        await using DemoContext context = await DemoContext.CreateAsync(options, recorder, services);
+
+        await context.ShowWindowAsync();
+        await context.HoldAsync(TimeSpan.FromSeconds(1.5));
+        await context.HoldAsync(TimeSpan.FromSeconds(1.5));
+
+        Assert.Equal(TimeSpan.FromSeconds(3), services.Clock.Elapsed);
+        Assert.Equal(3, context.FrameCount);
+    }
+
+    [Fact]
+    public async Task ReadmeScenarioCarriesFractionalFramesAtLowFrameRate()
+    {
+        HeadlessTestHost.EnsureStarted();
+        DemoRecorderOptions options = DemoRecorderOptions.Defaults(Directory.GetCurrentDirectory()) with
+        {
+            FramesDirectory = Path.Combine(this.temporaryDirectory, "readme-low-frame-rate-frames"),
+            FrameRate = 1,
+            SkipGif = true,
+            SkipVideo = true
+        };
+        var recorder = new FrameRecorder(options.FramesDirectory, options.Width, options.Height);
+        recorder.PrepareEmptyDirectory();
+        var services = new DemoPlatformServices();
+        await using DemoContext context = await DemoContext.CreateAsync(options, recorder, services);
+        var runner = new DemoScenarioRunner(new ReadmeDemoScenario(), context);
+
+        int frameCount = await runner.RunAsync();
+
+        Assert.Equal(16, frameCount);
+        Assert.Equal(TimeSpan.FromSeconds(16), services.Clock.Elapsed);
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(this.temporaryDirectory))
