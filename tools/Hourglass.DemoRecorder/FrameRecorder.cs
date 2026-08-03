@@ -101,8 +101,29 @@ public sealed class FrameRecorder
         }
 
         Directory.CreateDirectory(this.framesDirectory);
-        frame.Save(path);
+        SaveFrameWithFailureCleanup(path, () => frame.Save(path));
         this.nextFrameIndex++;
+
         return path;
+    }
+
+    internal static void SaveFrameWithFailureCleanup(string path, Action save)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        ArgumentNullException.ThrowIfNull(save);
+
+        try
+        {
+            save();
+        }
+        catch
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+
+            throw;
+        }
     }
 }

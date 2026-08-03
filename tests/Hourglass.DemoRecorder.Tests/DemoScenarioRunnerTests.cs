@@ -117,6 +117,9 @@ public sealed class DemoScenarioRunnerTests : IDisposable
 
         Assert.Equal(TimeSpan.FromSeconds(3), services.Clock.Elapsed);
         Assert.Equal(3, context.FrameCount);
+        Assert.Equal(
+            [TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(3)],
+            context.CapturedFrameTimes);
     }
 
     [Fact]

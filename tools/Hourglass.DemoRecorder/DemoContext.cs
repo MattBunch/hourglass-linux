@@ -36,8 +36,9 @@ public sealed class DemoContext : IAsyncDisposable
     private readonly FrameRecorder frameRecorder;
     private readonly DemoPlatformServices services;
     private readonly MainWindowViewModel viewModel;
+    private readonly List<TimeSpan> capturedFrameTimes = [];
     private AboutWindow? aboutWindow;
-    private long pendingFrameNumerator;
+    private long scenarioTicks;
     private bool disposed;
 
     private DemoContext(DemoRecorderOptions options, FrameRecorder frameRecorder, DemoPlatformServices services)
@@ -84,6 +85,8 @@ public sealed class DemoContext : IAsyncDisposable
     public MainWindow Window { get; }
 
     public int FrameCount => this.frameRecorder.FrameCount;
+
+    internal IReadOnlyList<TimeSpan> CapturedFrameTimes => this.capturedFrameTimes;
 
     public DemoPlatformServices Services => this.services;
 
@@ -199,32 +202,22 @@ public sealed class DemoContext : IAsyncDisposable
             throw new ArgumentOutOfRangeException(nameof(duration));
         }
 
-        long frameNumerator = checked((duration.Ticks * this.options.FrameRate) + this.pendingFrameNumerator);
-        int frames = checked((int)(frameNumerator / TimeSpan.TicksPerSecond));
-        this.pendingFrameNumerator = frameNumerator % TimeSpan.TicksPerSecond;
-        if (frames == 0)
-        {
-            if (duration > TimeSpan.Zero)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                this.services.Clock.Advance(duration);
-                this.viewModel.Tick();
-            }
-
-            return;
-        }
-
-        long baseStepTicks = Math.DivRem(duration.Ticks, frames, out long remainderTicks);
-        long advancedTicks = 0;
-        for (int frame = 0; frame < frames; frame++)
+        long startTicks = this.scenarioTicks;
+        long endTicks = checked(startTicks + duration.Ticks);
+        long firstFrameIndex = (checked(startTicks * this.options.FrameRate) / TimeSpan.TicksPerSecond) + 1;
+        long lastFrameIndex = checked(endTicks * this.options.FrameRate) / TimeSpan.TicksPerSecond;
+        for (long frameIndex = firstFrameIndex; frameIndex <= lastFrameIndex; frameIndex++)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            long targetTicks = (baseStepTicks * (frame + 1)) + ((remainderTicks * (frame + 1)) / frames);
-            TimeSpan step = TimeSpan.FromTicks(targetTicks - advancedTicks);
-            this.services.Clock.Advance(step);
-            advancedTicks = targetTicks;
-            this.viewModel.Tick();
+            long targetTicks = checked(frameIndex * TimeSpan.TicksPerSecond) / this.options.FrameRate;
+            this.AdvanceClockTo(targetTicks);
             await this.CaptureFrameAsync(cancellationToken).ConfigureAwait(true);
+        }
+
+        if (endTicks > this.scenarioTicks)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            this.AdvanceClockTo(endTicks);
         }
     }
 
@@ -238,6 +231,20 @@ public sealed class DemoContext : IAsyncDisposable
         cancellationToken.ThrowIfCancellationRequested();
         await this.FlushAsync(cancellationToken).ConfigureAwait(true);
         this.frameRecorder.Capture(this.aboutWindow?.IsVisible == true ? this.aboutWindow : this.Window);
+        this.capturedFrameTimes.Add(this.services.Clock.Elapsed);
+    }
+
+    private void AdvanceClockTo(long targetTicks)
+    {
+        if (targetTicks <= this.scenarioTicks)
+        {
+            return;
+        }
+
+        TimeSpan step = TimeSpan.FromTicks(targetTicks - this.scenarioTicks);
+        this.services.Clock.Advance(step);
+        this.scenarioTicks = targetTicks;
+        this.viewModel.Tick();
     }
 
     private static void ApplyDemoFont(Control control)

@@ -29,9 +29,34 @@ public sealed class FfmpegEncoderTests : IDisposable
         ProcessStartInfo startInfo = FfmpegEncoder.CreateMp4StartInfo("ffmpeg", "frame-%05d.png", 12, "demo.mp4");
 
         Assert.Contains("libx264", startInfo.ArgumentList);
+        AssertArgumentPair(startInfo, "-crf", "20");
         Assert.Contains("yuv420p", startInfo.ArgumentList);
         Assert.Contains("+faststart", startInfo.ArgumentList);
         AssertArgumentPair(startInfo, "-f", "mp4");
+    }
+
+    [Fact]
+    public async Task OpenH264FallbackUsesSupportedBitrateControl()
+    {
+        string videoPath = Path.Combine(this.temporaryDirectory, "demo.mp4");
+        var runner = new SequencedProcessRunner([1, 0], stderr: "Unknown encoder 'libx264'");
+        var encoder = new FfmpegEncoder(runner);
+
+        await encoder.EncodeAsync(
+            "ffmpeg",
+            "frame-%05d.png",
+            12,
+            960,
+            null,
+            videoPath);
+
+        Assert.Equal(2, runner.StartInfos.Count);
+        Assert.Contains("libx264", runner.StartInfos[0].ArgumentList);
+        AssertArgumentPair(runner.StartInfos[0], "-crf", "20");
+        Assert.Contains("libopenh264", runner.StartInfos[1].ArgumentList);
+        AssertArgumentPair(runner.StartInfos[1], "-b:v", "1800k");
+        Assert.DoesNotContain("-crf", runner.StartInfos[1].ArgumentList);
+        Assert.Equal("output", File.ReadAllText(videoPath));
     }
 
     [Fact]

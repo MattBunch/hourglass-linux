@@ -242,8 +242,7 @@ public sealed class FfmpegEncoder
         startInfo.ArgumentList.Add(inputPattern);
         startInfo.ArgumentList.Add("-c:v");
         startInfo.ArgumentList.Add(codec);
-        startInfo.ArgumentList.Add("-crf");
-        startInfo.ArgumentList.Add("20");
+        AddMp4QualityArguments(startInfo, codec);
         startInfo.ArgumentList.Add("-pix_fmt");
         startInfo.ArgumentList.Add("yuv420p");
         startInfo.ArgumentList.Add("-movflags");
@@ -252,6 +251,19 @@ public sealed class FfmpegEncoder
         startInfo.ArgumentList.Add("mp4");
         startInfo.ArgumentList.Add(videoPath);
         return startInfo;
+    }
+
+    private static void AddMp4QualityArguments(ProcessStartInfo startInfo, string codec)
+    {
+        if (StringComparer.Ordinal.Equals(codec, "libopenh264"))
+        {
+            startInfo.ArgumentList.Add("-b:v");
+            startInfo.ArgumentList.Add("1800k");
+            return;
+        }
+
+        startInfo.ArgumentList.Add("-crf");
+        startInfo.ArgumentList.Add("20");
     }
 
     private static string CreateTemporaryOutputPath(string finalPath)
