@@ -1028,7 +1028,7 @@ Create one focused issue or Codex task for each of the following rather than att
 14. Implemented: Create the release validation checklist document.
 15. Implemented: Run and record the native/AppImage desktop smoke matrix.
 16. Implemented: Run and record the Flatpak sandbox smoke matrix.
-17. Run and record multi-monitor placement validation.
+17. Not run: Run and record multi-monitor placement validation when an attended physical two-monitor setup is available.
 18. Run and record physical wake-from-suspend validation before enabling any user-facing wake option.
 
 ## Definition of Practical Feature Parity

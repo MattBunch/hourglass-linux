@@ -119,6 +119,8 @@ For each Flatpak row, validate the core smoke cases plus:
 
 ## Multi-Monitor Placement Validation
 
+**Status:** `Not run`. Deferred until an attended physical two-monitor setup is available; single-display or VM-only checks do not provide completion evidence for these topology-dependent cases.
+
 | Case | Result | Notes | Skip reason |
 | --- | --- | --- | --- |
 | Mixed scaling across monitors | `Not run` | Record display server, monitor sizes, scale factors, and whether saved geometry restores to the intended work area. | Not applicable. |
