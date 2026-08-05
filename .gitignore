@@ -4,3 +4,6 @@
 /artifacts/
 bin/
 obj/
+
+# README demo recorder temporary frames.
+.tmp/readme-demo/

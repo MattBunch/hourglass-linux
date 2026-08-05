@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>Hourglass.DemoRecorder</AssemblyName>
+    <RootNamespace>Hourglass.DemoRecorder</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Hourglass.DemoRecorder.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia.Fonts.Inter" Version="12.0.4" />
+    <PackageReference Include="Avalonia.Headless" Version="12.0.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Hourglass.Core\Hourglass.Core.csproj" />
+    <ProjectReference Include="..\..\src\Hourglass.Platform\Hourglass.Platform.csproj" />
+    <ProjectReference Include="..\..\src\Hourglass.Linux.Avalonia\Hourglass.Linux.Avalonia.csproj" />
+  </ItemGroup>
+</Project>

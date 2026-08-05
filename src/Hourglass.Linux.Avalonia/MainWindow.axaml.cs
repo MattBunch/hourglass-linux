@@ -124,9 +124,16 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
         IDiagnosticSink? diagnosticSink = null,
         bool loadSettingsOnOpened = true,
         Func<MainWindow, Task>? prepareCoordinatorClose = null,
-        Func<Task>? requestApplicationExit = null)
+        Func<Task>? requestApplicationExit = null,
+        bool suppressExpiryVisualFeedback = false,
+        bool suppressCommandPanelTransitions = false)
     {
         InitializeComponent();
+        if (suppressCommandPanelTransitions)
+        {
+            this.CommandPanel.Transitions = null;
+        }
+
         diagnosticSink ??= NoOpDiagnosticSink.Instance;
 
         this.viewModel = viewModel ?? throw new ArgumentNullException(nameof(viewModel));
@@ -185,7 +192,11 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
         this.AddHandler(KeyDownEvent, this.WindowKeyDown, RoutingStrategies.Tunnel);
         this.viewModel.PropertyChanged += this.ViewModelPropertyChanged;
         this.viewModel.WindowAttentionRequested += this.WindowAttentionRequested;
-        this.viewModel.ExpiryVisualFeedbackRequested += this.ExpiryVisualFeedbackRequested;
+        if (!suppressExpiryVisualFeedback)
+        {
+            this.viewModel.ExpiryVisualFeedbackRequested += this.ExpiryVisualFeedbackRequested;
+        }
+
         this.viewModel.ValidationFeedbackRequested += this.ValidationFeedbackRequested;
         this.viewModel.CloseRequested += this.CloseRequested;
         this.viewModel.HideToNotificationAreaRequested += this.HideToNotificationAreaRequested;
@@ -474,6 +485,55 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
         await this.viewModel.PendingSettingsSave.ConfigureAwait(false);
         await this.desktopProgressController.ClearAsync().ConfigureAwait(false);
         await this.PrepareCoordinatorCloseOnUiThreadAsync().ConfigureAwait(false);
+    }
+
+    internal Task CloseCoordinatedAsync()
+    {
+        return this.CloseCoordinatedAsync(preapproveExit: false);
+    }
+
+    internal Task CloseCoordinatedWithPreapprovedExitAsync()
+    {
+        return this.CloseCoordinatedAsync(preapproveExit: true);
+    }
+
+    private Task CloseCoordinatedAsync(bool preapproveExit)
+    {
+        if (Dispatcher.UIThread.CheckAccess())
+        {
+            return this.CloseCoordinatedOnUiThreadAsync(preapproveExit);
+        }
+
+        var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        Dispatcher.UIThread.Post(async () =>
+        {
+            try
+            {
+                await this.CloseCoordinatedOnUiThreadAsync(preapproveExit).ConfigureAwait(true);
+                completion.SetResult();
+            }
+            catch (Exception exception)
+            {
+                completion.SetException(exception);
+            }
+        });
+
+        return completion.Task;
+    }
+
+    private async Task CloseCoordinatedOnUiThreadAsync(bool preapproveExit)
+    {
+        if (preapproveExit)
+        {
+            this.CloseWithPreapprovedExit();
+        }
+        else
+        {
+            this.Close();
+        }
+
+        await this.closeCoordinator.PendingPreparation.ConfigureAwait(true);
+        Dispatcher.UIThread.RunJobs();
     }
 
     private Task PrepareCoordinatorCloseOnUiThreadAsync()
