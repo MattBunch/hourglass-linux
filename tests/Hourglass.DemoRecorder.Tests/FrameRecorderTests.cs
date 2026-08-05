@@ -67,6 +67,24 @@ public sealed class FrameRecorderTests : IDisposable
     }
 
     [Fact]
+    public void SaveFrameWithFailureCleanupPreservesSaveFailureWhenCleanupFails()
+    {
+        string framePath = Path.Combine(this.temporaryDirectory, "frames", FrameRecorder.GetFrameFileName(0));
+        var saveFailure = new IOException("simulated frame save failure");
+        var cleanupFailure = new IOException("simulated partial frame cleanup failure");
+
+        AggregateException exception = Assert.Throws<AggregateException>(() => FrameRecorder.SaveFrameWithFailureCleanup(
+            framePath,
+            () => throw saveFailure,
+            _ => true,
+            _ => throw cleanupFailure));
+
+        Assert.Contains("partial frame cleanup also failed", exception.Message, StringComparison.Ordinal);
+        Assert.Contains(saveFailure, exception.InnerExceptions);
+        Assert.Contains(cleanupFailure, exception.InnerExceptions);
+    }
+
+    [Fact]
     public void ProgramDoesNotClearCustomFramesDirectoryBeforeRun()
     {
         string repositoryRoot = this.temporaryDirectory;

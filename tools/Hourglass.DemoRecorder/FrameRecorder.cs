@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
+using System.Runtime.ExceptionServices;
 
 namespace Hourglass.DemoRecorder;
 
@@ -109,21 +110,42 @@ public sealed class FrameRecorder
 
     internal static void SaveFrameWithFailureCleanup(string path, Action save)
     {
+        SaveFrameWithFailureCleanup(path, save, File.Exists, File.Delete);
+    }
+
+    internal static void SaveFrameWithFailureCleanup(
+        string path,
+        Action save,
+        Func<string, bool> fileExists,
+        Action<string> deleteFile)
+    {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         ArgumentNullException.ThrowIfNull(save);
+        ArgumentNullException.ThrowIfNull(fileExists);
+        ArgumentNullException.ThrowIfNull(deleteFile);
 
         try
         {
             save();
         }
-        catch
+        catch (Exception saveException)
         {
-            if (File.Exists(path))
+            try
             {
-                File.Delete(path);
+                if (fileExists(path))
+                {
+                    deleteFile(path);
+                }
+            }
+            catch (Exception cleanupException)
+            {
+                throw new AggregateException(
+                    $"Failed to save demo frame '{path}', and partial frame cleanup also failed.",
+                    saveException,
+                    cleanupException);
             }
 
-            throw;
+            ExceptionDispatchInfo.Capture(saveException).Throw();
         }
     }
 }
