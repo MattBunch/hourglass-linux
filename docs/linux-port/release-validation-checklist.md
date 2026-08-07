@@ -133,6 +133,8 @@ For each Flatpak row, validate the core smoke cases plus:
 
 Wake from suspend remains disabled by default. Do not expose or recommend it for normal users until physical hardware, permissions, and packaging behavior are proven.
 
+**2026-08-07 discovery result:** `Skipped`. The Codex execution environment reported `container-other`; it exposed `/sys/class/rtc/rtc0/wakealarm` with no current alarm and an enabled wakeup device, but a container cannot prove host suspend/resume behavior. No wake alarm was scheduled or cleared. The rows below remain `Not run` pending physical-hardware validation.
+
 | Case | Package type | Result | Notes | Skip reason |
 | --- | --- | --- | --- | --- |
 | Capability and permission discovery | Native publish | `Not run` | Record hardware, kernel, RTC wakealarm path, user permissions, and selected backend. | Not applicable. |
