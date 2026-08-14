@@ -31,6 +31,9 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
+      - name: Install XML parser
+        run: sudo apt-get update && sudo apt-get install --yes libxml2-utils
+
       - name: Restore
         run: dotnet restore Hourglass.Linux.sln
 

@@ -34,11 +34,16 @@ if [[ ! -f "$project" ]]; then
   exit 1
 fi
 
-mapfile -t versions < <(sed -nE 's@.*<Version>([^<]+)</Version>.*@\1@p' "$project")
+if ! command -v xmllint >/dev/null 2>&1; then
+  printf 'xmllint is required to read release version metadata.\n' >&2
+  exit 1
+fi
 
-if [[ ${#versions[@]} -ne 1 || -z "${versions[0]}" ]]; then
+version_count=$(xmllint --xpath 'count(//*[local-name()="Version" and normalize-space(.) != ""])' "$project")
+if [[ "$version_count" != "1" ]]; then
   printf 'Expected exactly one non-empty <Version> element in %s\n' "$project" >&2
   exit 1
 fi
 
-printf '%s\n' "${versions[0]}"
+version=$(xmllint --xpath 'normalize-space((//*[local-name()="Version" and normalize-space(.) != ""])[1])' "$project")
+printf '%s\n' "$version"

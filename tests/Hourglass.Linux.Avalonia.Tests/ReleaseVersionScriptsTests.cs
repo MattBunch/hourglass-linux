@@ -97,6 +97,54 @@ public sealed class ReleaseVersionScriptsTests
     }
 
     [Fact]
+    public void VersionReaderAcceptsVersionElementWithMsBuildAttributes()
+    {
+        using ReleaseVersionFixture fixture = new("0.2.0", "0.2.0");
+        File.WriteAllText(
+            fixture.ProjectPath,
+            "<Project><PropertyGroup><Version Condition=\"'$(Version)' == ''\">0.2.0</Version></PropertyGroup></Project>");
+
+        ScriptResult result = RunScript("scripts/read-release-version.sh", "--project", fixture.ProjectPath);
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Equal($"0.2.0{Environment.NewLine}", result.StandardOutput);
+        Assert.Empty(result.StandardError);
+    }
+
+    [Fact]
+    public void VersionReaderIgnoresCommentedVersionElements()
+    {
+        using ReleaseVersionFixture fixture = new("0.2.0", "0.2.0");
+        File.WriteAllText(
+            fixture.ProjectPath,
+            "<Project><!-- <Version>9.9.9</Version> --><PropertyGroup><Version>0.2.0</Version></PropertyGroup></Project>");
+
+        ScriptResult result = RunScript("scripts/read-release-version.sh", "--project", fixture.ProjectPath);
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Equal($"0.2.0{Environment.NewLine}", result.StandardOutput);
+        Assert.Empty(result.StandardError);
+    }
+
+    [Fact]
+    public void ValidatorAcceptsAppStreamVersionAttributeRegardlessOfOrder()
+    {
+        using ReleaseVersionFixture fixture = new("0.2.0", "0.2.0");
+        File.WriteAllText(
+            fixture.MetainfoPath,
+            "<component><releases><release date=\"2026-08-14\" version=\"0.2.0\" /></releases></component>");
+
+        ScriptResult result = RunScript(
+            "scripts/validate-release-version.sh",
+            "--project", fixture.ProjectPath,
+            "--metainfo", fixture.MetainfoPath);
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Equal($"Release version validation passed: 0.2.0{Environment.NewLine}", result.StandardOutput);
+        Assert.Empty(result.StandardError);
+    }
+
+    [Fact]
     public void ValidatorRunsFromScriptDirectoryContainingWhitespace()
     {
         using ReleaseVersionFixture fixture = new("0.1.0", "0.1.0");

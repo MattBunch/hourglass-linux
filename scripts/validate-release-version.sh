@@ -41,6 +41,11 @@ if [[ ! -f "$metainfo" ]]; then
   exit 1
 fi
 
+if ! command -v xmllint >/dev/null 2>&1; then
+  printf 'xmllint is required to read AppStream release metadata.\n' >&2
+  exit 1
+fi
+
 version=$("$script_dir/read-release-version.sh" --project "$project")
 semver_number='(0|[1-9][0-9]*)'
 semver_pattern="^${semver_number}\\.${semver_number}\\.${semver_number}(-beta\\.[1-9][0-9]*)?$"
@@ -50,14 +55,12 @@ if [[ ! "$version" =~ $semver_pattern ]]; then
   exit 1
 fi
 
-mapfile -t appstream_versions < <(sed -nE 's@.*<release[[:space:]]+version="([^"]+)".*>@\1@p' "$metainfo")
-
-if [[ ${#appstream_versions[@]} -eq 0 || -z "${appstream_versions[0]}" ]]; then
+appstream_version=$(xmllint --xpath 'string((//*[local-name()="release"]/@version)[1])' "$metainfo")
+if [[ -z "$appstream_version" ]]; then
   printf 'Expected at least one AppStream <release> version in %s\n' "$metainfo" >&2
   exit 1
 fi
 
-appstream_version=${appstream_versions[0]}
 if [[ ! "$appstream_version" =~ $semver_pattern ]]; then
   printf 'Latest AppStream release is not a supported release version: %s\n' "$appstream_version" >&2
   exit 1
