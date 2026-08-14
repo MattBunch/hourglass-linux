@@ -5,7 +5,7 @@ repository: "https://github.com/MattBunch/hourglass-linux"
 default_branch: "develop"
 document_type: "implementation-roadmap"
 status: "active"
-last_updated: "2026-07-25"
+last_updated: "2026-08-13"
 application_id: "io.github.MattBunch.Hourglass"
 executable: "hourglass-linux"
 initial_release_version: "0.1.0"
@@ -208,7 +208,7 @@ exact environment has been validated.
 
 ### Legal and attribution
 
-- [ ] Confirm root `LICENSE` exists.
+- [ ] Confirm root `LICENSE.md` exists.
 - [ ] Confirm the Linux port may be distributed under MIT.
 - [ ] Confirm original Hourglass attribution is visible.
 - [ ] Review third-party license obligations.
@@ -250,39 +250,39 @@ Use one reliable version model across binaries, AppStream metadata, package reci
 
 ### Version model
 
-- [ ] Decide whether the Linux `.csproj` is the canonical version source.
-- [ ] Document versioning in `docs/releasing.md`.
-- [ ] Use semantic versions such as `0.1.0`.
-- [ ] Use Git tags such as `v0.1.0`.
-- [ ] Define prerelease format such as `v0.2.0-beta.1`.
-- [ ] Define RPM release-number handling.
-- [ ] Define Debian revision handling.
-- [ ] Define AUR `pkgrel` handling.
-- [ ] Define Nix source-hash update handling.
+- [x] Decide that the Linux `.csproj` is the canonical version source.
+- [x] Document versioning in `docs/releasing.md`.
+- [x] Use semantic versions such as `0.1.0`.
+- [x] Use Git tags such as `v0.1.0`.
+- [x] Define prerelease format such as `v0.2.0-beta.1`.
+- [x] Define RPM release-number handling.
+- [x] Define Debian revision handling.
+- [x] Define AUR `pkgrel` handling.
+- [x] Define Nix source-hash update handling.
 
 ### Automated validation
 
-- [ ] Add a script that reads the version from the Linux `.csproj`.
-- [ ] Add a script that reads the latest AppStream release version.
-- [ ] Validate that the Git tag equals `v` plus the `.csproj` version.
-- [ ] Validate that AppStream version matches the `.csproj` version.
-- [ ] Validate package recipe versions.
-- [ ] Fail release workflows when versions differ.
-- [ ] Add tests for version validation.
+- [x] Add a script that reads the version from the Linux `.csproj`.
+- [x] Add a validator that reads the latest AppStream release version.
+- [x] Validate that the Git tag equals `v` plus the `.csproj` version.
+- [x] Validate that AppStream version matches the `.csproj` version.
+- [~] Validate package recipe versions when package recipes exist.
+- [x] Fail CI version validation when existing metadata differs.
+- [x] Add tests for version validation.
 
 ### Changelog
 
-- [ ] Create `CHANGELOG.md`.
-- [ ] Choose a consistent changelog format.
-- [ ] Add a `0.1.0` entry.
-- [ ] List features, fixes, packaging support, architecture support, and known limitations.
+- [x] Create `CHANGELOG.md`.
+- [x] Choose a consistent changelog format.
+- [x] Add a `0.1.0` entry.
+- [x] List features, packaging support, architecture support, and known limitations.
 
 ## Acceptance criteria
 
-- [ ] One command returns the intended release version.
-- [ ] CI rejects mismatched tags and metadata.
-- [ ] `CHANGELOG.md` contains the release entry.
-- [ ] Release documentation explains the version update process.
+- [x] One command returns the intended release version.
+- [x] CI rejects mismatched tags and metadata.
+- [x] `CHANGELOG.md` contains the release entry.
+- [x] Release documentation explains the version update process.
 
 ---
 
