@@ -41,8 +41,9 @@ if [[ ! -f "$metainfo" ]]; then
   exit 1
 fi
 
-version=$($script_dir/read-release-version.sh --project "$project")
-semver_pattern='^[0-9]+\.[0-9]+\.[0-9]+(-beta\.[1-9][0-9]*)?$'
+version=$("$script_dir/read-release-version.sh" --project "$project")
+semver_number='(0|[1-9][0-9]*)'
+semver_pattern="^${semver_number}\\.${semver_number}\\.${semver_number}(-beta\\.[1-9][0-9]*)?$"
 
 if [[ ! "$version" =~ $semver_pattern ]]; then
   printf 'Project version is not a supported release version: %s\n' "$version" >&2

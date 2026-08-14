@@ -51,6 +51,24 @@ public sealed class ReleaseVersionScriptsTests
         Assert.Contains("not a supported release version", result.StandardError, StringComparison.Ordinal);
     }
 
+    [Theory]
+    [InlineData("01.2.3")]
+    [InlineData("1.02.3")]
+    [InlineData("1.2.03")]
+    [InlineData("1.2.3-beta.01")]
+    public void ValidatorRejectsVersionsWithLeadingZeroNumericIdentifiers(string version)
+    {
+        using ReleaseVersionFixture fixture = new(version, version);
+
+        ScriptResult result = RunScript(
+            "scripts/validate-release-version.sh",
+            "--project", fixture.ProjectPath,
+            "--metainfo", fixture.MetainfoPath);
+
+        Assert.NotEqual(0, result.ExitCode);
+        Assert.Contains("not a supported release version", result.StandardError, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void ValidatorRejectsTagThatDoesNotMatchCanonicalVersion()
     {
@@ -78,7 +96,34 @@ public sealed class ReleaseVersionScriptsTests
         Assert.Empty(result.StandardError);
     }
 
+    [Fact]
+    public void ValidatorRunsFromScriptDirectoryContainingWhitespace()
+    {
+        using ReleaseVersionFixture fixture = new("0.1.0", "0.1.0");
+        string scriptDirectory = Path.Combine(fixture.DirectoryPath, "release version scripts");
+        Directory.CreateDirectory(scriptDirectory);
+        string readerScript = Path.Combine(scriptDirectory, "read-release-version.sh");
+        string validatorScript = Path.Combine(scriptDirectory, "validate-release-version.sh");
+        File.Copy(FindRepositoryFile("scripts/read-release-version.sh"), readerScript);
+        File.Copy(FindRepositoryFile("scripts/validate-release-version.sh"), validatorScript);
+
+        ScriptResult result = RunScriptPath(
+            validatorScript,
+            "--project", fixture.ProjectPath,
+            "--metainfo", fixture.MetainfoPath,
+            "--tag", "v0.1.0");
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Equal($"Release version validation passed: 0.1.0{Environment.NewLine}", result.StandardOutput);
+        Assert.Empty(result.StandardError);
+    }
+
     private static ScriptResult RunScript(string relativeScriptPath, params string[] arguments)
+    {
+        return RunScriptPath(FindRepositoryFile(relativeScriptPath), arguments);
+    }
+
+    private static ScriptResult RunScriptPath(string scriptPath, params string[] arguments)
     {
         ProcessStartInfo startInfo = new("/bin/bash")
         {
@@ -86,7 +131,7 @@ public sealed class ReleaseVersionScriptsTests
             RedirectStandardError = true,
             UseShellExecute = false,
         };
-        startInfo.ArgumentList.Add(FindRepositoryFile(relativeScriptPath));
+        startInfo.ArgumentList.Add(scriptPath);
         foreach (string argument in arguments)
         {
             startInfo.ArgumentList.Add(argument);
@@ -134,6 +179,8 @@ public sealed class ReleaseVersionScriptsTests
         public string MetainfoPath { get; }
 
         public string ProjectPath { get; }
+
+        public string DirectoryPath => this.directory;
 
         public void Dispose()
         {
