@@ -1346,7 +1346,7 @@ Update this table whenever a milestone changes state.
 | Milestone | Status | Notes |
 |---|---|---|
 | 0. Release readiness audit | Not started | Repository already has a strong packaging baseline. |
-| 1. Versioning and source of truth | Not started | Version exists in project and AppStream metadata. |
+| 1. Versioning and source of truth | Complete | Evaluated project version, AppStream metadata, and release tags are validated by the .NET release tool. |
 | 2. Storefront metadata and screenshots | Not started | AppStream exists; screenshots remain. |
 | 3. Public GitHub release pipeline | Not started | CI artifacts exist but are not public releases. |
 | 4. AppImage release | Not started | AppDir exists; final AppImage generation is missing. |
