@@ -43,6 +43,16 @@ jobs:
       - name: Verify formatting
         run: dotnet format Hourglass.Linux.sln --verify-no-changes --no-restore --verbosity minimal
 
+      - name: Validate release version metadata
+        env:
+          RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+        run: |
+          if [[ -n "$RELEASE_TAG" ]]; then
+            dotnet run --project tools/Hourglass.ReleaseTool/Hourglass.ReleaseTool.csproj --configuration Release --no-build -- validate-version --tag "$RELEASE_TAG"
+          else
+            dotnet run --project tools/Hourglass.ReleaseTool/Hourglass.ReleaseTool.csproj --configuration Release --no-build -- validate-version
+          fi
+
   packaging:
     name: Build Linux package artifacts
     runs-on: ubuntu-latest
