@@ -119,6 +119,26 @@ public sealed class PackagingMetadataTests
         Assert.Contains("ea165f8d65b6e75b540449e92b4886f43607fa02", workflow, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void ReleaseWorkflowValidatesTagsAndPublishesChecksummedTarballs()
+    {
+        string workflow = File.ReadAllText(FindRepositoryFile(".github/workflows/release.yml"));
+
+        Assert.Contains("tags:", workflow, StringComparison.Ordinal);
+        Assert.Contains("- \"v*\"", workflow, StringComparison.Ordinal);
+        Assert.Contains("contents: write", workflow, StringComparison.Ordinal);
+        Assert.Contains("cancel-in-progress: false", workflow, StringComparison.Ordinal);
+        Assert.Contains("validate-version", workflow, StringComparison.Ordinal);
+        Assert.Contains("--tag \"$GITHUB_REF_NAME\"", workflow, StringComparison.Ordinal);
+        Assert.Contains("scripts/publish-linux-release.sh", workflow, StringComparison.Ordinal);
+        Assert.Contains("scripts/validate-linux-packaging.sh", workflow, StringComparison.Ordinal);
+        Assert.Contains("hourglass-linux-${RELEASE_VERSION}-linux-x64.tar.gz", workflow, StringComparison.Ordinal);
+        Assert.Contains("SHA256SUMS", workflow, StringComparison.Ordinal);
+        Assert.Contains("sha256sum --check SHA256SUMS", workflow, StringComparison.Ordinal);
+        Assert.Contains("release create \"$GITHUB_REF_NAME\"", workflow, StringComparison.Ordinal);
+        Assert.Contains("release_args+=(--prerelease)", workflow, StringComparison.Ordinal);
+    }
+
     private static string FindRepositoryFile(string relativePath)
     {
         string? directory = AppContext.BaseDirectory;

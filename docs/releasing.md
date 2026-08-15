@@ -37,6 +37,26 @@ the version, AppStream entry, changelog, and validation are committed.
    tag, and push both only when the required release workflow from DEV-7 is in
    place.
 
+## Public GitHub Releases
+
+Pushing an approved tag matching `vX.Y.Z` or `vX.Y.Z-beta.N` runs the
+tag-triggered release workflow. It repeats version, build, test, formatting,
+and package validation before publishing these assets:
+
+- `hourglass-linux-X.Y.Z-linux-x64.tar.gz`;
+- `SHA256SUMS`.
+
+Beta tags create GitHub prereleases; final-version tags create normal releases.
+After downloading both assets into the same directory, verify the archive with:
+
+```bash
+sha256sum --check SHA256SUMS
+```
+
+The workflow does not publish an AppImage, package-manager artifacts, signed
+assets, signed tags, or attestations. Those capabilities remain separate
+milestones with their own key-management and distribution policies.
+
 ## Future package version mappings
 
 These mappings are policy for their later packaging milestones; DEV-6 does not
