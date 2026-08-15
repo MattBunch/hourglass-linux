@@ -262,8 +262,8 @@ Use one reliable version model across binaries, AppStream metadata, package reci
 
 ### Automated validation
 
-- [x] Add a script that reads the version from the Linux `.csproj`.
-- [x] Add a validator that reads the latest AppStream release version.
+- [x] Add a .NET release tool that reads the evaluated version from the Linux `.csproj`.
+- [x] Add a .NET validator that reads the latest AppStream release version.
 - [x] Validate that the Git tag equals `v` plus the `.csproj` version.
 - [x] Validate that AppStream version matches the `.csproj` version.
 - [~] Validate package recipe versions when package recipes exist.

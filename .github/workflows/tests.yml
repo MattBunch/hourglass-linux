@@ -31,9 +31,6 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
-      - name: Install XML parser
-        run: sudo apt-get update && sudo apt-get install --yes libxml2-utils
-
       - name: Restore
         run: dotnet restore Hourglass.Linux.sln
 
@@ -51,9 +48,9 @@ jobs:
           RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
         run: |
           if [[ -n "$RELEASE_TAG" ]]; then
-            scripts/validate-release-version.sh --tag "$RELEASE_TAG"
+            dotnet run --project tools/Hourglass.ReleaseTool/Hourglass.ReleaseTool.csproj --configuration Release --no-build -- validate-version --tag "$RELEASE_TAG"
           else
-            scripts/validate-release-version.sh
+            dotnet run --project tools/Hourglass.ReleaseTool/Hourglass.ReleaseTool.csproj --configuration Release --no-build -- validate-version
           fi
 
   packaging:

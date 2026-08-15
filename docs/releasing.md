@@ -25,8 +25,12 @@ the version, AppStream entry, changelog, and validation are committed.
    including its ISO-8601 release date.
 2. Add a matching `CHANGELOG.md` section with user-visible changes and known
    limitations.
-3. Run `scripts/validate-release-version.sh`. When preparing a tag, also run
-   `scripts/validate-release-version.sh --tag vX.Y.Z` with the exact tag.
+3. Read the canonical version with
+   `dotnet run --project tools/Hourglass.ReleaseTool -- version`. Run
+   `dotnet run --project tools/Hourglass.ReleaseTool -- validate-version`.
+   When preparing a tag, also run
+   `dotnet run --project tools/Hourglass.ReleaseTool -- validate-version --tag vX.Y.Z`
+   with the exact tag.
 4. Run the modern Linux restore, Release build, tests, formatting verification,
    and packaging validators documented in `AGENTS.md`.
 5. Commit the release-preparation change, create the matching annotated Git
