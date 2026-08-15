@@ -46,6 +46,11 @@ and package validation before publishing these assets:
 - `hourglass-linux-X.Y.Z-linux-x64.tar.gz`;
 - `SHA256SUMS`.
 
+The archive contains a `licenses/` directory with the project `LICENSE.md` and
+the verbatim notices for the resolved .NET runtime, HarfBuzzSharp native asset,
+and SkiaSharp native asset packages. This is separate from the audit record in
+`docs/THIRD_PARTY_NOTICES.md`.
+
 Beta tags create GitHub prereleases; final-version tags create normal releases.
 After downloading both assets into the same directory, verify the archive with:
 

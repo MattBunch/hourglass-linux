@@ -133,6 +133,11 @@ public sealed class PackagingMetadataTests
         Assert.Contains("scripts/publish-linux-release.sh", workflow, StringComparison.Ordinal);
         Assert.Contains("scripts/validate-linux-packaging.sh", workflow, StringComparison.Ordinal);
         Assert.Contains("hourglass-linux-${RELEASE_VERSION}-linux-x64.tar.gz", workflow, StringComparison.Ordinal);
+        Assert.Contains("dotnet nuget locals global-packages --list", workflow, StringComparison.Ordinal);
+        Assert.Contains("cp LICENSE.md \"$notice_directory/LICENSE.md\"", workflow, StringComparison.Ordinal);
+        Assert.Contains("Microsoft.NETCore.App.Runtime.linux-x64/LICENSE.TXT", workflow, StringComparison.Ordinal);
+        Assert.Contains("harfbuzzsharp.nativeassets.linux/LICENSE.txt", workflow, StringComparison.Ordinal);
+        Assert.Contains("skiasharp.nativeassets.linux/LICENSE.txt", workflow, StringComparison.Ordinal);
         Assert.Contains("SHA256SUMS", workflow, StringComparison.Ordinal);
         Assert.Contains("sha256sum --check SHA256SUMS", workflow, StringComparison.Ordinal);
         Assert.Contains("release create \"$GITHUB_REF_NAME\"", workflow, StringComparison.Ordinal);
