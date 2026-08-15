@@ -34,16 +34,15 @@ if [[ ! -f "$project" ]]; then
   exit 1
 fi
 
-if ! command -v xmllint >/dev/null 2>&1; then
-  printf 'xmllint is required to read release version metadata.\n' >&2
+if ! command -v dotnet >/dev/null 2>&1; then
+  printf 'dotnet is required to read release version metadata.\n' >&2
   exit 1
 fi
 
-version_count=$(xmllint --xpath 'count(//*[local-name()="Version" and normalize-space(.) != ""])' "$project")
-if [[ "$version_count" != "1" ]]; then
-  printf 'Expected exactly one non-empty <Version> element in %s\n' "$project" >&2
+version=$(dotnet msbuild "$project" -getProperty:Version -property:Configuration=Release -nologo)
+if [[ -z "$version" ]]; then
+  printf 'Expected a non-empty evaluated Version property in %s\n' "$project" >&2
   exit 1
 fi
 
-version=$(xmllint --xpath 'normalize-space((//*[local-name()="Version" and normalize-space(.) != ""])[1])' "$project")
 printf '%s\n' "$version"

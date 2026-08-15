@@ -127,6 +127,36 @@ public sealed class ReleaseVersionScriptsTests
     }
 
     [Fact]
+    public void VersionReaderEvaluatesVersionForReleaseConfiguration()
+    {
+        using ReleaseVersionFixture fixture = new("0.2.0", "0.2.0");
+        File.WriteAllText(
+            fixture.ProjectPath,
+            "<Project><PropertyGroup Condition=\"'$(Configuration)' == 'Debug'\"><Version>9.9.9</Version></PropertyGroup><PropertyGroup Condition=\"'$(Configuration)' == 'Release'\"><Version>0.2.0</Version></PropertyGroup></Project>");
+
+        ScriptResult result = RunScript("scripts/read-release-version.sh", "--project", fixture.ProjectPath);
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Equal($"0.2.0{Environment.NewLine}", result.StandardOutput);
+        Assert.Empty(result.StandardError);
+    }
+
+    [Fact]
+    public void VersionReaderIgnoresNestedDependencyVersionElements()
+    {
+        using ReleaseVersionFixture fixture = new("0.2.0", "0.2.0");
+        File.WriteAllText(
+            fixture.ProjectPath,
+            "<Project><PropertyGroup><Version>0.2.0</Version></PropertyGroup><ItemGroup><PackageReference Include=\"Example\"><Version>9.9.9</Version></PackageReference></ItemGroup></Project>");
+
+        ScriptResult result = RunScript("scripts/read-release-version.sh", "--project", fixture.ProjectPath);
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Equal($"0.2.0{Environment.NewLine}", result.StandardOutput);
+        Assert.Empty(result.StandardError);
+    }
+
+    [Fact]
     public void ValidatorAcceptsAppStreamVersionAttributeRegardlessOfOrder()
     {
         using ReleaseVersionFixture fixture = new("0.2.0", "0.2.0");
