@@ -1,6 +1,6 @@
 # Hourglass Linux
 
-The simple countdown timer for Linux, originally on Windows.
+The simple countdown timer for Linux, originally from Windows.
 
 Visit [chris.dziemborowicz.com](http://chris.dziemborowicz.com/apps/hourglass/) to learn more about the original project.
 
