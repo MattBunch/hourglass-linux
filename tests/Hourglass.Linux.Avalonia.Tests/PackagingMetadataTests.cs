@@ -152,6 +152,8 @@ public sealed class PackagingMetadataTests
         Assert.Contains("release edit \"$GITHUB_REF_NAME\"", workflow, StringComparison.Ordinal);
         Assert.Contains("--draft=false", workflow, StringComparison.Ordinal);
         Assert.Contains("release create \"$GITHUB_REF_NAME\"", workflow, StringComparison.Ordinal);
+        Assert.Contains("create_args=(", workflow, StringComparison.Ordinal);
+        Assert.Contains("--draft", workflow, StringComparison.Ordinal);
         Assert.Equal(2, workflow.Split("--verify-tag", StringSplitOptions.None).Length - 1);
         Assert.Contains("release_args+=(--prerelease)", workflow, StringComparison.Ordinal);
     }

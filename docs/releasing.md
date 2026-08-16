@@ -61,7 +61,8 @@ to fail. If the pushed tag is deleted while validation is running, the workflow
 also fails rather than recreating it from the default branch. Before publishing,
 the workflow also verifies that the remote tag still resolves to the commit it
 built, so a force-moved tag fails safely. Draft retries repeat that target check
-after asset upload and before publishing the draft.
+after asset upload and before publishing the draft. New releases also begin as
+drafts, so every public release uses this same verified publish sequence.
 After downloading both assets into the same directory, verify the archive with:
 
 ```bash

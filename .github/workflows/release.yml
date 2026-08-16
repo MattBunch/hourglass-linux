@@ -175,27 +175,31 @@ jobs:
               printf 'A published GitHub Release already exists for tag %s.\n' "$GITHUB_REF_NAME" >&2
               exit 1
             fi
-
-            gh release upload "$GITHUB_REF_NAME" "${release_assets[@]}" --clobber --repo "$GITHUB_REPOSITORY"
-            verify_tag_target
-            release_args=(
-              release edit "$GITHUB_REF_NAME"
-              --repo "$GITHUB_REPOSITORY"
-              --draft=false
-              --title "Hourglass Linux ${RELEASE_VERSION}"
-              --verify-tag
-            )
           else
-            release_args=(
+            create_args=(
               release create "$GITHUB_REF_NAME"
-              "${release_assets[@]}"
               --repo "$GITHUB_REPOSITORY"
+              --draft
               --title "Hourglass Linux ${RELEASE_VERSION}"
               --generate-notes
               --verify-tag
             )
+            if [[ "$RELEASE_VERSION" == *-beta.* ]]; then
+              create_args+=(--prerelease)
+            fi
+
+            gh "${create_args[@]}"
           fi
 
+          gh release upload "$GITHUB_REF_NAME" "${release_assets[@]}" --clobber --repo "$GITHUB_REPOSITORY"
+          verify_tag_target
+          release_args=(
+            release edit "$GITHUB_REF_NAME"
+            --repo "$GITHUB_REPOSITORY"
+            --draft=false
+            --title "Hourglass Linux ${RELEASE_VERSION}"
+            --verify-tag
+          )
           if [[ "$RELEASE_VERSION" == *-beta.* ]]; then
             release_args+=(--prerelease)
           fi
