@@ -144,19 +144,34 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_VERSION: ${{ steps.version.outputs.value }}
         run: |
-          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            printf 'A GitHub Release already exists for tag %s.\n' "$GITHUB_REF_NAME" >&2
-            exit 1
-          fi
-
-          release_args=(
-            release create "$GITHUB_REF_NAME"
+          release_assets=(
             "dist/hourglass-linux-${RELEASE_VERSION}-linux-x64.tar.gz"
             dist/SHA256SUMS
-            --repo "$GITHUB_REPOSITORY"
-            --title "Hourglass Linux ${RELEASE_VERSION}"
-            --generate-notes
           )
+
+          if release_is_draft=$(gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json isDraft --jq '.isDraft' 2>/dev/null); then
+            if [[ "$release_is_draft" != "true" ]]; then
+              printf 'A published GitHub Release already exists for tag %s.\n' "$GITHUB_REF_NAME" >&2
+              exit 1
+            fi
+
+            gh release upload "$GITHUB_REF_NAME" "${release_assets[@]}" --clobber --repo "$GITHUB_REPOSITORY"
+            release_args=(
+              release edit "$GITHUB_REF_NAME"
+              --repo "$GITHUB_REPOSITORY"
+              --draft=false
+              --title "Hourglass Linux ${RELEASE_VERSION}"
+            )
+          else
+            release_args=(
+              release create "$GITHUB_REF_NAME"
+              "${release_assets[@]}"
+              --repo "$GITHUB_REPOSITORY"
+              --title "Hourglass Linux ${RELEASE_VERSION}"
+              --generate-notes
+            )
+          fi
+
           if [[ "$RELEASE_VERSION" == *-beta.* ]]; then
             release_args+=(--prerelease)
           fi

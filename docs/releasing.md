@@ -52,6 +52,10 @@ and SkiaSharp native asset packages. This is separate from the audit record in
 `docs/THIRD_PARTY_NOTICES.md`.
 
 Beta tags create GitHub prereleases; final-version tags create normal releases.
+If a release attempt leaves a draft because asset upload or publication failed,
+rerunning the same tag workflow replaces the draft assets and publishes that
+draft. A published release for the tag remains immutable and causes the retry
+to fail.
 After downloading both assets into the same directory, verify the archive with:
 
 ```bash

@@ -140,6 +140,11 @@ public sealed class PackagingMetadataTests
         Assert.Contains("skiasharp.nativeassets.linux/LICENSE.txt", workflow, StringComparison.Ordinal);
         Assert.Contains("SHA256SUMS", workflow, StringComparison.Ordinal);
         Assert.Contains("sha256sum --check SHA256SUMS", workflow, StringComparison.Ordinal);
+        Assert.Contains("--json isDraft --jq '.isDraft'", workflow, StringComparison.Ordinal);
+        Assert.Contains("A published GitHub Release already exists", workflow, StringComparison.Ordinal);
+        Assert.Contains("release upload \"$GITHUB_REF_NAME\" \"${release_assets[@]}\" --clobber", workflow, StringComparison.Ordinal);
+        Assert.Contains("release edit \"$GITHUB_REF_NAME\"", workflow, StringComparison.Ordinal);
+        Assert.Contains("--draft=false", workflow, StringComparison.Ordinal);
         Assert.Contains("release create \"$GITHUB_REF_NAME\"", workflow, StringComparison.Ordinal);
         Assert.Contains("release_args+=(--prerelease)", workflow, StringComparison.Ordinal);
     }
