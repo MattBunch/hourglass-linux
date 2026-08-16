@@ -119,6 +119,45 @@ public sealed class PackagingMetadataTests
         Assert.Contains("ea165f8d65b6e75b540449e92b4886f43607fa02", workflow, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void ReleaseWorkflowValidatesTagsAndPublishesChecksummedTarballs()
+    {
+        string workflow = File.ReadAllText(FindRepositoryFile(".github/workflows/release.yml"));
+
+        Assert.Contains("tags:", workflow, StringComparison.Ordinal);
+        Assert.Contains("- \"v*\"", workflow, StringComparison.Ordinal);
+        Assert.Contains("contents: write", workflow, StringComparison.Ordinal);
+        Assert.Contains("cancel-in-progress: false", workflow, StringComparison.Ordinal);
+        Assert.Contains("validate-version", workflow, StringComparison.Ordinal);
+        Assert.Contains("--tag \"$GITHUB_REF_NAME\"", workflow, StringComparison.Ordinal);
+        Assert.Contains("scripts/publish-linux-release.sh", workflow, StringComparison.Ordinal);
+        Assert.Contains("scripts/validate-linux-packaging.sh", workflow, StringComparison.Ordinal);
+        Assert.Contains("hourglass-linux-${RELEASE_VERSION}-linux-x64.tar.gz", workflow, StringComparison.Ordinal);
+        Assert.Contains("dotnet nuget locals global-packages --list", workflow, StringComparison.Ordinal);
+        Assert.Contains("find \"$archive_directory\" -type f -name '*.pdb' -delete", workflow, StringComparison.Ordinal);
+        Assert.Contains("Release archive staging still contains portable debug symbols.", workflow, StringComparison.Ordinal);
+        Assert.Contains("cp LICENSE.md \"$notice_directory/LICENSE.md\"", workflow, StringComparison.Ordinal);
+        Assert.Contains("Microsoft.NETCore.App.Runtime.linux-x64/LICENSE.TXT", workflow, StringComparison.Ordinal);
+        Assert.Contains("harfbuzzsharp.nativeassets.linux/LICENSE.txt", workflow, StringComparison.Ordinal);
+        Assert.Contains("skiasharp.nativeassets.linux/LICENSE.txt", workflow, StringComparison.Ordinal);
+        Assert.Contains("SHA256SUMS", workflow, StringComparison.Ordinal);
+        Assert.Contains("sha256sum --check SHA256SUMS", workflow, StringComparison.Ordinal);
+        Assert.Contains("git ls-remote origin \"refs/tags/$GITHUB_REF_NAME^{}\"", workflow, StringComparison.Ordinal);
+        Assert.Equal(3, workflow.Split("verify_tag_target", StringSplitOptions.None).Length - 1);
+        Assert.Contains("remote_tag_target\" != \"$GITHUB_SHA", workflow, StringComparison.Ordinal);
+        Assert.Contains("this workflow built commit", workflow, StringComparison.Ordinal);
+        Assert.Contains("--json isDraft --jq '.isDraft'", workflow, StringComparison.Ordinal);
+        Assert.Contains("A published GitHub Release already exists", workflow, StringComparison.Ordinal);
+        Assert.Contains("release upload \"$GITHUB_REF_NAME\" \"${release_assets[@]}\" --clobber", workflow, StringComparison.Ordinal);
+        Assert.Contains("release edit \"$GITHUB_REF_NAME\"", workflow, StringComparison.Ordinal);
+        Assert.Contains("--draft=false", workflow, StringComparison.Ordinal);
+        Assert.Contains("release create \"$GITHUB_REF_NAME\"", workflow, StringComparison.Ordinal);
+        Assert.Contains("create_args=(", workflow, StringComparison.Ordinal);
+        Assert.Contains("--draft", workflow, StringComparison.Ordinal);
+        Assert.Equal(2, workflow.Split("--verify-tag", StringSplitOptions.None).Length - 1);
+        Assert.Contains("release_args+=(--prerelease)", workflow, StringComparison.Ordinal);
+    }
+
     private static string FindRepositoryFile(string relativePath)
     {
         string? directory = AppContext.BaseDirectory;

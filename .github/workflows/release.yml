@@ -1,0 +1,207 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+  DOTNET_NOLOGO: "1"
+
+jobs:
+  release:
+    name: Validate and publish release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Check out tagged source
+        # actions/checkout v4.2.2
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - name: Set up .NET
+        # actions/setup-dotnet v4.3.1
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Validate release version metadata
+        run: |
+          dotnet run \
+            --project tools/Hourglass.ReleaseTool/Hourglass.ReleaseTool.csproj \
+            --configuration Release \
+            -- \
+            validate-version \
+            --tag "$GITHUB_REF_NAME"
+
+      - name: Read release version
+        id: version
+        run: |
+          version=$(dotnet run --project tools/Hourglass.ReleaseTool/Hourglass.ReleaseTool.csproj -- version)
+          printf 'value=%s\n' "$version" >> "$GITHUB_OUTPUT"
+
+      - name: Restore
+        run: dotnet restore Hourglass.Linux.sln
+
+      - name: Build
+        run: dotnet build Hourglass.Linux.sln --configuration Release --no-restore -warnaserror
+
+      - name: Test
+        run: dotnet test Hourglass.Linux.sln --configuration Release --no-build --verbosity normal
+
+      - name: Verify formatting
+        run: dotnet format Hourglass.Linux.sln --verify-no-changes --no-restore --verbosity minimal
+
+      - name: Install package validators
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes appstream desktop-file-utils
+
+      - name: Publish linux-x64
+        run: scripts/publish-linux-release.sh --runtime linux-x64 --output "$RUNNER_TEMP/hourglass-linux-publish"
+
+      - name: Build AppDir
+        run: packaging/appimage/build-appdir.sh "$RUNNER_TEMP/hourglass-linux-publish" "$RUNNER_TEMP/hourglass-linux.AppDir"
+
+      - name: Validate packaging
+        env:
+          HOURGLASS_REQUIRE_PACKAGE_VALIDATORS: "true"
+        run: scripts/validate-linux-packaging.sh "$RUNNER_TEMP/hourglass-linux-publish" "$RUNNER_TEMP/hourglass-linux.AppDir"
+
+      - name: Create and verify release archive
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          mkdir -p dist
+          archive="dist/hourglass-linux-${RELEASE_VERSION}-linux-x64.tar.gz"
+          archive_directory="$RUNNER_TEMP/hourglass-linux-archive"
+          notice_directory="$archive_directory/licenses"
+          nuget_packages=$(dotnet nuget locals global-packages --list | sed -n 's/^global-packages: //p')
+          runtime_version=$(sed -nE 's/^[[:space:]]*"version": "([^"]+)".*/\1/p' "$RUNNER_TEMP/hourglass-linux-publish/hourglass-linux.runtimeconfig.json")
+          project_assets="src/Hourglass.Linux.Avalonia/obj/project.assets.json"
+
+          package_version() {
+            local package_name="$1"
+            local escaped_name="${package_name//./\\.}"
+            sed -nE "s/^[[:space:]]*\"${escaped_name}\/([^\"]+)\": \{.*/\1/p" "$project_assets" | head -n 1
+          }
+
+          stage_native_asset_notices() {
+            local package_name="$1"
+            local package_version="$2"
+            local package_directory="${nuget_packages}/${package_name}/${package_version}"
+            local destination_directory="${notice_directory}/${package_name}"
+
+            mkdir -p "$destination_directory"
+            cp "$package_directory/LICENSE.txt" "$destination_directory/LICENSE.txt"
+            cp "$package_directory/THIRD-PARTY-NOTICES.txt" "$destination_directory/THIRD-PARTY-NOTICES.txt"
+          }
+
+          test -n "$nuget_packages"
+          test -n "$runtime_version"
+          mkdir -p "$archive_directory"
+          cp -a "$RUNNER_TEMP/hourglass-linux-publish/." "$archive_directory/"
+          find "$archive_directory" -type f -name '*.pdb' -delete
+          if find "$archive_directory" -type f -name '*.pdb' -print -quit | grep -q .; then
+            printf 'Release archive staging still contains portable debug symbols.\n' >&2
+            exit 1
+          fi
+          mkdir -p "$notice_directory/Microsoft.NETCore.App.Runtime.linux-x64"
+          cp LICENSE.md "$notice_directory/LICENSE.md"
+          cp "$nuget_packages/microsoft.netcore.app.runtime.linux-x64/$runtime_version/LICENSE.TXT" "$notice_directory/Microsoft.NETCore.App.Runtime.linux-x64/LICENSE.TXT"
+          cp "$nuget_packages/microsoft.netcore.app.runtime.linux-x64/$runtime_version/THIRD-PARTY-NOTICES.TXT" "$notice_directory/Microsoft.NETCore.App.Runtime.linux-x64/THIRD-PARTY-NOTICES.TXT"
+          stage_native_asset_notices harfbuzzsharp.nativeassets.linux "$(package_version HarfBuzzSharp.NativeAssets.Linux)"
+          stage_native_asset_notices skiasharp.nativeassets.linux "$(package_version SkiaSharp.NativeAssets.Linux)"
+
+          tar -C "$archive_directory" -czf "$archive" .
+          tar -tzf "$archive" | grep -Fx './hourglass-linux'
+          tar -tzf "$archive" | grep -Fx './licenses/LICENSE.md'
+          tar -tzf "$archive" | grep -Fx './licenses/Microsoft.NETCore.App.Runtime.linux-x64/LICENSE.TXT'
+          tar -tzf "$archive" | grep -Fx './licenses/Microsoft.NETCore.App.Runtime.linux-x64/THIRD-PARTY-NOTICES.TXT'
+          tar -tzf "$archive" | grep -Fx './licenses/harfbuzzsharp.nativeassets.linux/LICENSE.txt'
+          tar -tzf "$archive" | grep -Fx './licenses/harfbuzzsharp.nativeassets.linux/THIRD-PARTY-NOTICES.txt'
+          tar -tzf "$archive" | grep -Fx './licenses/skiasharp.nativeassets.linux/LICENSE.txt'
+          tar -tzf "$archive" | grep -Fx './licenses/skiasharp.nativeassets.linux/THIRD-PARTY-NOTICES.txt'
+          extract_directory="$RUNNER_TEMP/hourglass-linux-extract"
+          mkdir -p "$extract_directory"
+          tar -xzf "$archive" -C "$extract_directory"
+          test -x "$extract_directory/hourglass-linux"
+
+      - name: Generate and verify checksums
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          cd dist
+          sha256sum "hourglass-linux-${RELEASE_VERSION}-linux-x64.tar.gz" > SHA256SUMS
+          sha256sum --check SHA256SUMS
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          verify_tag_target() {
+            local remote_tag_target
+
+            remote_tag_target=$(git ls-remote origin "refs/tags/$GITHUB_REF_NAME^{}" | awk '{print $1}')
+            if [[ -z "$remote_tag_target" ]]; then
+              remote_tag_target=$(git ls-remote origin "refs/tags/$GITHUB_REF_NAME" | awk '{print $1}')
+            fi
+
+            if [[ "$remote_tag_target" != "$GITHUB_SHA" ]]; then
+              printf 'Tag %s targets %s, but this workflow built commit %s.\n' "$GITHUB_REF_NAME" "$remote_tag_target" "$GITHUB_SHA" >&2
+              exit 1
+            fi
+          }
+
+          verify_tag_target
+
+          release_assets=(
+            "dist/hourglass-linux-${RELEASE_VERSION}-linux-x64.tar.gz"
+            dist/SHA256SUMS
+          )
+
+          if release_is_draft=$(gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json isDraft --jq '.isDraft' 2>/dev/null); then
+            if [[ "$release_is_draft" != "true" ]]; then
+              printf 'A published GitHub Release already exists for tag %s.\n' "$GITHUB_REF_NAME" >&2
+              exit 1
+            fi
+          else
+            create_args=(
+              release create "$GITHUB_REF_NAME"
+              --repo "$GITHUB_REPOSITORY"
+              --draft
+              --title "Hourglass Linux ${RELEASE_VERSION}"
+              --generate-notes
+              --verify-tag
+            )
+            if [[ "$RELEASE_VERSION" == *-beta.* ]]; then
+              create_args+=(--prerelease)
+            fi
+
+            gh "${create_args[@]}"
+          fi
+
+          gh release upload "$GITHUB_REF_NAME" "${release_assets[@]}" --clobber --repo "$GITHUB_REPOSITORY"
+          verify_tag_target
+          release_args=(
+            release edit "$GITHUB_REF_NAME"
+            --repo "$GITHUB_REPOSITORY"
+            --draft=false
+            --title "Hourglass Linux ${RELEASE_VERSION}"
+            --verify-tag
+          )
+          if [[ "$RELEASE_VERSION" == *-beta.* ]]; then
+            release_args+=(--prerelease)
+          fi
+
+          gh "${release_args[@]}"

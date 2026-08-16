@@ -37,6 +37,42 @@ the version, AppStream entry, changelog, and validation are committed.
    tag, and push both only when the required release workflow from DEV-7 is in
    place.
 
+## Public GitHub Releases
+
+Pushing an approved tag matching `vX.Y.Z` or `vX.Y.Z-beta.N` runs the
+tag-triggered release workflow. It repeats version, build, test, formatting,
+and package validation before publishing these assets:
+
+- `hourglass-linux-X.Y.Z-linux-x64.tar.gz`;
+- `SHA256SUMS`.
+
+The archive contains a `licenses/` directory with the project `LICENSE.md` and
+the verbatim notices for the resolved .NET runtime, HarfBuzzSharp native asset,
+and SkiaSharp native asset packages. This is separate from the audit record in
+`docs/THIRD_PARTY_NOTICES.md`.
+It excludes portable PDB debug symbols so public artifacts do not expose build
+machine source paths.
+
+Beta tags create GitHub prereleases; final-version tags create normal releases.
+If a release attempt leaves a draft because asset upload or publication failed,
+rerunning the same tag workflow replaces the draft assets and publishes that
+draft. A published release for the tag remains immutable and causes the retry
+to fail. If the pushed tag is deleted while validation is running, the workflow
+also fails rather than recreating it from the default branch. Before publishing,
+the workflow also verifies that the remote tag still resolves to the commit it
+built, so a force-moved tag fails safely. Draft retries repeat that target check
+after asset upload and before publishing the draft. New releases also begin as
+drafts, so every public release uses this same verified publish sequence.
+After downloading both assets into the same directory, verify the archive with:
+
+```bash
+sha256sum --check SHA256SUMS
+```
+
+The workflow does not publish an AppImage, package-manager artifacts, signed
+assets, signed tags, or attestations. Those capabilities remain separate
+milestones with their own key-management and distribution policies.
+
 ## Future package version mappings
 
 These mappings are policy for their later packaging milestones; DEV-6 does not
