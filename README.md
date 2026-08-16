@@ -1,6 +1,6 @@
 # Hourglass Linux
 
-The simple countdown timer originally for Windows, now on Linux.
+The simple countdown timer for Linux, originally on Windows.
 
 Visit [chris.dziemborowicz.com](http://chris.dziemborowicz.com/apps/hourglass/) to learn more about the original project.
 
@@ -74,3 +74,7 @@ DOTNET_CLI_HOME=/tmp/hourglass-dotnet-home dotnet restore Hourglass.Linux.sln
 DOTNET_CLI_HOME=/tmp/hourglass-dotnet-home dotnet build Hourglass.Linux.sln --configuration Release --no-restore
 DOTNET_CLI_HOME=/tmp/hourglass-dotnet-home dotnet test Hourglass.Linux.sln --configuration Release --no-build --verbosity normal
 ```
+
+## Disclaimer
+
+This project was developed mostly through Codex CLI.
