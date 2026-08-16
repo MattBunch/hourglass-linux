@@ -50,6 +50,8 @@ The archive contains a `licenses/` directory with the project `LICENSE.md` and
 the verbatim notices for the resolved .NET runtime, HarfBuzzSharp native asset,
 and SkiaSharp native asset packages. This is separate from the audit record in
 `docs/THIRD_PARTY_NOTICES.md`.
+It excludes portable PDB debug symbols so public artifacts do not expose build
+machine source paths.
 
 Beta tags create GitHub prereleases; final-version tags create normal releases.
 If a release attempt leaves a draft because asset upload or publication failed,

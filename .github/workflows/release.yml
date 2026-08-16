@@ -110,6 +110,11 @@ jobs:
           test -n "$runtime_version"
           mkdir -p "$archive_directory"
           cp -a "$RUNNER_TEMP/hourglass-linux-publish/." "$archive_directory/"
+          find "$archive_directory" -type f -name '*.pdb' -delete
+          if find "$archive_directory" -type f -name '*.pdb' -print -quit | grep -q .; then
+            printf 'Release archive staging still contains portable debug symbols.\n' >&2
+            exit 1
+          fi
           mkdir -p "$notice_directory/Microsoft.NETCore.App.Runtime.linux-x64"
           cp LICENSE.md "$notice_directory/LICENSE.md"
           cp "$nuget_packages/microsoft.netcore.app.runtime.linux-x64/$runtime_version/LICENSE.TXT" "$notice_directory/Microsoft.NETCore.App.Runtime.linux-x64/LICENSE.TXT"
