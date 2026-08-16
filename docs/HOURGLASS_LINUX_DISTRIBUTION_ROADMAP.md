@@ -1348,7 +1348,7 @@ Update this table whenever a milestone changes state.
 | 0. Release readiness audit | Not started | Repository already has a strong packaging baseline. |
 | 1. Versioning and source of truth | Complete | Evaluated project version, AppStream metadata, and release tags are validated by the .NET release tool. |
 | 2. Storefront metadata and screenshots | Not started | AppStream exists; screenshots remain. |
-| 3. Public GitHub release pipeline | Not started | CI artifacts exist but are not public releases. |
+| 3. Public GitHub release pipeline | In progress | The tag-triggered workflow is implemented and CI-validated; DEV-13 will publish and verify the first public beta. |
 | 4. AppImage release | Not started | AppDir exists; final AppImage generation is missing. |
 | 5. Production Flatpak and Flathub | Not started | Local prototype manifest exists. |
 | 6. Fedora RPM and COPR | Not started | RPM spec not yet added. |
@@ -1364,15 +1364,13 @@ Update this table whenever a milestone changes state.
 
 # 24. Immediate Next Actions
 
-- [ ] Create `feature/release-pipeline`.
-- [ ] Add `CHANGELOG.md`.
-- [ ] Add `docs/releasing.md`.
-- [ ] Add version consistency validation.
+- [x] Create the tag-triggered GitHub Release workflow.
+- [x] Add `CHANGELOG.md` and `docs/releasing.md`.
+- [x] Add version consistency validation.
 - [ ] Add storefront screenshots.
 - [ ] Improve AppStream release metadata.
-- [ ] Add tag-triggered GitHub Release workflow.
+- [ ] Publish and verify the `v0.2.0-beta.1` GitHub prerelease.
 - [ ] Convert existing AppDir into a final AppImage.
-- [ ] Publish a prerelease such as `v0.1.0-rc.1`.
 - [ ] Test prerelease on Fedora and Ubuntu.
 - [ ] Begin production Flatpak conversion.
 - [ ] Resolve Flatpak audio before Flathub submission.
