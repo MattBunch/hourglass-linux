@@ -19,7 +19,7 @@
     <binary>hourglass-linux</binary>
   </provides>
   <releases>
-    <release version="0.2.0-beta.1" date="2026-08-16">
+    <release version="0.2.0-beta.1" date="2026-08-16" type="development">
       <description>
         <p>First public beta release with a self-contained Linux archive and checksum verification.</p>
       </description>
