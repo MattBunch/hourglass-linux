@@ -55,7 +55,8 @@ Beta tags create GitHub prereleases; final-version tags create normal releases.
 If a release attempt leaves a draft because asset upload or publication failed,
 rerunning the same tag workflow replaces the draft assets and publishes that
 draft. A published release for the tag remains immutable and causes the retry
-to fail.
+to fail. If the pushed tag is deleted while validation is running, the workflow
+also fails rather than recreating it from the default branch.
 After downloading both assets into the same directory, verify the archive with:
 
 ```bash

@@ -161,6 +161,7 @@ jobs:
               --repo "$GITHUB_REPOSITORY"
               --draft=false
               --title "Hourglass Linux ${RELEASE_VERSION}"
+              --verify-tag
             )
           else
             release_args=(
@@ -169,6 +170,7 @@ jobs:
               --repo "$GITHUB_REPOSITORY"
               --title "Hourglass Linux ${RELEASE_VERSION}"
               --generate-notes
+              --verify-tag
             )
           fi
 
