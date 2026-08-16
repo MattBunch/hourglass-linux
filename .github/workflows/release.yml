@@ -144,6 +144,16 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_VERSION: ${{ steps.version.outputs.value }}
         run: |
+          remote_tag_target=$(git ls-remote origin "refs/tags/$GITHUB_REF_NAME^{}" | awk '{print $1}')
+          if [[ -z "$remote_tag_target" ]]; then
+            remote_tag_target=$(git ls-remote origin "refs/tags/$GITHUB_REF_NAME" | awk '{print $1}')
+          fi
+
+          if [[ "$remote_tag_target" != "$GITHUB_SHA" ]]; then
+            printf 'Tag %s targets %s, but this workflow built commit %s.\n' "$GITHUB_REF_NAME" "$remote_tag_target" "$GITHUB_SHA" >&2
+            exit 1
+          fi
+
           release_assets=(
             "dist/hourglass-linux-${RELEASE_VERSION}-linux-x64.tar.gz"
             dist/SHA256SUMS

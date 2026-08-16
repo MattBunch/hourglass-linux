@@ -140,6 +140,9 @@ public sealed class PackagingMetadataTests
         Assert.Contains("skiasharp.nativeassets.linux/LICENSE.txt", workflow, StringComparison.Ordinal);
         Assert.Contains("SHA256SUMS", workflow, StringComparison.Ordinal);
         Assert.Contains("sha256sum --check SHA256SUMS", workflow, StringComparison.Ordinal);
+        Assert.Contains("git ls-remote origin \"refs/tags/$GITHUB_REF_NAME^{}\"", workflow, StringComparison.Ordinal);
+        Assert.Contains("remote_tag_target\" != \"$GITHUB_SHA", workflow, StringComparison.Ordinal);
+        Assert.Contains("this workflow built commit", workflow, StringComparison.Ordinal);
         Assert.Contains("--json isDraft --jq '.isDraft'", workflow, StringComparison.Ordinal);
         Assert.Contains("A published GitHub Release already exists", workflow, StringComparison.Ordinal);
         Assert.Contains("release upload \"$GITHUB_REF_NAME\" \"${release_assets[@]}\" --clobber", workflow, StringComparison.Ordinal);
