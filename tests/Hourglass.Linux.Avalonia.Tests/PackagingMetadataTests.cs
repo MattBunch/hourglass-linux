@@ -143,6 +143,7 @@ public sealed class PackagingMetadataTests
         Assert.Contains("SHA256SUMS", workflow, StringComparison.Ordinal);
         Assert.Contains("sha256sum --check SHA256SUMS", workflow, StringComparison.Ordinal);
         Assert.Contains("git ls-remote origin \"refs/tags/$GITHUB_REF_NAME^{}\"", workflow, StringComparison.Ordinal);
+        Assert.Equal(3, workflow.Split("verify_tag_target", StringSplitOptions.None).Length - 1);
         Assert.Contains("remote_tag_target\" != \"$GITHUB_SHA", workflow, StringComparison.Ordinal);
         Assert.Contains("this workflow built commit", workflow, StringComparison.Ordinal);
         Assert.Contains("--json isDraft --jq '.isDraft'", workflow, StringComparison.Ordinal);

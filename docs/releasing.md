@@ -60,7 +60,8 @@ draft. A published release for the tag remains immutable and causes the retry
 to fail. If the pushed tag is deleted while validation is running, the workflow
 also fails rather than recreating it from the default branch. Before publishing,
 the workflow also verifies that the remote tag still resolves to the commit it
-built, so a force-moved tag fails safely.
+built, so a force-moved tag fails safely. Draft retries repeat that target check
+after asset upload and before publishing the draft.
 After downloading both assets into the same directory, verify the archive with:
 
 ```bash

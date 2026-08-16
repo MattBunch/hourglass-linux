@@ -149,15 +149,21 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_VERSION: ${{ steps.version.outputs.value }}
         run: |
-          remote_tag_target=$(git ls-remote origin "refs/tags/$GITHUB_REF_NAME^{}" | awk '{print $1}')
-          if [[ -z "$remote_tag_target" ]]; then
-            remote_tag_target=$(git ls-remote origin "refs/tags/$GITHUB_REF_NAME" | awk '{print $1}')
-          fi
+          verify_tag_target() {
+            local remote_tag_target
 
-          if [[ "$remote_tag_target" != "$GITHUB_SHA" ]]; then
-            printf 'Tag %s targets %s, but this workflow built commit %s.\n' "$GITHUB_REF_NAME" "$remote_tag_target" "$GITHUB_SHA" >&2
-            exit 1
-          fi
+            remote_tag_target=$(git ls-remote origin "refs/tags/$GITHUB_REF_NAME^{}" | awk '{print $1}')
+            if [[ -z "$remote_tag_target" ]]; then
+              remote_tag_target=$(git ls-remote origin "refs/tags/$GITHUB_REF_NAME" | awk '{print $1}')
+            fi
+
+            if [[ "$remote_tag_target" != "$GITHUB_SHA" ]]; then
+              printf 'Tag %s targets %s, but this workflow built commit %s.\n' "$GITHUB_REF_NAME" "$remote_tag_target" "$GITHUB_SHA" >&2
+              exit 1
+            fi
+          }
+
+          verify_tag_target
 
           release_assets=(
             "dist/hourglass-linux-${RELEASE_VERSION}-linux-x64.tar.gz"
@@ -171,6 +177,7 @@ jobs:
             fi
 
             gh release upload "$GITHUB_REF_NAME" "${release_assets[@]}" --clobber --repo "$GITHUB_REPOSITORY"
+            verify_tag_target
             release_args=(
               release edit "$GITHUB_REF_NAME"
               --repo "$GITHUB_REPOSITORY"
