@@ -415,11 +415,30 @@ GitHub Release assets
 
 ## Acceptance criteria
 
-- [ ] A test tag creates a prerelease successfully.
-- [ ] Assets are publicly downloadable.
-- [ ] Checksums verify.
-- [ ] Release can be reproduced from tagged source.
-- [ ] A clean Fedora or Ubuntu VM runs the tarball.
+- [x] A test tag creates a prerelease successfully.
+- [x] Assets are publicly downloadable.
+- [x] Checksums verify.
+- [x] Release can be reproduced from tagged source.
+- [x] A clean Fedora or Ubuntu VM runs the tarball.
+
+## `v0.2.0-beta.1` validation evidence
+
+The first public beta was published from tag `v0.2.0-beta.1`, which resolves to
+commit `26f2fd54a540a4ff39b2e8a05374edcc3c8e1340`. The
+[release workflow](https://github.com/MattBunch/hourglass-linux/actions/runs/31942848612)
+completed successfully and published the prerelease archive and `SHA256SUMS`.
+
+On 2026-08-23, the archive was downloaded into a clean Fedora 44 Workstation
+GNOME VM without a separately installed .NET runtime. Its checksum verified,
+the archive extracted from a path containing whitespace, and the self-contained
+application launched. Manual timer start, pause, resume, stop, expiry,
+notification, sound, and settings-persistence checks passed. GNOME displayed a
+generic notification icon because the raw archive does not install a desktop
+entry or register an icon and the `notify-send` invocation has no explicit
+icon; notification delivery itself passed.
+
+Ubuntu validation remains intentionally deferred to DEV-14. Multi-monitor and
+wake-from-suspend validation remain separate, unrun physical-environment work.
 
 ---
 
@@ -1348,7 +1367,7 @@ Update this table whenever a milestone changes state.
 | 0. Release readiness audit | Not started | Repository already has a strong packaging baseline. |
 | 1. Versioning and source of truth | Complete | Evaluated project version, AppStream metadata, and release tags are validated by the .NET release tool. |
 | 2. Storefront metadata and screenshots | Not started | AppStream exists; screenshots remain. |
-| 3. Public GitHub release pipeline | In progress | The tag-triggered workflow is implemented and CI-validated; DEV-13 will publish and verify the first public beta. |
+| 3. Public GitHub release pipeline | Complete | `v0.2.0-beta.1` was published and checksum-verified; its self-contained archive passed clean Fedora 44 GNOME VM validation. Ubuntu validation is tracked separately in DEV-14. |
 | 4. AppImage release | Not started | AppDir exists; final AppImage generation is missing. |
 | 5. Production Flatpak and Flathub | Not started | Local prototype manifest exists. |
 | 6. Fedora RPM and COPR | Not started | RPM spec not yet added. |
@@ -1369,9 +1388,10 @@ Update this table whenever a milestone changes state.
 - [x] Add version consistency validation.
 - [ ] Add storefront screenshots.
 - [ ] Improve AppStream release metadata.
-- [ ] Publish and verify the `v0.2.0-beta.1` GitHub prerelease.
+- [x] Publish and verify the `v0.2.0-beta.1` GitHub prerelease.
 - [ ] Convert existing AppDir into a final AppImage.
-- [ ] Test prerelease on Fedora and Ubuntu.
+- [x] Test the prerelease on Fedora.
+- [ ] Test the prerelease on Ubuntu (DEV-14).
 - [ ] Begin production Flatpak conversion.
 - [ ] Resolve Flatpak audio before Flathub submission.
 

@@ -28,6 +28,20 @@ Do not mark a desktop, package type, tray backend, dock backend, multi-monitor s
 | Notes | DEV-5 restore, warning-free Release build, 430 Release tests, formatting verification, clean self-contained publish, AppDir build, and required desktop/AppStream validators passed. The publish embeds its source revision and includes all three bundled sounds. The publish artifact still includes portable PDB/debug information containing `/home/matt/Projects/hourglass-linux` source paths, and it does not include the project license or required .NET/native third-party notice bundle. These are public-release blockers. The earlier Native/AppDir and Flatpak evidence remains below. |
 | Skip reason | Full attended GUI smoke coverage requires attended GUI operation in the target desktop session. |
 
+## Public Beta Validation Record — `v0.2.0-beta.1`
+
+| Field | Value |
+| --- | --- |
+| App version | `0.2.0-beta.1` |
+| Tag and commit | `v0.2.0-beta.1` at `26f2fd54a540a4ff39b2e8a05374edcc3c8e1340` |
+| CI/artifact source | [Successful release workflow](https://github.com/MattBunch/hourglass-linux/actions/runs/31942848612); [GitHub prerelease](https://github.com/MattBunch/hourglass-linux/releases/tag/v0.2.0-beta.1) containing `hourglass-linux-0.2.0-beta.1-linux-x64.tar.gz` and `SHA256SUMS`. |
+| Package type | Self-contained `linux-x64` tarball, extracted directly from a path containing whitespace. |
+| Environment | Clean Fedora 44 Workstation GNOME VM; no separately installed .NET runtime. |
+| Tester and date | matt, 2026-08-23 |
+| Overall result | `Pass` |
+| Evidence | `sha256sum --check SHA256SUMS` passed. The tarball extracted and `./hourglass-linux` launched. Manual start, pause, resume, stop, expiry, notification, bundled sound, and settings-persistence checks passed. GNOME displayed its generic notification fallback icon because the raw archive does not install a desktop entry or icon and the current `notify-send` invocation supplies no explicit icon; notification delivery passed. |
+| Deferred coverage | Ubuntu artifact validation is tracked by DEV-14. Multi-monitor and wake-from-suspend validation remain `Not run`; this VM result does not claim either capability. |
+
 ## Environment Fields
 
 Every validation row should identify:
