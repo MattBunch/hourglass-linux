@@ -9,9 +9,9 @@ using Xunit;
 public sealed class ProgramTests
 {
     [Fact]
-    public void CreateX11PlatformOptionsPrefersAcceleratedRenderingWhenDri3IsAvailable()
+    public void CreateX11PlatformOptionsPrefersAcceleratedRenderingWhenDri3DeviceIsUsable()
     {
-        X11PlatformOptions options = Program.CreateX11PlatformOptions(isDri3Available: true);
+        X11PlatformOptions options = Program.CreateX11PlatformOptions(hasUsableDri3Device: true);
 
         Assert.Equal("hourglass", options.WmClass);
         Assert.Equal(
@@ -24,9 +24,9 @@ public sealed class ProgramTests
     }
 
     [Fact]
-    public void CreateX11PlatformOptionsSelectsSoftwareRenderingWhenDri3IsUnavailable()
+    public void CreateX11PlatformOptionsSelectsSoftwareRenderingWhenDri3DeviceIsUnavailable()
     {
-        X11PlatformOptions options = Program.CreateX11PlatformOptions(isDri3Available: false);
+        X11PlatformOptions options = Program.CreateX11PlatformOptions(hasUsableDri3Device: false);
 
         Assert.Equal("hourglass", options.WmClass);
         Assert.Equal([X11RenderingMode.Software], options.RenderingMode);
@@ -35,8 +35,8 @@ public sealed class ProgramTests
     [Fact]
     public void CreateX11PlatformOptionsReturnsIndependentRenderingModeArrays()
     {
-        X11PlatformOptions first = Program.CreateX11PlatformOptions(isDri3Available: false);
-        X11PlatformOptions second = Program.CreateX11PlatformOptions(isDri3Available: false);
+        X11PlatformOptions first = Program.CreateX11PlatformOptions(hasUsableDri3Device: false);
+        X11PlatformOptions second = Program.CreateX11PlatformOptions(hasUsableDri3Device: false);
 
         Assert.NotSame(first, second);
         Assert.NotSame(first.RenderingMode, second.RenderingMode);

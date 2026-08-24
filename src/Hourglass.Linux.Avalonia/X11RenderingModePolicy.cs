@@ -4,9 +4,9 @@ using global::Avalonia;
 
 internal static class X11RenderingModePolicy
 {
-    internal static X11RenderingMode[] Create(bool isDri3Available)
+    internal static X11RenderingMode[] Create(bool hasUsableDri3Device)
     {
-        return isDri3Available
+        return hasUsableDri3Device
             ?
             [
                 X11RenderingMode.Egl,
