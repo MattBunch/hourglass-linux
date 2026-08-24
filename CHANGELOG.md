@@ -4,6 +4,14 @@ All notable changes to Hourglass Linux are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0-beta.2] - 2026-08-24
+
+### Fixed
+
+- Prefer EGL and GLX rendering while retaining an explicit software fallback
+  for Linux virtual-machine environments where accelerated rendering is
+  unavailable.
+
 ## [0.2.0-beta.1] - 2026-08-16
 
 ### Added

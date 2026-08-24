@@ -4,7 +4,7 @@
     <TargetFramework>net10.0</TargetFramework>
     <AssemblyName>hourglass-linux</AssemblyName>
     <RootNamespace>Hourglass.Linux.Avalonia</RootNamespace>
-    <Version>0.2.0-beta.1</Version>
+    <Version>0.2.0-beta.2</Version>
     <AssemblyTitle>Hourglass</AssemblyTitle>
     <Product>Hourglass Linux</Product>
     <Description>Simple countdown timer for Linux</Description>

@@ -1,5 +1,6 @@
 namespace Hourglass.Linux.Avalonia.Tests;
 
+using global::Avalonia;
 using global::Avalonia.Platform;
 using Hourglass.Platform;
 using System.Net.Sockets;
@@ -7,6 +8,31 @@ using Xunit;
 
 public sealed class ProgramTests
 {
+    [Fact]
+    public void CreateX11PlatformOptionsPrefersAcceleratedRenderingWithSoftwareFallback()
+    {
+        X11PlatformOptions options = Program.CreateX11PlatformOptions();
+
+        Assert.Equal("hourglass", options.WmClass);
+        Assert.Equal(
+            [
+                X11RenderingMode.Egl,
+                X11RenderingMode.Glx,
+                X11RenderingMode.Software
+            ],
+            options.RenderingMode);
+    }
+
+    [Fact]
+    public void CreateX11PlatformOptionsReturnsIndependentRenderingModeArrays()
+    {
+        X11PlatformOptions first = Program.CreateX11PlatformOptions();
+        X11PlatformOptions second = Program.CreateX11PlatformOptions();
+
+        Assert.NotSame(first, second);
+        Assert.NotSame(first.RenderingMode, second.RenderingMode);
+    }
+
     [Fact]
     public void HourglassApplicationIconResourceIsAvailable()
     {
