@@ -99,10 +99,21 @@ internal static class Program
     {
         return AppBuilder.Configure<App>()
             .UsePlatformDetect()
-            .With(new X11PlatformOptions
-            {
-                WmClass = "hourglass"
-            })
+            .With(CreateX11PlatformOptions())
             .LogToTrace();
+    }
+
+    internal static X11PlatformOptions CreateX11PlatformOptions()
+    {
+        return new X11PlatformOptions
+        {
+            WmClass = "hourglass",
+            RenderingMode =
+            [
+                X11RenderingMode.Egl,
+                X11RenderingMode.Glx,
+                X11RenderingMode.Software
+            ]
+        };
     }
 }
