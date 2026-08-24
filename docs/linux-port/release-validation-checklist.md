@@ -28,6 +28,20 @@ Do not mark a desktop, package type, tray backend, dock backend, multi-monitor s
 | Notes | DEV-5 restore, warning-free Release build, 430 Release tests, formatting verification, clean self-contained publish, AppDir build, and required desktop/AppStream validators passed. The publish embeds its source revision and includes all three bundled sounds. The publish artifact still includes portable PDB/debug information containing `/home/matt/Projects/hourglass-linux` source paths, and it does not include the project license or required .NET/native third-party notice bundle. These are public-release blockers. The earlier Native/AppDir and Flatpak evidence remains below. |
 | Skip reason | Full attended GUI smoke coverage requires attended GUI operation in the target desktop session. |
 
+## Public Beta Validation Record — `v0.2.0-beta.2`
+
+| Field | Value |
+| --- | --- |
+| App version | `0.2.0-beta.2` |
+| Tag and commit | `v0.2.0-beta.2` at `b3d2b18417af999d60205f23cf82cdafa3abaf83` |
+| CI/artifact source | [Successful release workflow](https://github.com/MattBunch/hourglass-linux/actions/runs/32711569392); [GitHub prerelease](https://github.com/MattBunch/hourglass-linux/releases/tag/v0.2.0-beta.2) containing `hourglass-linux-0.2.0-beta.2-linux-x64.tar.gz` and `SHA256SUMS`. |
+| Package type | Self-contained `linux-x64` tarball, extracted directly from a path containing whitespace. |
+| Environment | Installed Ubuntu 24.04.4 GNOME Wayland VM with Xwayland; no separately installed .NET runtime. |
+| Tester and date | matt, 2026-08-24 |
+| Overall result | `Fail` |
+| Evidence | `sha256sum --check SHA256SUMS` passed. The process stayed alive, but no window appeared. Its captured output reported `libEGL warning: DRI3 error: Could not get DRI3 device`; the earlier GLX attempt reported that `llvmpipe` is blacklisted. The application did not reach functional timer validation. |
+| Follow-up | DEV-15 remains in progress. `v0.2.0-beta.3` must select software rendering when the current X server does not support DRI3, then repeat Ubuntu validation before DEV-14 can be completed. |
+
 ## Public Beta Validation Record — `v0.2.0-beta.1`
 
 | Field | Value |

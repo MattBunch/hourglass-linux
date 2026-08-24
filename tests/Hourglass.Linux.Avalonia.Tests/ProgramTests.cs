@@ -9,9 +9,9 @@ using Xunit;
 public sealed class ProgramTests
 {
     [Fact]
-    public void CreateX11PlatformOptionsPrefersAcceleratedRenderingWithSoftwareFallback()
+    public void CreateX11PlatformOptionsPrefersAcceleratedRenderingWhenDri3IsAvailable()
     {
-        X11PlatformOptions options = Program.CreateX11PlatformOptions();
+        X11PlatformOptions options = Program.CreateX11PlatformOptions(isDri3Available: true);
 
         Assert.Equal("hourglass", options.WmClass);
         Assert.Equal(
@@ -24,10 +24,19 @@ public sealed class ProgramTests
     }
 
     [Fact]
+    public void CreateX11PlatformOptionsSelectsSoftwareRenderingWhenDri3IsUnavailable()
+    {
+        X11PlatformOptions options = Program.CreateX11PlatformOptions(isDri3Available: false);
+
+        Assert.Equal("hourglass", options.WmClass);
+        Assert.Equal([X11RenderingMode.Software], options.RenderingMode);
+    }
+
+    [Fact]
     public void CreateX11PlatformOptionsReturnsIndependentRenderingModeArrays()
     {
-        X11PlatformOptions first = Program.CreateX11PlatformOptions();
-        X11PlatformOptions second = Program.CreateX11PlatformOptions();
+        X11PlatformOptions first = Program.CreateX11PlatformOptions(isDri3Available: false);
+        X11PlatformOptions second = Program.CreateX11PlatformOptions(isDri3Available: false);
 
         Assert.NotSame(first, second);
         Assert.NotSame(first.RenderingMode, second.RenderingMode);

@@ -1734,6 +1734,8 @@ public sealed class MainWindowViewModelTests
             "\"Window attention request failed.\"",
             "\"WindowTitleMode\"",
             "\"*.json\"",
+            "\"DRI3\"",
+            "\"libX11.so.6\"",
             "\"--title\"",
             "\"-t\"",
             "\"https://github.com/MattBunch/hourglass-linux\"",
