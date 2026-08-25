@@ -4,6 +4,13 @@ All notable changes to Hourglass Linux are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0-beta.3] - 2026-08-24
+
+### Fixed
+
+- Select framebuffer software rendering when the current X server does not
+  support DRI3, rather than attempting an unusable accelerated renderer.
+
 ## [0.2.0-beta.2] - 2026-08-24
 
 ### Fixed

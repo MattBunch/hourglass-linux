@@ -99,21 +99,16 @@ internal static class Program
     {
         return AppBuilder.Configure<App>()
             .UsePlatformDetect()
-            .With(CreateX11PlatformOptions())
+            .With(CreateX11PlatformOptions(X11Dri3Support.HasUsableDevice()))
             .LogToTrace();
     }
 
-    internal static X11PlatformOptions CreateX11PlatformOptions()
+    internal static X11PlatformOptions CreateX11PlatformOptions(bool hasUsableDri3Device)
     {
         return new X11PlatformOptions
         {
             WmClass = "hourglass",
-            RenderingMode =
-            [
-                X11RenderingMode.Egl,
-                X11RenderingMode.Glx,
-                X11RenderingMode.Software
-            ]
+            RenderingMode = X11RenderingModePolicy.Create(hasUsableDri3Device)
         };
     }
 }
