@@ -18,6 +18,11 @@ internal static class X11Dri3Support
 
         try
         {
+            if (XInitThreads() == 0)
+            {
+                return false;
+            }
+
             IntPtr display = XOpenDisplay(IntPtr.Zero);
             if (display == IntPtr.Zero)
             {
@@ -96,6 +101,9 @@ internal static class X11Dri3Support
             }
         }
     }
+
+    [DllImport(X11Library)]
+    private static extern int XInitThreads();
 
     [DllImport(X11Library)]
     private static extern IntPtr XOpenDisplay(IntPtr displayName);
