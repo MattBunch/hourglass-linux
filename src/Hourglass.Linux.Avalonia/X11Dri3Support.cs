@@ -4,8 +4,7 @@ using System.Runtime.InteropServices;
 
 internal static class X11Dri3Support
 {
-    private const string X11Library = "libX11.so.6";
-    private const string X11XcbLibrary = "libX11-xcb.so.1";
+    private const string XcbLibrary = "libxcb.so.1";
     private const string XcbDri3Library = "libxcb-dri3.so.0";
     private const string LibcLibrary = "libc.so.6";
 
@@ -18,24 +17,24 @@ internal static class X11Dri3Support
 
         try
         {
-            if (XInitThreads() == 0)
-            {
-                return false;
-            }
-
-            IntPtr display = XOpenDisplay(IntPtr.Zero);
-            if (display == IntPtr.Zero)
+            IntPtr connection = xcb_connect(IntPtr.Zero, out int defaultScreenIndex);
+            if (connection == IntPtr.Zero)
             {
                 return false;
             }
 
             try
             {
-                return HasUsableDevice(display);
+                if (xcb_connection_has_error(connection) != 0)
+                {
+                    return false;
+                }
+
+                return HasUsableDevice(connection, defaultScreenIndex);
             }
             finally
             {
-                _ = XCloseDisplay(display);
+                xcb_disconnect(connection);
             }
         }
         catch (DllNotFoundException)
@@ -52,17 +51,39 @@ internal static class X11Dri3Support
         }
     }
 
-    private static bool HasUsableDevice(IntPtr display)
+    private static bool HasUsableDevice(IntPtr connection, int defaultScreenIndex)
     {
-        IntPtr connection = XGetXCBConnection(display);
-        if (connection == IntPtr.Zero)
+        if (defaultScreenIndex < 0)
         {
             return false;
         }
 
+        IntPtr setup = xcb_get_setup(connection);
+        if (setup == IntPtr.Zero)
+        {
+            return false;
+        }
+
+        XcbScreenIterator screen = xcb_setup_roots_iterator(setup);
+        for (int screenIndex = 0; screenIndex < defaultScreenIndex; screenIndex++)
+        {
+            if (screen.Remaining <= 0)
+            {
+                return false;
+            }
+
+            xcb_screen_next(ref screen);
+        }
+
+        if (screen.Remaining <= 0 || screen.Data == IntPtr.Zero)
+        {
+            return false;
+        }
+
+        uint rootWindow = unchecked((uint)Marshal.ReadInt32(screen.Data));
         XcbDri3OpenCookie openRequest = xcb_dri3_open(
             connection,
-            XDefaultRootWindow(display),
+            rootWindow,
             provider: 0);
         IntPtr reply = xcb_dri3_open_reply(connection, openRequest, out IntPtr error);
 
@@ -102,20 +123,23 @@ internal static class X11Dri3Support
         }
     }
 
-    [DllImport(X11Library)]
-    private static extern int XInitThreads();
+    [DllImport(XcbLibrary)]
+    private static extern IntPtr xcb_connect(IntPtr displayName, out int defaultScreenIndex);
 
-    [DllImport(X11Library)]
-    private static extern IntPtr XOpenDisplay(IntPtr displayName);
+    [DllImport(XcbLibrary)]
+    private static extern int xcb_connection_has_error(IntPtr connection);
 
-    [DllImport(X11Library)]
-    private static extern int XCloseDisplay(IntPtr display);
+    [DllImport(XcbLibrary)]
+    private static extern void xcb_disconnect(IntPtr connection);
 
-    [DllImport(X11Library)]
-    private static extern uint XDefaultRootWindow(IntPtr display);
+    [DllImport(XcbLibrary)]
+    private static extern IntPtr xcb_get_setup(IntPtr connection);
 
-    [DllImport(X11XcbLibrary)]
-    private static extern IntPtr XGetXCBConnection(IntPtr display);
+    [DllImport(XcbLibrary)]
+    private static extern XcbScreenIterator xcb_setup_roots_iterator(IntPtr setup);
+
+    [DllImport(XcbLibrary)]
+    private static extern void xcb_screen_next(ref XcbScreenIterator screen);
 
     [DllImport(XcbDri3Library)]
     private static extern XcbDri3OpenCookie xcb_dri3_open(IntPtr connection, uint drawable, uint provider);
@@ -137,4 +161,12 @@ internal static class X11Dri3Support
 
     [StructLayout(LayoutKind.Sequential)]
     private readonly record struct XcbDri3OpenCookie(uint Sequence);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct XcbScreenIterator
+    {
+        internal IntPtr Data;
+        internal int Remaining;
+        internal int Index;
+    }
 }

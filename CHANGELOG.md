@@ -4,6 +4,13 @@ All notable changes to Hourglass Linux are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0-beta.4] - 2026-08-26
+
+### Fixed
+
+- Probe X11 DRI3 availability with a standalone XCB connection so the probe
+  cannot disrupt Avalonia's application display connection.
+
 ## [0.2.0-beta.3] - 2026-08-24
 
 ### Fixed
