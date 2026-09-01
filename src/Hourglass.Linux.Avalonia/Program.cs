@@ -97,18 +97,21 @@ internal static class Program
 
     public static AppBuilder BuildAvaloniaApp()
     {
+        string? sessionType = Environment.GetEnvironmentVariable("XDG_SESSION_TYPE");
+        string? waylandDisplay = Environment.GetEnvironmentVariable("WAYLAND_DISPLAY");
+
         return AppBuilder.Configure<App>()
             .UsePlatformDetect()
-            .With(CreateX11PlatformOptions(X11Dri3Support.HasUsableDevice()))
+            .With(CreateX11PlatformOptions(sessionType, waylandDisplay))
             .LogToTrace();
     }
 
-    internal static X11PlatformOptions CreateX11PlatformOptions(bool hasUsableDri3Device)
+    internal static X11PlatformOptions CreateX11PlatformOptions(string? sessionType, string? waylandDisplay)
     {
         return new X11PlatformOptions
         {
             WmClass = "hourglass",
-            RenderingMode = X11RenderingModePolicy.Create(hasUsableDri3Device)
+            RenderingMode = X11RenderingModePolicy.Create(sessionType, waylandDisplay)
         };
     }
 }

@@ -40,7 +40,7 @@ Do not mark a desktop, package type, tray backend, dock backend, multi-monitor s
 | Tester and date | matt, 2026-08-24 |
 | Overall result | `Fail` |
 | Evidence | `sha256sum --check SHA256SUMS` passed. The process stayed alive, but no window appeared. Its captured output reported `libEGL warning: DRI3 error: Could not get DRI3 device`; the earlier GLX attempt reported that `llvmpipe` is blacklisted. The application did not reach functional timer validation. |
-| Follow-up | DEV-15 remains in progress. `v0.2.0-beta.3` selects software rendering, but its mixed Xlib/XCB DRI3 probe broke the X connection and exited with code `1` in this VM. `v0.2.0-beta.4` must use a standalone XCB probe and repeat Ubuntu validation before DEV-14 can be completed. |
+| Follow-up | DEV-15 remains in progress. Subsequent beta validation evidence is recorded below. DEV-14 cannot be completed until a beta visibly launches and passes the full Ubuntu validation. |
 
 ## Public Beta Validation Record — `v0.2.0-beta.3`
 
@@ -54,7 +54,21 @@ Do not mark a desktop, package type, tray backend, dock backend, multi-monitor s
 | Tester and date | matt, 2026-08-26 |
 | Overall result | `Fail` |
 | Evidence | `sha256sum --check SHA256SUMS` passed. `./hourglass-linux` exited with code `1` before showing a window and reported `X connection to :0 broken (explicit kill or server shutdown)`. No Hourglass process remained and no user-journal entry was recorded. |
-| Follow-up | DEV-15 remains in progress. Replace the mixed Xlib/XCB DRI3 probe with a standalone XCB connection, publish `v0.2.0-beta.4`, then repeat the complete Ubuntu validation before DEV-14 can be completed. |
+| Follow-up | DEV-15 remains in progress. `v0.2.0-beta.4` replaced the probe but still did not create a visible window. `v0.2.0-beta.5` must select software rendering directly from the Wayland session environment, then repeat the complete Ubuntu validation before DEV-14 can be completed. |
+
+## Public Beta Validation Record — `v0.2.0-beta.4`
+
+| Field | Value |
+| --- | --- |
+| App version | `0.2.0-beta.4` |
+| Tag and commit | `v0.2.0-beta.4` at `32dfbbf0ae1a9d7320d1b4b42ff82a9e2029306b` |
+| CI/artifact source | [Successful release workflow](https://github.com/MattBunch/hourglass-linux/actions/runs/32963639202); [GitHub prerelease](https://github.com/MattBunch/hourglass-linux/releases/tag/v0.2.0-beta.4) containing `hourglass-linux-0.2.0-beta.4-linux-x64.tar.gz` and `SHA256SUMS`. |
+| Package type | Self-contained `linux-x64` tarball, extracted directly from a path containing whitespace. |
+| Environment | Installed Ubuntu 24.04.4 GNOME Wayland VM with Xwayland; no separately installed .NET runtime. |
+| Tester and date | matt, 2026-09-01 |
+| Overall result | `Fail` |
+| Evidence | `sha256sum --check SHA256SUMS` passed. The process remained alive, but no Hourglass X11 window was present after five seconds. It created neither a settings directory nor diagnostic output. |
+| Follow-up | DEV-15 remains in progress. Remove native DRI3 probing and select software rendering directly for the detected Wayland session in `v0.2.0-beta.5`, then repeat Ubuntu validation before DEV-14 can be completed. |
 
 ## Public Beta Validation Record — `v0.2.0-beta.1`
 

@@ -9,9 +9,9 @@ using Xunit;
 public sealed class ProgramTests
 {
     [Fact]
-    public void CreateX11PlatformOptionsPrefersAcceleratedRenderingWhenDri3DeviceIsUsable()
+    public void CreateX11PlatformOptionsPrefersAcceleratedRenderingOutsideWayland()
     {
-        X11PlatformOptions options = Program.CreateX11PlatformOptions(hasUsableDri3Device: true);
+        X11PlatformOptions options = Program.CreateX11PlatformOptions("x11", waylandDisplay: null);
 
         Assert.Equal("hourglass", options.WmClass);
         Assert.Equal(
@@ -24,9 +24,9 @@ public sealed class ProgramTests
     }
 
     [Fact]
-    public void CreateX11PlatformOptionsSelectsSoftwareRenderingWhenDri3DeviceIsUnavailable()
+    public void CreateX11PlatformOptionsSelectsSoftwareRenderingForWayland()
     {
-        X11PlatformOptions options = Program.CreateX11PlatformOptions(hasUsableDri3Device: false);
+        X11PlatformOptions options = Program.CreateX11PlatformOptions("wayland", "wayland-0");
 
         Assert.Equal("hourglass", options.WmClass);
         Assert.Equal([X11RenderingMode.Software], options.RenderingMode);
@@ -35,8 +35,8 @@ public sealed class ProgramTests
     [Fact]
     public void CreateX11PlatformOptionsReturnsIndependentRenderingModeArrays()
     {
-        X11PlatformOptions first = Program.CreateX11PlatformOptions(hasUsableDri3Device: false);
-        X11PlatformOptions second = Program.CreateX11PlatformOptions(hasUsableDri3Device: false);
+        X11PlatformOptions first = Program.CreateX11PlatformOptions("wayland", "wayland-0");
+        X11PlatformOptions second = Program.CreateX11PlatformOptions("wayland", "wayland-0");
 
         Assert.NotSame(first, second);
         Assert.NotSame(first.RenderingMode, second.RenderingMode);

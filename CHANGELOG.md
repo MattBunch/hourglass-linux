@@ -4,6 +4,13 @@ All notable changes to Hourglass Linux are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0-beta.5] - 2026-09-01
+
+### Fixed
+
+- Select framebuffer software rendering directly for Wayland/Xwayland sessions
+  without a native DRI3 preflight probe.
+
 ## [0.2.0-beta.4] - 2026-08-26
 
 ### Fixed
