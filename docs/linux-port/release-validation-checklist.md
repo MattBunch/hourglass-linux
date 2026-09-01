@@ -54,7 +54,7 @@ Do not mark a desktop, package type, tray backend, dock backend, multi-monitor s
 | Tester and date | matt, 2026-08-26 |
 | Overall result | `Fail` |
 | Evidence | `sha256sum --check SHA256SUMS` passed. `./hourglass-linux` exited with code `1` before showing a window and reported `X connection to :0 broken (explicit kill or server shutdown)`. No Hourglass process remained and no user-journal entry was recorded. |
-| Follow-up | DEV-15 remains in progress. `v0.2.0-beta.4` replaced the probe but still did not create a visible window. `v0.2.0-beta.5` must select software rendering directly from the Wayland session environment, then repeat the complete Ubuntu validation before DEV-14 can be completed. |
+| Follow-up | DEV-15 remains in progress. `v0.2.0-beta.4` replaced the probe but still did not create a visible window. `v0.2.0-beta.5` must select software rendering without native DRI3 probing, then repeat the complete Ubuntu validation before DEV-14 can be completed. |
 
 ## Public Beta Validation Record — `v0.2.0-beta.4`
 

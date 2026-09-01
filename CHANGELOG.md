@@ -8,8 +8,8 @@ All notable changes to Hourglass Linux are documented here. The format follows
 
 ### Fixed
 
-- Select framebuffer software rendering directly for Wayland/Xwayland sessions
-  without a native DRI3 preflight probe.
+- Select framebuffer software rendering for X11 without a native DRI3
+  preflight probe.
 
 ## [0.2.0-beta.4] - 2026-08-26
 

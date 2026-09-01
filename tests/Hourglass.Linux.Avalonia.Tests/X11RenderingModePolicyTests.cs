@@ -1,26 +1,22 @@
 namespace Hourglass.Linux.Avalonia.Tests;
 
+using global::Avalonia;
 using Xunit;
 
 public sealed class X11RenderingModePolicyTests
 {
-    [Theory]
-    [InlineData("wayland", "wayland-0")]
-    [InlineData("WAYLAND", "wayland-1")]
-    public void RequiresSoftwareRenderingForWaylandSessionWithDisplay(string sessionType, string waylandDisplay)
+    [Fact]
+    public void CreateSelectsSoftwareRendering()
     {
-        Assert.True(X11RenderingModePolicy.RequiresSoftwareRendering(sessionType, waylandDisplay));
+        Assert.Equal([X11RenderingMode.Software], X11RenderingModePolicy.Create());
     }
 
-    [Theory]
-    [InlineData("x11", "wayland-0")]
-    [InlineData("wayland", "")]
-    [InlineData("wayland", "   ")]
-    [InlineData(null, "wayland-0")]
-    public void DoesNotRequireSoftwareRenderingWithoutCompleteWaylandSession(
-        string? sessionType,
-        string? waylandDisplay)
+    [Fact]
+    public void CreateReturnsIndependentRenderingModeArrays()
     {
-        Assert.False(X11RenderingModePolicy.RequiresSoftwareRendering(sessionType, waylandDisplay));
+        X11RenderingMode[] first = X11RenderingModePolicy.Create();
+        X11RenderingMode[] second = X11RenderingModePolicy.Create();
+
+        Assert.NotSame(first, second);
     }
 }

@@ -21,7 +21,7 @@
   <releases>
     <release version="0.2.0-beta.5" date="2026-09-01" type="development">
       <description>
-        <p>Select software rendering directly for Wayland sessions.</p>
+        <p>Select software rendering for X11 without native DRI3 probing.</p>
       </description>
     </release>
     <release version="0.2.0-beta.4" date="2026-08-26" type="development">
