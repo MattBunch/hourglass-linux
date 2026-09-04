@@ -27,11 +27,15 @@ public sealed class LinuxDesktopProgressServiceFactory
     {
         var environmentReader = new ProcessDesktopEnvironmentReader();
 
-        return new LinuxDesktopProgressServiceFactory(
+        var factory = new LinuxDesktopProgressServiceFactory(
             environmentReader,
             new DbusUnityLauncherEntrySenderFactory(new EnvironmentSessionBusProbe(environmentReader)),
-            diagnosticSink).Create();
+            diagnosticSink);
+
+        return factory.CreateDeferred();
     }
+
+    public IDesktopProgressService CreateDeferred() => new DeferredDesktopProgressService(this.Create, this.diagnosticSink);
 
     public IDesktopProgressService Create()
     {
