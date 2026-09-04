@@ -4069,7 +4069,7 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
-    public async Task DesktopProgressControllerClearsUnsupportedRequests()
+    public async Task DesktopProgressControllerForwardsUnsupportedRequestsSafely()
     {
         var service = new RecordingDesktopProgressService { Supported = false };
         var controller = new DesktopProgressController(service);
@@ -4078,8 +4078,8 @@ public sealed class MainWindowViewModelTests
         await controller.ApplyAsync(request);
         await controller.ApplyAsync(request);
 
-        Assert.Equal(0, service.SetCount);
-        Assert.Equal(1, service.ClearCount);
+        Assert.Equal(1, service.SetCount);
+        Assert.Equal(0, service.ClearCount);
     }
 
     [Fact]

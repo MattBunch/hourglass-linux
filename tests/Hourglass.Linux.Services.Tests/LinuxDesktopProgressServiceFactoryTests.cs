@@ -7,6 +7,24 @@ using Xunit;
 public sealed class LinuxDesktopProgressServiceFactoryTests
 {
     [Fact]
+    public void DeferredFactoryConstructionDoesNotInitializeUnitySender()
+    {
+        var senderFactory = new FakeUnityLauncherEntrySenderFactory(available: true);
+        var factory = new LinuxDesktopProgressServiceFactory(
+            new FakeDesktopEnvironmentReader(
+                new Dictionary<string, string?>
+                {
+                    [LinuxDesktopProgressServiceFactory.XdgCurrentDesktopVariable] = "ubuntu"
+                }),
+            senderFactory);
+
+        IDesktopProgressService service = factory.CreateDeferred();
+
+        Assert.IsType<DeferredDesktopProgressService>(service);
+        Assert.Equal(0, senderFactory.CreateCalls);
+    }
+
+    [Fact]
     public void UnityCompatibleDesktopWithAvailableSenderSelectsUnityBackend()
     {
         IDesktopProgressService service = CreateService(
@@ -198,8 +216,11 @@ public sealed class LinuxDesktopProgressServiceFactoryTests
     private sealed class FakeUnityLauncherEntrySenderFactory(bool available)
         : IUnityLauncherEntrySenderFactory
     {
+        public int CreateCalls { get; private set; }
+
         public bool TryCreate(out IUnityLauncherEntrySender sender)
         {
+            this.CreateCalls++;
             sender = new FakeUnityLauncherEntrySender();
             return available;
         }

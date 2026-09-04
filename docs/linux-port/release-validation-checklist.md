@@ -96,6 +96,26 @@ HOURGLASS_STARTUP_DIAGNOSTICS=1 \
 The log records startup milestones and display-session context. It is evidence
 for investigating a failed launch, not evidence that a visible window launched.
 
+## Public Beta Validation Record — `v0.2.0-beta.7`
+
+| Field | Value |
+| --- | --- |
+| App version | `0.2.0-beta.7` |
+| Environment | Installed Ubuntu 24.04.4 GNOME Wayland VM with Xwayland; no separately installed .NET runtime. |
+| Overall result | `Fail` |
+| Evidence | Checksum verification passed. With `HOURGLASS_STARTUP_DIAGNOSTICS=1`, startup reached `service=DesktopProgressService state=Starting` but not its corresponding completion marker or `CoordinatorCreated`. This isolated synchronous Unity LauncherEntry D-Bus connection and owner-watcher setup as the startup blocker. |
+| Follow-up | DEV-15 remains in progress. `v0.2.0-beta.8` defers that discovery until the first post-window desktop-progress request on a background task. |
+
+## Public Beta Validation Record — `v0.2.0-beta.8`
+
+| Field | Value |
+| --- | --- |
+| App version | `0.2.0-beta.8` |
+| Environment | Canonical reproduction target: installed Ubuntu 24.04.4 GNOME Wayland VM with Xwayland. |
+| Overall result | `Not run` |
+| Evidence | The desktop-progress service now returns a deferred proxy during coordinator construction. The first progress request starts Unity LauncherEntry discovery in the background, preserves only the newest pending set or clear operation, and replays it only after a supported backend is available. |
+| Follow-up | Before DEV-15 can close, repeat the installed-artifact check with checksum verification and startup diagnostics, confirm a visible window plus `CoordinatorCreated` and window-opened/activated markers, and run a timer. Desktop-progress visibility remains a separate dock-validation concern. |
+
 ## Public Beta Validation Record — `v0.2.0-beta.4`
 
 | Field | Value |

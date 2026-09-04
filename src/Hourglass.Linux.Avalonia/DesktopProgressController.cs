@@ -22,7 +22,7 @@ internal sealed class DesktopProgressController(IDesktopProgressService service,
 
             try
             {
-                if (!this.service.IsSupported || request.IsHidden)
+                if (request.IsHidden)
                 {
                     await this.service.ClearAsync(cancellationToken).ConfigureAwait(false);
                     this.lastAppliedRequest = request;
