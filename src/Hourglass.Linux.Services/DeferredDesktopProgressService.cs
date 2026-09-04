@@ -7,6 +7,7 @@ public sealed class DeferredDesktopProgressService : IDesktopProgressService
     private readonly Func<IDesktopProgressService> backendFactory;
     private readonly IDiagnosticSink diagnosticSink;
     private readonly object gate = new();
+    private readonly TaskCompletionSource initializationCompletion = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private IDesktopProgressService? backend;
     private DesktopProgressCommand? pendingCommand;
     private bool initializationStarted;
@@ -29,6 +30,8 @@ public sealed class DeferredDesktopProgressService : IDesktopProgressService
             }
         }
     }
+
+    internal Task InitializationCompleted => this.initializationCompletion.Task;
 
     public Task SetProgressAsync(
         double fraction,
@@ -119,6 +122,10 @@ public sealed class DeferredDesktopProgressService : IDesktopProgressService
                 "unity",
                 "Unity launcher desktop progress backend could not be initialized.",
                 exception));
+        }
+        finally
+        {
+            this.initializationCompletion.TrySetResult();
         }
     }
 

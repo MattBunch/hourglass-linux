@@ -57,7 +57,7 @@ public sealed class DeferredDesktopProgressServiceTests
         await service.SetProgressAsync(0.75, DesktopProgressState.Paused);
         releaseDiscovery.SetResult();
 
-        await backend.OperationCompleted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await service.InitializationCompleted.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.Equal(["set:Paused:0.75"], backend.Operations);
         Assert.True(service.IsSupported);
     }
