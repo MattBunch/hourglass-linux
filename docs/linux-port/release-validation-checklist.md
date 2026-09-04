@@ -56,6 +56,32 @@ Do not mark a desktop, package type, tray backend, dock backend, multi-monitor s
 | Evidence | `sha256sum --check SHA256SUMS` passed. `./hourglass-linux` exited with code `1` before showing a window and reported `X connection to :0 broken (explicit kill or server shutdown)`. No Hourglass process remained and no user-journal entry was recorded. |
 | Follow-up | DEV-15 remains in progress. `v0.2.0-beta.4` replaced the probe but still did not create a visible window. `v0.2.0-beta.5` must select software rendering without native DRI3 probing, then repeat the complete Ubuntu validation before DEV-14 can be completed. |
 
+## Public Beta Validation Record — `v0.2.0-beta.5`
+
+| Field | Value |
+| --- | --- |
+| App version | `0.2.0-beta.5` |
+| Tag and commit | `v0.2.0-beta.5` at `5cf546d8b01351bc4a111bd35bd96bb736227102` |
+| CI/artifact source | [Successful release workflow](https://github.com/MattBunch/hourglass-linux/actions/runs/33498793106); [GitHub prerelease](https://github.com/MattBunch/hourglass-linux/releases/tag/v0.2.0-beta.5) containing `hourglass-linux-0.2.0-beta.5-linux-x64.tar.gz` and `SHA256SUMS`. |
+| Package type | Self-contained `linux-x64` tarball, extracted directly from a path containing whitespace. |
+| Environment | Installed Ubuntu 24.04.4 GNOME Wayland VM with Xwayland; no separately installed .NET runtime. |
+| Tester and date | matt, 2026-09-04 |
+| Overall result | `Fail` |
+| Evidence | `sha256sum --check SHA256SUMS` passed. The process remained alive for more than two minutes, but no Hourglass X11 window appeared and captured stderr was empty. |
+| Follow-up | DEV-15 remains in progress. `v0.2.0-beta.6` adds opt-in startup diagnostics to identify the final completed startup phase before another rendering/window-creation change is attempted. |
+
+## Startup Diagnostics
+
+Run a diagnostic beta from the extracted archive with:
+
+```bash
+HOURGLASS_STARTUP_DIAGNOSTICS=1 \
+  ./hourglass-linux > hourglass-startup.log 2>&1 &
+```
+
+The log records startup milestones and display-session context. It is evidence
+for investigating a failed launch, not evidence that a visible window launched.
+
 ## Public Beta Validation Record — `v0.2.0-beta.4`
 
 | Field | Value |
