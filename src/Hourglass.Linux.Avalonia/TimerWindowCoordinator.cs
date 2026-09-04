@@ -57,7 +57,7 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
     internal TimerWindowCoordinator(
         IClassicDesktopStyleApplicationLifetime lifetime,
         StartupDiagnostics startupDiagnostics)
-        : this(lifetime, CreateDefaultServices(), startupDiagnostics)
+        : this(lifetime, CreateDefaultServices(startupDiagnostics), startupDiagnostics)
     {
     }
 
@@ -71,11 +71,11 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
             services.NotificationService,
             services.AudioAlertService,
             services.SessionInhibitor,
-            UnsupportedSystemPowerService.Instance,
-            new RtcWakeAlarmService(),
+            services.SystemPowerService,
+            services.WakeAlarmService,
             services.DesktopProgressService,
             services.StatusIconService,
-            new ApplicationInfoProvider(),
+            services.ApplicationInfoProvider,
             services.ExternalUriLauncher,
             createWindowAttentionService: target => new WindowAttentionController(target, services.DiagnosticSink),
             diagnosticSink: services.DiagnosticSink,
@@ -757,36 +757,109 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
         return new WindowAttentionController(target);
     }
 
-    private static DefaultCoordinatorServices CreateDefaultServices()
+    private static DefaultCoordinatorServices CreateDefaultServices(StartupDiagnostics startupDiagnostics)
     {
+        startupDiagnostics.RecordServiceStarting(StartupService.DiagnosticSink);
         IDiagnosticSink diagnosticSink = DiagnosticSinkFactory.CreateDefault();
+        startupDiagnostics.RecordServiceCompleted(StartupService.DiagnosticSink);
+
+        startupDiagnostics.RecordServiceStarting(StartupService.DesktopEnvironmentReader);
         var environmentReader = new ProcessDesktopEnvironmentReader();
+        startupDiagnostics.RecordServiceCompleted(StartupService.DesktopEnvironmentReader);
+
+        startupDiagnostics.RecordServiceStarting(StartupService.SessionBusProbe);
         var sessionBusProbe = new EnvironmentSessionBusProbe(environmentReader);
+        startupDiagnostics.RecordServiceCompleted(StartupService.SessionBusProbe);
+
+        startupDiagnostics.RecordServiceStarting(StartupService.XdgSettingsPathService);
+        var settingsPathService = new XdgSettingsPathService();
+        startupDiagnostics.RecordServiceCompleted(StartupService.XdgSettingsPathService);
+
+        startupDiagnostics.RecordServiceStarting(StartupService.SettingsStore);
+        var settingsStore = new JsonFileSettingsStore(settingsPathService, diagnosticSink);
+        startupDiagnostics.RecordServiceCompleted(StartupService.SettingsStore);
+
+        startupDiagnostics.RecordServiceStarting(StartupService.NotificationService);
+        var notificationService = new NotifySendNotificationService(diagnosticSink);
+        startupDiagnostics.RecordServiceCompleted(StartupService.NotificationService);
+
+        startupDiagnostics.RecordServiceStarting(StartupService.AudioAlertService);
+        var audioAlertService = new LinuxAudioAlertService(SoundAssetsDirectory, diagnosticSink);
+        startupDiagnostics.RecordServiceCompleted(StartupService.AudioAlertService);
+
+        startupDiagnostics.RecordServiceStarting(StartupService.SystemdSessionInhibitor);
+        var systemdSessionInhibitor = new SystemdSessionInhibitor(diagnosticSink);
+        startupDiagnostics.RecordServiceCompleted(StartupService.SystemdSessionInhibitor);
+
+        startupDiagnostics.RecordServiceStarting(StartupService.SessionInhibitor);
+        var sessionInhibitor = new CoordinatedSessionInhibitor(systemdSessionInhibitor);
+        startupDiagnostics.RecordServiceCompleted(StartupService.SessionInhibitor);
+
+        startupDiagnostics.RecordServiceStarting(StartupService.DesktopProgressService);
+        IDesktopProgressService desktopProgressService = LinuxDesktopProgressServiceFactory.CreateDefault(diagnosticSink);
+        startupDiagnostics.RecordServiceCompleted(StartupService.DesktopProgressService);
+
+        startupDiagnostics.RecordServiceStarting(StartupService.StatusIconService);
+        IStatusIconService statusIconService = CreateStatusIconService(
+            environmentReader,
+            sessionBusProbe,
+            diagnosticSink,
+            startupDiagnostics);
+        startupDiagnostics.RecordServiceCompleted(StartupService.StatusIconService);
+
+        startupDiagnostics.RecordServiceStarting(StartupService.ExternalUriLauncher);
+        var externalUriLauncher = new LinuxExternalUriLauncher(diagnosticSink);
+        startupDiagnostics.RecordServiceCompleted(StartupService.ExternalUriLauncher);
+
+        startupDiagnostics.RecordServiceStarting(StartupService.SystemPowerService);
+        ISystemPowerService systemPowerService = UnsupportedSystemPowerService.Instance;
+        startupDiagnostics.RecordServiceCompleted(StartupService.SystemPowerService);
+
+        startupDiagnostics.RecordServiceStarting(StartupService.WakeAlarmService);
+        var wakeAlarmService = new RtcWakeAlarmService();
+        startupDiagnostics.RecordServiceCompleted(StartupService.WakeAlarmService);
+
+        startupDiagnostics.RecordServiceStarting(StartupService.ApplicationInfoProvider);
+        var applicationInfoProvider = new ApplicationInfoProvider();
+        startupDiagnostics.RecordServiceCompleted(StartupService.ApplicationInfoProvider);
+
         return new DefaultCoordinatorServices(
-            new JsonFileSettingsStore(new XdgSettingsPathService(), diagnosticSink),
-            new NotifySendNotificationService(diagnosticSink),
-            new LinuxAudioAlertService(SoundAssetsDirectory, diagnosticSink),
-            new CoordinatedSessionInhibitor(new SystemdSessionInhibitor(diagnosticSink)),
-            LinuxDesktopProgressServiceFactory.CreateDefault(diagnosticSink),
-            CreateStatusIconService(environmentReader, sessionBusProbe, diagnosticSink),
-            new LinuxExternalUriLauncher(diagnosticSink),
+            settingsStore,
+            notificationService,
+            audioAlertService,
+            sessionInhibitor,
+            systemPowerService,
+            wakeAlarmService,
+            desktopProgressService,
+            statusIconService,
+            applicationInfoProvider,
+            externalUriLauncher,
             diagnosticSink);
     }
 
     private static IStatusIconService CreateStatusIconService(
         IDesktopEnvironmentReader environmentReader,
         ISessionBusProbe sessionBusProbe,
-        IDiagnosticSink diagnosticSink)
+        IDiagnosticSink diagnosticSink,
+        StartupDiagnostics startupDiagnostics)
     {
-        if (!new LinuxStatusIconCapability(environmentReader, sessionBusProbe).IsSupported())
+        startupDiagnostics.RecordServiceStarting(StartupService.StatusIconCapability);
+        bool isSupported = new LinuxStatusIconCapability(environmentReader, sessionBusProbe).IsSupported();
+        startupDiagnostics.RecordServiceCompleted(StartupService.StatusIconCapability);
+        if (!isSupported)
         {
             return UnsupportedStatusIconService.Instance;
         }
 
         try
         {
+            startupDiagnostics.RecordServiceStarting(StartupService.StatusIconAsset);
             using Stream iconStream = AssetLoader.Open(StatusIconResourceUri);
-            return new AvaloniaStatusIconService(new WindowIcon(iconStream));
+            startupDiagnostics.RecordServiceCompleted(StartupService.StatusIconAsset);
+            startupDiagnostics.RecordServiceStarting(StartupService.AvaloniaStatusIconService);
+            var statusIconService = new AvaloniaStatusIconService(new WindowIcon(iconStream));
+            startupDiagnostics.RecordServiceCompleted(StartupService.AvaloniaStatusIconService);
+            return statusIconService;
         }
         catch (Exception exception)
         {
@@ -876,8 +949,11 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
         INotificationService NotificationService,
         IAudioAlertService AudioAlertService,
         CoordinatedSessionInhibitor SessionInhibitor,
+        ISystemPowerService SystemPowerService,
+        IWakeAlarmService WakeAlarmService,
         IDesktopProgressService DesktopProgressService,
         IStatusIconService StatusIconService,
+        ApplicationInfoProvider ApplicationInfoProvider,
         IExternalUriLauncher ExternalUriLauncher,
         IDiagnosticSink DiagnosticSink);
 }

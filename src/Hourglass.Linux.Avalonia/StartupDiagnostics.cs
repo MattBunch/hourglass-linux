@@ -48,6 +48,16 @@ internal sealed class StartupDiagnostics
             $"[hourglass-startup] stage={stage} exception={exception.GetType().FullName} message={exception.Message}"));
     }
 
+    internal void RecordServiceStarting(StartupService service)
+    {
+        this.Write(FormattableString.Invariant($"[hourglass-startup] service={service} state=Starting"));
+    }
+
+    internal void RecordServiceCompleted(StartupService service)
+    {
+        this.Write(FormattableString.Invariant($"[hourglass-startup] service={service} state=Completed"));
+    }
+
     private string Read(string name)
     {
         return this.environmentVariableReader(name) ?? "<unset>";
@@ -87,6 +97,8 @@ internal enum StartupStage
     AppXamlLoaded,
     FrameworkInitialization,
     ClassicDesktopLifetimeConfigured,
+    CoordinatorConstructionStarting,
+    CoordinatorConstructionFailed,
     CoordinatorCreated,
     CoordinatorStartScheduled,
     CoordinatorStarting,
@@ -99,4 +111,26 @@ internal enum StartupStage
     CoordinatorStartFailed,
     UnhandledException,
     UnobservedTaskException
+}
+
+internal enum StartupService
+{
+    DiagnosticSink,
+    DesktopEnvironmentReader,
+    SessionBusProbe,
+    XdgSettingsPathService,
+    SettingsStore,
+    NotificationService,
+    AudioAlertService,
+    SystemdSessionInhibitor,
+    SessionInhibitor,
+    DesktopProgressService,
+    StatusIconService,
+    StatusIconCapability,
+    StatusIconAsset,
+    AvaloniaStatusIconService,
+    ExternalUriLauncher,
+    SystemPowerService,
+    WakeAlarmService,
+    ApplicationInfoProvider
 }

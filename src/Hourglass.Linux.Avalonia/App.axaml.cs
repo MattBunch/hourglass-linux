@@ -37,7 +37,17 @@ public sealed partial class App : Application
         {
             desktop.ShutdownMode = ShutdownMode.OnExplicitShutdown;
             this.startupDiagnostics.Record(StartupStage.ClassicDesktopLifetimeConfigured);
-            this.coordinator = new TimerWindowCoordinator(desktop, this.startupDiagnostics);
+            this.startupDiagnostics.Record(StartupStage.CoordinatorConstructionStarting);
+            try
+            {
+                this.coordinator = new TimerWindowCoordinator(desktop, this.startupDiagnostics);
+            }
+            catch (Exception exception)
+            {
+                this.startupDiagnostics.RecordException(StartupStage.CoordinatorConstructionFailed, exception);
+                throw;
+            }
+
             this.startupDiagnostics.Record(StartupStage.CoordinatorCreated);
             desktop.Exit += this.DesktopExit;
             SingleInstanceLaunchRequest? initialRequest = InitialLaunchRequest;
