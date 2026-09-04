@@ -13,6 +13,8 @@ public sealed class StartupDiagnosticsTests
 
         diagnostics.Record(StartupStage.ProcessEntry);
         diagnostics.RecordDisplayContext();
+        diagnostics.RecordServiceStarting(StartupService.SettingsStore);
+        diagnostics.RecordServiceCompleted(StartupService.SettingsStore);
 
         Assert.Equal(string.Empty, writer.ToString());
     }
@@ -33,6 +35,8 @@ public sealed class StartupDiagnosticsTests
 
         diagnostics.Record(StartupStage.ProcessEntry);
         diagnostics.RecordDisplayContext();
+        diagnostics.RecordServiceStarting(StartupService.SettingsStore);
+        diagnostics.RecordServiceCompleted(StartupService.SettingsStore);
 
         string output = writer.ToString();
         Assert.Contains("[hourglass-startup] stage=ProcessEntry", output, StringComparison.Ordinal);
@@ -41,6 +45,8 @@ public sealed class StartupDiagnosticsTests
         Assert.Contains("session-type=wayland", output, StringComparison.Ordinal);
         Assert.DoesNotContain("UNRELATED_SECRET", output, StringComparison.Ordinal);
         Assert.DoesNotContain("not-recorded", output, StringComparison.Ordinal);
+        Assert.Contains("[hourglass-startup] service=SettingsStore state=Starting", output, StringComparison.Ordinal);
+        Assert.Contains("[hourglass-startup] service=SettingsStore state=Completed", output, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -50,6 +56,7 @@ public sealed class StartupDiagnosticsTests
         var diagnostics = new StartupDiagnostics(_ => "true", writer);
 
         diagnostics.Record(StartupStage.ProcessEntry);
+        diagnostics.RecordServiceStarting(StartupService.SettingsStore);
 
         Assert.Equal(string.Empty, writer.ToString());
     }
@@ -60,9 +67,9 @@ public sealed class StartupDiagnosticsTests
         using var writer = new StringWriter();
         var diagnostics = new StartupDiagnostics(_ => "1", writer);
 
-        diagnostics.RecordException(StartupStage.CoordinatorStartFailed, new InvalidOperationException("startup failed"));
+        diagnostics.RecordException(StartupStage.CoordinatorConstructionFailed, new InvalidOperationException("startup failed"));
 
-        Assert.Contains("stage=CoordinatorStartFailed", writer.ToString(), StringComparison.Ordinal);
+        Assert.Contains("stage=CoordinatorConstructionFailed", writer.ToString(), StringComparison.Ordinal);
         Assert.Contains("exception=System.InvalidOperationException", writer.ToString(), StringComparison.Ordinal);
         Assert.Contains("message=startup failed", writer.ToString(), StringComparison.Ordinal);
     }
@@ -73,6 +80,7 @@ public sealed class StartupDiagnosticsTests
         var diagnostics = new StartupDiagnostics(_ => "1", new ThrowingTextWriter());
 
         diagnostics.Record(StartupStage.ProcessEntry);
+        diagnostics.RecordServiceCompleted(StartupService.SettingsStore);
     }
 
     private sealed class ThrowingTextWriter : TextWriter

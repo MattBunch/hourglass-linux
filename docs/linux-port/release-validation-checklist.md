@@ -68,7 +68,21 @@ Do not mark a desktop, package type, tray backend, dock backend, multi-monitor s
 | Tester and date | matt, 2026-09-04 |
 | Overall result | `Fail` |
 | Evidence | `sha256sum --check SHA256SUMS` passed. The process remained alive for more than two minutes, but no Hourglass X11 window appeared and captured stderr was empty. |
-| Follow-up | DEV-15 remains in progress. `v0.2.0-beta.6` adds opt-in startup diagnostics to identify the final completed startup phase before another rendering/window-creation change is attempted. |
+| Follow-up | DEV-15 remains in progress. `v0.2.0-beta.6` showed that startup stops after `ClassicDesktopLifetimeConfigured`, before `CoordinatorCreated`; the process remained alive and waited on `futex_do_wait`. `v0.2.0-beta.7` adds paired per-service construction markers to identify the precise blocker without changing rendering. |
+
+## Public Beta Validation Record — `v0.2.0-beta.6`
+
+| Field | Value |
+| --- | --- |
+| App version | `0.2.0-beta.6` |
+| Tag and commit | `v0.2.0-beta.6` at `f8a2bf8f692d002f71125aa003fc3a11d2d9ffeb` |
+| CI/artifact source | [Successful release workflow](https://github.com/MattBunch/hourglass-linux/actions/runs/33853974234); [GitHub prerelease](https://github.com/MattBunch/hourglass-linux/releases/tag/v0.2.0-beta.6) containing `hourglass-linux-0.2.0-beta.6-linux-x64.tar.gz` and `SHA256SUMS`. |
+| Package type | Self-contained `linux-x64` tarball, extracted directly from a path containing whitespace. |
+| Environment | Installed Ubuntu 24.04.4 GNOME Wayland VM with Xwayland; no separately installed .NET runtime. |
+| Tester and date | matt, 2026-09-04 |
+| Overall result | `Fail` |
+| Evidence | `sha256sum --check SHA256SUMS` passed. With `HOURGLASS_STARTUP_DIAGNOSTICS=1`, startup reached `ClassicDesktopLifetimeConfigured` but never reached `CoordinatorCreated`; the process remained alive after more than three minutes and `/proc/<pid>/wchan` reported `futex_do_wait`. |
+| Follow-up | DEV-15 remains in progress. `v0.2.0-beta.7` adds paired service-construction diagnostics to identify the exact blocking dependency before another behavior change is attempted. |
 
 ## Startup Diagnostics
 
