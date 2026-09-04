@@ -41,6 +41,7 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
     private readonly IExternalUriLauncher externalUriLauncher;
     private readonly DispatcherTimer refreshTimer;
     private readonly IStatusIconService statusIconService;
+    private readonly StartupDiagnostics startupDiagnostics;
     private readonly DispatcherTimer validationFeedbackTimer;
     private readonly WindowFullScreenController fullScreenController;
     private readonly WindowGeometryController windowGeometryController;
@@ -126,7 +127,8 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
         Func<MainWindow, Task>? prepareCoordinatorClose = null,
         Func<Task>? requestApplicationExit = null,
         bool suppressExpiryVisualFeedback = false,
-        bool suppressCommandPanelTransitions = false)
+        bool suppressCommandPanelTransitions = false,
+        StartupDiagnostics? startupDiagnostics = null)
     {
         InitializeComponent();
         if (suppressCommandPanelTransitions)
@@ -141,6 +143,7 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
             desktopProgressService ?? throw new ArgumentNullException(nameof(desktopProgressService)),
             diagnosticSink);
         this.statusIconService = statusIconService ?? throw new ArgumentNullException(nameof(statusIconService));
+        this.startupDiagnostics = startupDiagnostics ?? StartupDiagnostics.Disabled;
         this.applicationInfoProvider = applicationInfoProvider ?? throw new ArgumentNullException(nameof(applicationInfoProvider));
         this.externalUriLauncher = externalUriLauncher ?? throw new ArgumentNullException(nameof(externalUriLauncher));
         this.loadSettingsOnOpened = loadSettingsOnOpened;
@@ -585,6 +588,7 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
 
     private async void WindowOpened(object? sender, EventArgs e)
     {
+        this.startupDiagnostics.Record(StartupStage.MainWindowOpened);
         this.UpdateResponsiveLayout();
         if (this.loadSettingsOnOpened)
         {

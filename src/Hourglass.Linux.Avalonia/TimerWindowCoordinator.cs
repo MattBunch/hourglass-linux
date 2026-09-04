@@ -29,6 +29,7 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
     private readonly IClassicDesktopStyleApplicationLifetime lifetime;
     private readonly IAudioAlertService audioAlertService;
     private readonly IDiagnosticSink diagnosticSink;
+    private readonly StartupDiagnostics startupDiagnostics;
     private readonly INotificationService notificationService;
     private readonly ApplicationInfoProvider applicationInfoProvider;
     private readonly IExternalUriLauncher externalUriLauncher;
@@ -49,13 +50,21 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
     private WindowRegistration? mostRecentWindow;
 
     public TimerWindowCoordinator(IClassicDesktopStyleApplicationLifetime lifetime)
-        : this(lifetime, CreateDefaultServices())
+        : this(lifetime, StartupDiagnostics.Disabled)
+    {
+    }
+
+    internal TimerWindowCoordinator(
+        IClassicDesktopStyleApplicationLifetime lifetime,
+        StartupDiagnostics startupDiagnostics)
+        : this(lifetime, CreateDefaultServices(), startupDiagnostics)
     {
     }
 
     private TimerWindowCoordinator(
         IClassicDesktopStyleApplicationLifetime lifetime,
-        DefaultCoordinatorServices services)
+        DefaultCoordinatorServices services,
+        StartupDiagnostics startupDiagnostics)
         : this(
             lifetime,
             services.SettingsStore,
@@ -69,7 +78,8 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
             new ApplicationInfoProvider(),
             services.ExternalUriLauncher,
             createWindowAttentionService: target => new WindowAttentionController(target, services.DiagnosticSink),
-            diagnosticSink: services.DiagnosticSink)
+            diagnosticSink: services.DiagnosticSink,
+            startupDiagnostics: startupDiagnostics)
     {
     }
 
@@ -86,11 +96,13 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
         ApplicationInfoProvider? applicationInfoProvider = null,
         IExternalUriLauncher? externalUriLauncher = null,
         Func<IWindowAttentionTarget, IWindowAttentionService>? createWindowAttentionService = null,
-        IDiagnosticSink? diagnosticSink = null)
+        IDiagnosticSink? diagnosticSink = null,
+        StartupDiagnostics? startupDiagnostics = null)
     {
         this.lifetime = lifetime ?? throw new ArgumentNullException(nameof(lifetime));
         this.settingsStore = settingsStore ?? throw new ArgumentNullException(nameof(settingsStore));
         this.diagnosticSink = diagnosticSink ?? NoOpDiagnosticSink.Instance;
+        this.startupDiagnostics = startupDiagnostics ?? StartupDiagnostics.Disabled;
         this.appSettingsStore = new CoordinatedAppSettingsStore(this.settingsStore);
         this.notificationService = notificationService ?? throw new ArgumentNullException(nameof(notificationService));
         this.audioAlertService = audioAlertService ?? throw new ArgumentNullException(nameof(audioAlertService));
@@ -115,10 +127,12 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
         SingleInstanceLaunchRequest? initialRequest = null,
         CancellationToken cancellationToken = default)
     {
+        this.startupDiagnostics.Record(StartupStage.CoordinatorStarting);
         LinuxAppSettings settings = await this.LoadDocumentAsync(SettingsKey, LinuxAppSettings.Default, cancellationToken)
             .ConfigureAwait(true);
         ActiveTimerSessionsDocument activeSessions = await this.LoadActiveSessionsAsync(cancellationToken)
             .ConfigureAwait(true);
+        this.startupDiagnostics.Record(StartupStage.SettingsLoaded);
         this.showInNotificationArea = settings.ShowInNotificationArea && this.statusIconService.IsSupported;
         this.wakeFromSuspendEnabled = settings.WakeFromSuspendEnabled;
 
@@ -213,6 +227,7 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
             restoreActiveSessionOnLoad: false,
             uiDispatcher: AvaloniaUiDispatcher.Instance,
             diagnosticSink: this.diagnosticSink);
+        this.startupDiagnostics.Record(StartupStage.MainWindowConstructionStarting);
         var window = new MainWindow(
             viewModel,
             UnsupportedDesktopProgressService.Instance,
@@ -222,7 +237,9 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
             this.createWindowAttentionService,
             loadSettingsOnOpened: false,
             prepareCoordinatorClose: this.PrepareWindowCloseAsync,
-            requestApplicationExit: this.CloseAllWindowsAsync);
+            requestApplicationExit: this.CloseAllWindowsAsync,
+            startupDiagnostics: this.startupDiagnostics);
+        this.startupDiagnostics.Record(StartupStage.MainWindowConstructed);
         var registration = new WindowRegistration(window, viewModel);
 
         this.windows.Add(registration);
@@ -243,6 +260,7 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
         this.ApplyInitialGeometry(window, session?.WindowGeometry);
         _ = this.LoadWindowAsync(registration, session, savedTimer, launchRequest);
         window.Show();
+        this.startupDiagnostics.Record(StartupStage.MainWindowShowCalled);
         this.ApplyDesktopProgress();
         this.ApplyStatusIconState();
         this.ApplyWakeAlarm();
@@ -440,6 +458,7 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
     {
         if (sender is MainWindow window)
         {
+            this.startupDiagnostics.Record(StartupStage.MainWindowActivated);
             WindowRegistration? registration = this.windows.FirstOrDefault(item => item.Window == window);
             if (registration != null)
             {

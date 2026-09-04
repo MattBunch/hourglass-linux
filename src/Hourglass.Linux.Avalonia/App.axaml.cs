@@ -9,24 +9,41 @@ namespace Hourglass.Linux.Avalonia;
 public sealed partial class App : Application
 {
     private TimerWindowCoordinator? coordinator;
+    private readonly StartupDiagnostics startupDiagnostics;
 
     internal static SingleInstanceLaunchRequest? InitialLaunchRequest { get; set; }
 
+    public App()
+        : this(StartupDiagnostics.Disabled)
+    {
+    }
+
+    internal App(StartupDiagnostics startupDiagnostics)
+    {
+        this.startupDiagnostics = startupDiagnostics ?? throw new ArgumentNullException(nameof(startupDiagnostics));
+    }
+
     public override void Initialize()
     {
+        this.startupDiagnostics.Record(StartupStage.AppInitialize);
         AvaloniaXamlLoader.Load(this);
+        this.startupDiagnostics.Record(StartupStage.AppXamlLoaded);
     }
 
     public override void OnFrameworkInitializationCompleted()
     {
+        this.startupDiagnostics.Record(StartupStage.FrameworkInitialization);
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             desktop.ShutdownMode = ShutdownMode.OnExplicitShutdown;
-            this.coordinator = new TimerWindowCoordinator(desktop);
+            this.startupDiagnostics.Record(StartupStage.ClassicDesktopLifetimeConfigured);
+            this.coordinator = new TimerWindowCoordinator(desktop, this.startupDiagnostics);
+            this.startupDiagnostics.Record(StartupStage.CoordinatorCreated);
             desktop.Exit += this.DesktopExit;
             SingleInstanceLaunchRequest? initialRequest = InitialLaunchRequest;
             InitialLaunchRequest = null;
             _ = this.StartCoordinatorAsync(initialRequest);
+            this.startupDiagnostics.Record(StartupStage.CoordinatorStartScheduled);
         }
 
         base.OnFrameworkInitializationCompleted();
@@ -39,8 +56,16 @@ public sealed partial class App : Application
             return;
         }
 
-        await this.coordinator.StartAsync(initialRequest).ConfigureAwait(true);
-        SingleInstanceLaunchRequestDispatcher.Shared.Register(this.coordinator.HandleLaunchRequestAsync);
+        try
+        {
+            await this.coordinator.StartAsync(initialRequest).ConfigureAwait(true);
+            SingleInstanceLaunchRequestDispatcher.Shared.Register(this.coordinator.HandleLaunchRequestAsync);
+        }
+        catch (Exception exception)
+        {
+            this.startupDiagnostics.RecordException(StartupStage.CoordinatorStartFailed, exception);
+            throw;
+        }
     }
 
     private async void DesktopExit(object? sender, ControlledApplicationLifetimeExitEventArgs e)

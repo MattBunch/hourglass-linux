@@ -83,6 +83,46 @@ public sealed class ProgramTests
     }
 
     [Fact]
+    public void RunRecordsStartupMilestonesWhenDiagnosticsAreEnabled()
+    {
+        var service = new RecordingSingleInstanceService { AcquireResult = true };
+        using var writer = new StringWriter();
+        var diagnostics = new StartupDiagnostics(_ => "1", writer);
+
+        int exitCode = Program.Run(
+            [],
+            () => service,
+            _ => 0,
+            TextWriter.Null,
+            diagnostics);
+
+        Assert.Equal(0, exitCode);
+        string output = writer.ToString();
+        Assert.Contains("stage=CommandLineParsed", output, StringComparison.Ordinal);
+        Assert.Contains("stage=SingleInstanceAcquired", output, StringComparison.Ordinal);
+        Assert.Contains("stage=RequestListenerStarted", output, StringComparison.Ordinal);
+        Assert.Contains("stage=DesktopLifetimeStarting", output, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void RunRecordsDesktopLifetimeExceptionBeforeRethrowing()
+    {
+        var service = new RecordingSingleInstanceService { AcquireResult = true };
+        using var writer = new StringWriter();
+        var diagnostics = new StartupDiagnostics(_ => "1", writer);
+
+        Assert.Throws<InvalidOperationException>(() => Program.Run(
+            [],
+            () => service,
+            _ => throw new InvalidOperationException("desktop failed"),
+            TextWriter.Null,
+            diagnostics));
+
+        Assert.Contains("stage=DesktopLifetimeFailed", writer.ToString(), StringComparison.Ordinal);
+        Assert.Contains("message=desktop failed", writer.ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void RunSendsLaunchRequestWhenOwnershipIsNotAcquired()
     {
         var service = new RecordingSingleInstanceService { AcquireResult = false };
