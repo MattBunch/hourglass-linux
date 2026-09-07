@@ -111,10 +111,14 @@ for investigating a failed launch, not evidence that a visible window launched.
 | Field | Value |
 | --- | --- |
 | App version | `0.2.0-beta.8` |
-| Environment | Canonical reproduction target: installed Ubuntu 24.04.4 GNOME Wayland VM with Xwayland. |
-| Overall result | `Not run` |
-| Evidence | The desktop-progress service now returns a deferred proxy during coordinator construction. The first progress request starts Unity LauncherEntry discovery in the background, preserves only the newest pending set or clear operation, and replays it only after a supported backend is available. |
-| Follow-up | Before DEV-15 can close, repeat the installed-artifact check with checksum verification and startup diagnostics, confirm a visible window plus `CoordinatorCreated` and window-opened/activated markers, and run a timer. Desktop-progress visibility remains a separate dock-validation concern. |
+| Tag and commit | `v0.2.0-beta.8` at `b3c2429583e4da87f55193a1b9229e0f92660b86`. |
+| CI/artifact source | [Successful release workflow](https://github.com/MattBunch/hourglass-linux/actions/runs/33868411835); [GitHub prerelease](https://github.com/MattBunch/hourglass-linux/releases/tag/v0.2.0-beta.8) containing `hourglass-linux-0.2.0-beta.8-linux-x64.tar.gz` and `SHA256SUMS`. |
+| Package type | Self-contained `linux-x64` tarball, extracted directly in the VM. |
+| Environment | Installed Ubuntu 24.04.4 GNOME Wayland VM with Xwayland; `DISPLAY=:0`, `WAYLAND_DISPLAY=wayland-0`, and no separately installed .NET runtime. |
+| Tester and date | matt, 2026-09-07. |
+| Overall result | `Pass` |
+| Evidence | `sha256sum --check SHA256SUMS` passed. With `HOURGLASS_STARTUP_DIAGNOSTICS=1`, the released application visibly opened and recorded `CoordinatorCreated`, `MainWindowOpened`, and `MainWindowActivated`; all desktop-progress service construction markers completed. The launched process remained running. Manual timer validation passed for a 10-second timer: start, pause, resume, and expiry. |
+| Deferred coverage | Dock/taskbar progress visibility remains a separate desktop-integration validation concern. DEV-14 retains its broader Ubuntu release-validation checks. |
 
 ## Public Beta Validation Record — `v0.2.0-beta.4`
 
