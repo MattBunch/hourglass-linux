@@ -114,7 +114,7 @@ for investigating a failed launch, not evidence that a visible window launched.
 | Tag and commit | `v0.2.0-beta.8` at `b3c2429583e4da87f55193a1b9229e0f92660b86`. |
 | CI/artifact source | [Successful release workflow](https://github.com/MattBunch/hourglass-linux/actions/runs/33868411835); [GitHub prerelease](https://github.com/MattBunch/hourglass-linux/releases/tag/v0.2.0-beta.8) containing `hourglass-linux-0.2.0-beta.8-linux-x64.tar.gz` and `SHA256SUMS`. |
 | Package type | Self-contained `linux-x64` tarball, extracted directly in the VM. |
-| Environment | Installed Ubuntu 24.04.4 GNOME Wayland VM with Xwayland; `DISPLAY=:0`, `WAYLAND_DISPLAY=wayland-0`, and no separately installed .NET runtime. |
+| Environment | Installed Ubuntu 24.04.4 GNOME Shell 46.0 Wayland VM with Xwayland; `DISPLAY=:0`, `WAYLAND_DISPLAY=wayland-0`, and no separately installed .NET runtime. |
 | Tester and date | matt, 2026-09-07. |
 | Overall result | `Pass` |
 | Evidence | `sha256sum --check SHA256SUMS` passed. With `HOURGLASS_STARTUP_DIAGNOSTICS=1`, the released application visibly opened and recorded `CoordinatorCreated`, `MainWindowOpened`, and `MainWindowActivated`; all desktop-progress service construction markers completed. The launched process remained running. Manual timer validation passed for a 10-second timer: start, pause, resume, and expiry. |
