@@ -86,8 +86,11 @@ jobs:
           version=$(dotnet msbuild src/Hourglass.Linux.Avalonia/Hourglass.Linux.Avalonia.csproj -nologo -getProperty:Version)
           appimage="/tmp/Hourglass-${version}-x86_64.AppImage"
           packaging/appimage/build-appimage.sh /tmp/hourglass-linux.AppDir "$appimage"
-          sha256sum "$appimage" > /tmp/Hourglass-AppImage-SHA256SUMS
-          sha256sum --check /tmp/Hourglass-AppImage-SHA256SUMS
+          (
+            cd /tmp
+            sha256sum "$(basename "$appimage")" > Hourglass-AppImage-SHA256SUMS
+            sha256sum --check Hourglass-AppImage-SHA256SUMS
+          )
           printf 'path=%s\n' "$appimage" >> "$GITHUB_OUTPUT"
 
       - name: Validate packaging
