@@ -100,6 +100,10 @@ public sealed class PackagingMetadataTests
         Assert.Contains("curl --fail --location --retry 3", script, StringComparison.Ordinal);
         Assert.Contains("verify_checksum \"$appimagetool\" \"$appimagetool_sha256\"", script, StringComparison.Ordinal);
         Assert.Contains("verify_checksum \"$runtime\" \"$runtime_sha256\"", script, StringComparison.Ordinal);
+        Assert.Contains("source_date_epoch=${SOURCE_DATE_EPOCH:-}", script, StringComparison.Ordinal);
+        Assert.Contains("source_date_epoch=$(git -C \"$repo_root\" log -1 --format=%ct)", script, StringComparison.Ordinal);
+        Assert.Contains("find \"$appdir\" -exec touch -h -d \"@$source_date_epoch\" {} +", script, StringComparison.Ordinal);
+        Assert.Contains("SOURCE_DATE_EPOCH=\"$source_date_epoch\"", script, StringComparison.Ordinal);
         Assert.Contains("APPIMAGE_EXTRACT_AND_RUN=1 ARCH=x86_64", script, StringComparison.Ordinal);
         Assert.Contains("--runtime-file \"$runtime\" \"$appdir\" \"$output\"", script, StringComparison.Ordinal);
         Assert.Contains("Expected executable AppImage was not created", script, StringComparison.Ordinal);
