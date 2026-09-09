@@ -39,6 +39,21 @@ Settings are stored in `hourglass-linux/app.json` under `$XDG_CONFIG_HOME`, or u
 `XDG_CONFIG_HOME` is not set. Always-on-top uses Avalonia's standard `Topmost` window hint; some Wayland
 compositors may ignore that hint.
 
+## Run The Portable AppImage
+
+Download `Hourglass-<version>-x86_64.AppImage` and `SHA256SUMS` from a GitHub
+Release, then verify and run it:
+
+```bash
+sha256sum --check --ignore-missing SHA256SUMS
+chmod +x Hourglass-<version>-x86_64.AppImage
+./Hourglass-<version>-x86_64.AppImage
+```
+
+If the desktop does not provide FUSE support, run the same verified file with
+`./Hourglass-<version>-x86_64.AppImage --appimage-extract-and-run` instead.
+AppImage signing and automatic updates are not yet available.
+
 ## Regenerate The README Demo
 
 Requirements:

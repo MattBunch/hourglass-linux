@@ -44,6 +44,7 @@ tag-triggered release workflow. It repeats version, build, test, formatting,
 and package validation before publishing these assets:
 
 - `hourglass-linux-X.Y.Z-linux-x64.tar.gz`;
+- `Hourglass-X.Y.Z-x86_64.AppImage`;
 - `SHA256SUMS`.
 
 The archive contains a `licenses/` directory with the project `LICENSE.md` and
@@ -63,15 +64,16 @@ the workflow also verifies that the remote tag still resolves to the commit it
 built, so a force-moved tag fails safely. Draft retries repeat that target check
 after asset upload and before publishing the draft. New releases also begin as
 drafts, so every public release uses this same verified publish sequence.
-After downloading both assets into the same directory, verify the archive with:
+After downloading one or both package assets into the same directory, verify
+the available assets with:
 
 ```bash
-sha256sum --check SHA256SUMS
+sha256sum --check --ignore-missing SHA256SUMS
 ```
 
-The workflow does not publish an AppImage, package-manager artifacts, signed
-assets, signed tags, or attestations. Those capabilities remain separate
-milestones with their own key-management and distribution policies.
+The workflow does not publish package-manager artifacts, signed assets, signed
+tags, or attestations. AppImage signing and AppImageUpdate metadata remain
+separate milestones with their own key-management and distribution policies.
 
 ## Future package version mappings
 

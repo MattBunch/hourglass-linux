@@ -72,6 +72,15 @@ jobs:
       - name: Build AppDir
         run: packaging/appimage/build-appdir.sh "$RUNNER_TEMP/hourglass-linux-publish" "$RUNNER_TEMP/hourglass-linux.AppDir"
 
+      - name: Build AppImage
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          mkdir -p dist
+          packaging/appimage/build-appimage.sh \
+            "$RUNNER_TEMP/hourglass-linux.AppDir" \
+            "dist/Hourglass-${RELEASE_VERSION}-x86_64.AppImage"
+
       - name: Validate packaging
         env:
           HOURGLASS_REQUIRE_PACKAGE_VALIDATORS: "true"
@@ -141,7 +150,9 @@ jobs:
           RELEASE_VERSION: ${{ steps.version.outputs.value }}
         run: |
           cd dist
-          sha256sum "hourglass-linux-${RELEASE_VERSION}-linux-x64.tar.gz" > SHA256SUMS
+          sha256sum \
+            "hourglass-linux-${RELEASE_VERSION}-linux-x64.tar.gz" \
+            "Hourglass-${RELEASE_VERSION}-x86_64.AppImage" > SHA256SUMS
           sha256sum --check SHA256SUMS
 
       - name: Create GitHub Release
@@ -167,6 +178,7 @@ jobs:
 
           release_assets=(
             "dist/hourglass-linux-${RELEASE_VERSION}-linux-x64.tar.gz"
+            "dist/Hourglass-${RELEASE_VERSION}-x86_64.AppImage"
             dist/SHA256SUMS
           )
 

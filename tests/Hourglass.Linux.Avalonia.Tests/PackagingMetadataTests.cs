@@ -43,7 +43,7 @@ public sealed class PackagingMetadataTests
 
         XElement release = Assert.IsType<XElement>(component.Element("releases")?.Elements("release").FirstOrDefault());
         Assert.Equal(projectVersion, release.Attribute("version")?.Value);
-        Assert.Equal("2026-09-04", release.Attribute("date")?.Value);
+        Assert.Equal("2026-09-09", release.Attribute("date")?.Value);
         Assert.Equal("development", release.Attribute("type")?.Value);
     }
 
@@ -89,6 +89,23 @@ public sealed class PackagingMetadataTests
     }
 
     [Fact]
+    public void AppImageBuilderPinsToolingAndCreatesExecutableVersionedOutput()
+    {
+        string script = File.ReadAllText(FindRepositoryFile("packaging/appimage/build-appimage.sh"));
+
+        Assert.Contains("appimagetool_version=1.9.1", script, StringComparison.Ordinal);
+        Assert.Contains("appimagetool_sha256=ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0", script, StringComparison.Ordinal);
+        Assert.Contains("runtime_version=20251108", script, StringComparison.Ordinal);
+        Assert.Contains("runtime_sha256=2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d", script, StringComparison.Ordinal);
+        Assert.Contains("curl --fail --location --retry 3", script, StringComparison.Ordinal);
+        Assert.Contains("verify_checksum \"$appimagetool\" \"$appimagetool_sha256\"", script, StringComparison.Ordinal);
+        Assert.Contains("verify_checksum \"$runtime\" \"$runtime_sha256\"", script, StringComparison.Ordinal);
+        Assert.Contains("APPIMAGE_EXTRACT_AND_RUN=1 ARCH=x86_64", script, StringComparison.Ordinal);
+        Assert.Contains("--runtime-file \"$runtime\" \"$appdir\" \"$output\"", script, StringComparison.Ordinal);
+        Assert.Contains("Expected executable AppImage was not created", script, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void ReleaseScriptsArePartOfPackagingWorkflow()
     {
         string publishScript = File.ReadAllText(FindRepositoryFile("scripts/publish-linux-release.sh"));
@@ -116,6 +133,9 @@ public sealed class PackagingMetadataTests
         Assert.Contains("HOURGLASS_REQUIRE_PACKAGE_VALIDATORS: \"true\"", workflow, StringComparison.Ordinal);
         Assert.Contains("Build Linux package artifacts", workflow, StringComparison.Ordinal);
         Assert.Contains("scripts/validate-linux-packaging.sh /tmp/hourglass-linux-publish /tmp/hourglass-linux.AppDir", workflow, StringComparison.Ordinal);
+        Assert.Contains("packaging/appimage/build-appimage.sh", workflow, StringComparison.Ordinal);
+        Assert.Contains("Hourglass-AppImage-SHA256SUMS", workflow, StringComparison.Ordinal);
+        Assert.Contains("hourglass-linux-AppImage", workflow, StringComparison.Ordinal);
         Assert.Contains("actions/upload-artifact v4.6.2", workflow, StringComparison.Ordinal);
         Assert.Contains("ea165f8d65b6e75b540449e92b4886f43607fa02", workflow, StringComparison.Ordinal);
     }
@@ -134,6 +154,8 @@ public sealed class PackagingMetadataTests
         Assert.Contains("scripts/publish-linux-release.sh", workflow, StringComparison.Ordinal);
         Assert.Contains("scripts/validate-linux-packaging.sh", workflow, StringComparison.Ordinal);
         Assert.Contains("hourglass-linux-${RELEASE_VERSION}-linux-x64.tar.gz", workflow, StringComparison.Ordinal);
+        Assert.Contains("Hourglass-${RELEASE_VERSION}-x86_64.AppImage", workflow, StringComparison.Ordinal);
+        Assert.Contains("\"Hourglass-${RELEASE_VERSION}-x86_64.AppImage\" > SHA256SUMS", workflow, StringComparison.Ordinal);
         Assert.Contains("dotnet nuget locals global-packages --list", workflow, StringComparison.Ordinal);
         Assert.Contains("find \"$archive_directory\" -type f -name '*.pdb' -delete", workflow, StringComparison.Ordinal);
         Assert.Contains("Release archive staging still contains portable debug symbols.", workflow, StringComparison.Ordinal);

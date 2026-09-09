@@ -4,6 +4,18 @@ All notable changes to Hourglass Linux are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0-beta.9] - 2026-09-09
+
+### Added
+
+- Publish a reproducible, checksummed x86_64 AppImage alongside the existing
+  self-contained Linux archive.
+
+### Known limitations
+
+- AppImage signing, AppImageUpdate metadata, and physical multi-monitor and
+  wake-from-suspend validation remain unavailable.
+
 ## [0.2.0-beta.8] - 2026-09-04
 
 ### Fixed

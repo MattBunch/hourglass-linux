@@ -460,21 +460,21 @@ AppImage validation in CI
 
 ### AppDir review
 
-- [ ] Confirm `AppRun` exists and uses relative paths.
-- [ ] Confirm application files and sounds are included.
-- [ ] Confirm desktop entry, metainfo, and icons are included.
-- [ ] Confirm root desktop-entry symlink and `.DirIcon` exist.
-- [ ] Confirm executable permissions.
+- [x] Confirm `AppRun` exists and uses relative paths.
+- [x] Confirm application files and sounds are included.
+- [x] Confirm desktop entry, metainfo, and icons are included.
+- [x] Confirm root desktop-entry symlink and `.DirIcon` exist.
+- [x] Confirm executable permissions.
 
 ### AppImage tooling
 
-- [ ] Add `packaging/appimage/build-appimage.sh`.
-- [ ] Pin AppImage tooling version and checksum.
-- [ ] Avoid unpinned latest downloads.
-- [ ] Pass `ARCH=x86_64` explicitly.
-- [ ] Generate a versioned filename.
-- [ ] Mark final AppImage executable.
-- [ ] Generate checksum.
+- [x] Add `packaging/appimage/build-appimage.sh`.
+- [x] Pin AppImage tooling version and checksum.
+- [x] Avoid unpinned latest downloads.
+- [x] Pass `ARCH=x86_64` explicitly.
+- [x] Generate a versioned filename.
+- [x] Mark final AppImage executable.
+- [x] Generate checksum.
 
 ### Compatibility testing
 
@@ -490,12 +490,12 @@ AppImage validation in CI
 
 ### Release integration
 
-- [ ] Add AppImage build to release workflow.
-- [ ] Upload AppImage directly, not inside ZIP.
-- [ ] Include AppImage in checksums.
-- [ ] Add README instructions.
-- [ ] Document executable permissions and FUSE troubleshooting.
-- [ ] Defer AppImageUpdate until signing and update hosting are designed.
+- [x] Add AppImage build to release workflow.
+- [x] Upload AppImage directly, not inside ZIP.
+- [x] Include AppImage in checksums.
+- [x] Add README instructions.
+- [x] Document executable permissions and FUSE troubleshooting.
+- [x] Defer AppImageUpdate until signing and update hosting are designed.
 
 ## Acceptance criteria
 
@@ -1368,7 +1368,7 @@ Update this table whenever a milestone changes state.
 | 1. Versioning and source of truth | Complete | Evaluated project version, AppStream metadata, and release tags are validated by the .NET release tool. |
 | 2. Storefront metadata and screenshots | Not started | AppStream exists; screenshots remain. |
 | 3. Public GitHub release pipeline | Complete | `v0.2.0-beta.1` was published and checksum-verified; its self-contained archive passed clean Fedora 44 GNOME VM validation. Ubuntu validation is tracked separately in DEV-14. |
-| 4. AppImage release | Not started | AppDir exists; final AppImage generation is missing. |
+| 4. AppImage release | In progress | Final AppImage generation and CI/release integration are implemented; attended Ubuntu, Fedora, and Arch validation is required before publishing. |
 | 5. Production Flatpak and Flathub | Not started | Local prototype manifest exists. |
 | 6. Fedora RPM and COPR | Not started | RPM spec not yet added. |
 | 7. Arch Linux AUR | Not started | PKGBUILD not yet added. |
@@ -1389,7 +1389,7 @@ Update this table whenever a milestone changes state.
 - [ ] Add storefront screenshots.
 - [ ] Improve AppStream release metadata.
 - [x] Publish and verify the `v0.2.0-beta.1` GitHub prerelease.
-- [ ] Convert existing AppDir into a final AppImage.
+- [x] Convert existing AppDir into a final AppImage.
 - [x] Test the prerelease on Fedora.
 - [ ] Test the prerelease on Ubuntu (DEV-14).
 - [ ] Begin production Flatpak conversion.

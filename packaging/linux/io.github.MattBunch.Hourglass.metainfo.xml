@@ -19,6 +19,11 @@
     <binary>hourglass-linux</binary>
   </provides>
   <releases>
+    <release version="0.2.0-beta.9" date="2026-09-09" type="development">
+      <description>
+        <p>Add a reproducible, checksummed x86_64 AppImage release artifact.</p>
+      </description>
+    </release>
     <release version="0.2.0-beta.8" date="2026-09-04" type="development">
       <description>
         <p>Defer Unity launcher desktop-progress discovery until after the first window request.</p>
