@@ -80,6 +80,19 @@ jobs:
       - name: Build AppDir
         run: packaging/appimage/build-appdir.sh /tmp/hourglass-linux-publish /tmp/hourglass-linux.AppDir
 
+      - name: Build AppImage
+        id: appimage
+        run: |
+          version=$(dotnet msbuild src/Hourglass.Linux.Avalonia/Hourglass.Linux.Avalonia.csproj -nologo -getProperty:Version)
+          appimage="/tmp/Hourglass-${version}-x86_64.AppImage"
+          packaging/appimage/build-appimage.sh /tmp/hourglass-linux.AppDir "$appimage"
+          (
+            cd /tmp
+            sha256sum "$(basename "$appimage")" > Hourglass-AppImage-SHA256SUMS
+            sha256sum --check Hourglass-AppImage-SHA256SUMS
+          )
+          printf 'path=%s\n' "$appimage" >> "$GITHUB_OUTPUT"
+
       - name: Validate packaging
         env:
           HOURGLASS_REQUIRE_PACKAGE_VALIDATORS: "true"
@@ -104,3 +117,12 @@ jobs:
         with:
           name: hourglass-linux-AppDir
           path: /tmp/hourglass-linux-AppDir.tar.gz
+
+      - name: Upload AppImage artifact
+        # actions/upload-artifact v4.6.2
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: hourglass-linux-AppImage
+          path: |
+            ${{ steps.appimage.outputs.path }}
+            /tmp/Hourglass-AppImage-SHA256SUMS

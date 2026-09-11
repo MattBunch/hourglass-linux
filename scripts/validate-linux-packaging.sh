@@ -41,6 +41,13 @@ require_text() {
 }
 
 require_executable "$publish_dir/hourglass-linux"
+require_file "$publish_dir/licenses/LICENSE.md"
+require_file "$publish_dir/licenses/Microsoft.NETCore.App.Runtime.linux-x64/LICENSE.TXT"
+require_file "$publish_dir/licenses/Microsoft.NETCore.App.Runtime.linux-x64/THIRD-PARTY-NOTICES.TXT"
+require_file "$publish_dir/licenses/harfbuzzsharp.nativeassets.linux/LICENSE.txt"
+require_file "$publish_dir/licenses/harfbuzzsharp.nativeassets.linux/THIRD-PARTY-NOTICES.txt"
+require_file "$publish_dir/licenses/skiasharp.nativeassets.linux/LICENSE.txt"
+require_file "$publish_dir/licenses/skiasharp.nativeassets.linux/THIRD-PARTY-NOTICES.txt"
 require_file "$desktop_file"
 require_file "$metainfo_file"
 require_file "$flatpak_manifest"
@@ -81,6 +88,23 @@ require_file "$appdir/usr/share/applications/$app_id.desktop"
 require_file "$appdir/usr/share/metainfo/$app_id.metainfo.xml"
 require_file "$appdir/usr/share/icons/hicolor/256x256/apps/hourglass.png"
 require_file "$appdir/usr/share/icons/hicolor/scalable/apps/hourglass.svg"
+require_file "$appdir/usr/bin/licenses/LICENSE.md"
+require_file "$appdir/usr/bin/licenses/Microsoft.NETCore.App.Runtime.linux-x64/LICENSE.TXT"
+require_file "$appdir/usr/bin/licenses/Microsoft.NETCore.App.Runtime.linux-x64/THIRD-PARTY-NOTICES.TXT"
+require_file "$appdir/usr/bin/licenses/harfbuzzsharp.nativeassets.linux/LICENSE.txt"
+require_file "$appdir/usr/bin/licenses/harfbuzzsharp.nativeassets.linux/THIRD-PARTY-NOTICES.txt"
+require_file "$appdir/usr/bin/licenses/skiasharp.nativeassets.linux/LICENSE.txt"
+require_file "$appdir/usr/bin/licenses/skiasharp.nativeassets.linux/THIRD-PARTY-NOTICES.txt"
+
+if find "$publish_dir" -type f -name '*.pdb' -print -quit | grep -q .; then
+  printf 'Release publish output should not contain portable debug symbols.\n' >&2
+  exit 1
+fi
+
+if find "$appdir" -type f -name '*.pdb' -print -quit | grep -q .; then
+  printf 'AppDir should not contain portable debug symbols.\n' >&2
+  exit 1
+fi
 
 if command -v desktop-file-validate >/dev/null 2>&1; then
   desktop-file-validate "$desktop_file"

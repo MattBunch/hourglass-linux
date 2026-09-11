@@ -43,5 +43,5 @@ packages for the current sources.
 Before publishing an archive, AppImage, or other redistributable artifact, the
 release pipeline must include the project MIT license and the verbatim
 third-party notices supplied by the self-contained .NET runtime and native
-asset packages. This remains a DEV-5 release blocker because the current
-publish and AppDir scripts do not yet copy that notice bundle.
+asset packages. `scripts/publish-linux-release.sh` stages that notice bundle in
+`licenses/`, and the AppDir builder copies it into the final AppImage payload.

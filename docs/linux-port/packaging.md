@@ -34,6 +34,8 @@ Release publishes pass the current Git commit to the Avalonia project as `Source
 - `packaging/linux/io.github.MattBunch.Hourglass.desktop` is desktop launcher metadata.
 - `packaging/linux/io.github.MattBunch.Hourglass.metainfo.xml` is draft AppStream metadata.
 - `packaging/appimage/build-appdir.sh` assembles an AppDir from a publish output directory.
+- `packaging/appimage/build-appimage.sh` downloads pinned, checksum-verified
+  AppImage tooling and converts an AppDir into an executable x86_64 AppImage.
 - `scripts/publish-linux-release.sh` produces the self-contained `linux-x64` publish directory.
 - `scripts/validate-linux-packaging.sh` checks publish and AppDir layout plus package metadata.
 
@@ -66,6 +68,7 @@ The packaging job uploads:
 
 - a self-contained `linux-x64` publish tarball;
 - an AppDir tarball assembled from that publish output.
+- a final AppImage and its standalone SHA-256 checksum record.
 
 CI artifacts are validation outputs, not public releases.
 

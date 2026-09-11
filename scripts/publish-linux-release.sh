@@ -88,3 +88,41 @@ if [[ -n "$source_revision" ]]; then
 fi
 
 dotnet publish "${publish_args[@]}"
+
+find "$output" -type f -name '*.pdb' -delete
+if find "$output" -type f -name '*.pdb' -print -quit | grep -q .; then
+  printf 'Release publish output still contains portable debug symbols.\n' >&2
+  exit 1
+fi
+
+notice_directory="$output/licenses"
+nuget_packages=$(dotnet nuget locals global-packages --list | sed -n 's/^global-packages: //p')
+runtime_version=$(sed -nE 's/^[[:space:]]*"version": "([^"]+)".*/\1/p' "$output/hourglass-linux.runtimeconfig.json")
+project_assets="$repo_root/src/Hourglass.Linux.Avalonia/obj/project.assets.json"
+
+package_version() {
+  local package_name=$1
+  local escaped_name="${package_name//./\\.}"
+
+  sed -nE "s/^[[:space:]]*\"${escaped_name}\/([^\"]+)\": \{.*/\1/p" "$project_assets" | head -n 1
+}
+
+stage_native_asset_notices() {
+  local package_name=$1
+  local package_version=$2
+  local package_directory="${nuget_packages}/${package_name}/${package_version}"
+  local destination_directory="${notice_directory}/${package_name}"
+
+  mkdir -p "$destination_directory"
+  cp "$package_directory/LICENSE.txt" "$destination_directory/LICENSE.txt"
+  cp "$package_directory/THIRD-PARTY-NOTICES.txt" "$destination_directory/THIRD-PARTY-NOTICES.txt"
+}
+
+test -n "$nuget_packages"
+test -n "$runtime_version"
+mkdir -p "$notice_directory/Microsoft.NETCore.App.Runtime.linux-x64"
+cp "$repo_root/LICENSE.md" "$notice_directory/LICENSE.md"
+cp "$nuget_packages/microsoft.netcore.app.runtime.linux-x64/$runtime_version/LICENSE.TXT" "$notice_directory/Microsoft.NETCore.App.Runtime.linux-x64/LICENSE.TXT"
+cp "$nuget_packages/microsoft.netcore.app.runtime.linux-x64/$runtime_version/THIRD-PARTY-NOTICES.TXT" "$notice_directory/Microsoft.NETCore.App.Runtime.linux-x64/THIRD-PARTY-NOTICES.TXT"
+stage_native_asset_notices harfbuzzsharp.nativeassets.linux "$(package_version HarfBuzzSharp.NativeAssets.Linux)"
+stage_native_asset_notices skiasharp.nativeassets.linux "$(package_version SkiaSharp.NativeAssets.Linux)"

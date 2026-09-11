@@ -43,7 +43,7 @@ public sealed class PackagingMetadataTests
 
         XElement release = Assert.IsType<XElement>(component.Element("releases")?.Elements("release").FirstOrDefault());
         Assert.Equal(projectVersion, release.Attribute("version")?.Value);
-        Assert.Equal("2026-09-04", release.Attribute("date")?.Value);
+        Assert.Equal("2026-09-09", release.Attribute("date")?.Value);
         Assert.Equal("development", release.Attribute("type")?.Value);
     }
 
@@ -89,6 +89,27 @@ public sealed class PackagingMetadataTests
     }
 
     [Fact]
+    public void AppImageBuilderPinsToolingAndCreatesExecutableVersionedOutput()
+    {
+        string script = File.ReadAllText(FindRepositoryFile("packaging/appimage/build-appimage.sh"));
+
+        Assert.Contains("appimagetool_version=1.9.1", script, StringComparison.Ordinal);
+        Assert.Contains("appimagetool_sha256=ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0", script, StringComparison.Ordinal);
+        Assert.Contains("runtime_version=20251108", script, StringComparison.Ordinal);
+        Assert.Contains("runtime_sha256=2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d", script, StringComparison.Ordinal);
+        Assert.Contains("curl --fail --location --retry 3", script, StringComparison.Ordinal);
+        Assert.Contains("verify_checksum \"$appimagetool\" \"$appimagetool_sha256\"", script, StringComparison.Ordinal);
+        Assert.Contains("verify_checksum \"$runtime\" \"$runtime_sha256\"", script, StringComparison.Ordinal);
+        Assert.Contains("source_date_epoch=${SOURCE_DATE_EPOCH:-}", script, StringComparison.Ordinal);
+        Assert.Contains("source_date_epoch=$(git -C \"$repo_root\" log -1 --format=%ct)", script, StringComparison.Ordinal);
+        Assert.Contains("find \"$appdir\" -exec touch -h -d \"@$source_date_epoch\" {} +", script, StringComparison.Ordinal);
+        Assert.Contains("SOURCE_DATE_EPOCH=\"$source_date_epoch\"", script, StringComparison.Ordinal);
+        Assert.Contains("APPIMAGE_EXTRACT_AND_RUN=1 ARCH=x86_64", script, StringComparison.Ordinal);
+        Assert.Contains("--runtime-file \"$runtime\" \"$appdir\" \"$output\"", script, StringComparison.Ordinal);
+        Assert.Contains("Expected executable AppImage was not created", script, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void ReleaseScriptsArePartOfPackagingWorkflow()
     {
         string publishScript = File.ReadAllText(FindRepositoryFile("scripts/publish-linux-release.sh"));
@@ -103,6 +124,12 @@ public sealed class PackagingMetadataTests
         Assert.Contains("dotnet publish \"${publish_args[@]}\"", publishScript, StringComparison.Ordinal);
         Assert.Contains("-p:SourceRevisionId=$source_revision", publishScript, StringComparison.Ordinal);
         Assert.Contains("--self-contained true", publishScript, StringComparison.Ordinal);
+        Assert.Contains("find \"$output\" -type f -name '*.pdb' -delete", publishScript, StringComparison.Ordinal);
+        Assert.Contains("Release publish output still contains portable debug symbols.", publishScript, StringComparison.Ordinal);
+        Assert.Contains("notice_directory=\"$output/licenses\"", publishScript, StringComparison.Ordinal);
+        Assert.Contains("dotnet nuget locals global-packages --list", publishScript, StringComparison.Ordinal);
+        Assert.Contains("stage_native_asset_notices harfbuzzsharp.nativeassets.linux", publishScript, StringComparison.Ordinal);
+        Assert.Contains("stage_native_asset_notices skiasharp.nativeassets.linux", publishScript, StringComparison.Ordinal);
         Assert.DoesNotContain("cp -a -- \"$build_output/.\"", publishScript, StringComparison.Ordinal);
         Assert.Contains("require_text \"$flatpak_manifest\" '      - cp -a publish/. /app/lib/hourglass-linux/'", validateScript, StringComparison.Ordinal);
         Assert.Contains("require_text \"$flatpak_manifest\" '        exec /app/lib/hourglass-linux/hourglass-linux \"$@\"'", validateScript, StringComparison.Ordinal);
@@ -112,10 +139,18 @@ public sealed class PackagingMetadataTests
         Assert.Contains("desktop-file-validate", validateScript, StringComparison.Ordinal);
         Assert.Contains("appstreamcli validate --no-net", validateScript, StringComparison.Ordinal);
         Assert.Contains("HOURGLASS_REQUIRE_PACKAGE_VALIDATORS", validateScript, StringComparison.Ordinal);
+        Assert.Contains("$publish_dir/licenses/LICENSE.md", validateScript, StringComparison.Ordinal);
+        Assert.Contains("$appdir/usr/bin/licenses/LICENSE.md", validateScript, StringComparison.Ordinal);
+        Assert.Contains("AppDir should not contain portable debug symbols.", validateScript, StringComparison.Ordinal);
         Assert.Contains("sudo apt-get install --yes appstream desktop-file-utils", workflow, StringComparison.Ordinal);
         Assert.Contains("HOURGLASS_REQUIRE_PACKAGE_VALIDATORS: \"true\"", workflow, StringComparison.Ordinal);
         Assert.Contains("Build Linux package artifacts", workflow, StringComparison.Ordinal);
         Assert.Contains("scripts/validate-linux-packaging.sh /tmp/hourglass-linux-publish /tmp/hourglass-linux.AppDir", workflow, StringComparison.Ordinal);
+        Assert.Contains("packaging/appimage/build-appimage.sh", workflow, StringComparison.Ordinal);
+        Assert.Contains("Hourglass-AppImage-SHA256SUMS", workflow, StringComparison.Ordinal);
+        Assert.Contains("sha256sum \"$(basename \"$appimage\")\" > Hourglass-AppImage-SHA256SUMS", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("sha256sum \"$appimage\" > /tmp/Hourglass-AppImage-SHA256SUMS", workflow, StringComparison.Ordinal);
+        Assert.Contains("hourglass-linux-AppImage", workflow, StringComparison.Ordinal);
         Assert.Contains("actions/upload-artifact v4.6.2", workflow, StringComparison.Ordinal);
         Assert.Contains("ea165f8d65b6e75b540449e92b4886f43607fa02", workflow, StringComparison.Ordinal);
     }
@@ -134,13 +169,9 @@ public sealed class PackagingMetadataTests
         Assert.Contains("scripts/publish-linux-release.sh", workflow, StringComparison.Ordinal);
         Assert.Contains("scripts/validate-linux-packaging.sh", workflow, StringComparison.Ordinal);
         Assert.Contains("hourglass-linux-${RELEASE_VERSION}-linux-x64.tar.gz", workflow, StringComparison.Ordinal);
-        Assert.Contains("dotnet nuget locals global-packages --list", workflow, StringComparison.Ordinal);
-        Assert.Contains("find \"$archive_directory\" -type f -name '*.pdb' -delete", workflow, StringComparison.Ordinal);
+        Assert.Contains("Hourglass-${RELEASE_VERSION}-x86_64.AppImage", workflow, StringComparison.Ordinal);
+        Assert.Contains("\"Hourglass-${RELEASE_VERSION}-x86_64.AppImage\" > SHA256SUMS", workflow, StringComparison.Ordinal);
         Assert.Contains("Release archive staging still contains portable debug symbols.", workflow, StringComparison.Ordinal);
-        Assert.Contains("cp LICENSE.md \"$notice_directory/LICENSE.md\"", workflow, StringComparison.Ordinal);
-        Assert.Contains("Microsoft.NETCore.App.Runtime.linux-x64/LICENSE.TXT", workflow, StringComparison.Ordinal);
-        Assert.Contains("harfbuzzsharp.nativeassets.linux/LICENSE.txt", workflow, StringComparison.Ordinal);
-        Assert.Contains("skiasharp.nativeassets.linux/LICENSE.txt", workflow, StringComparison.Ordinal);
         Assert.Contains("SHA256SUMS", workflow, StringComparison.Ordinal);
         Assert.Contains("sha256sum --check SHA256SUMS", workflow, StringComparison.Ordinal);
         Assert.Contains("git ls-remote origin \"refs/tags/$GITHUB_REF_NAME^{}\"", workflow, StringComparison.Ordinal);

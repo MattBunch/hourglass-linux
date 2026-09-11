@@ -72,6 +72,15 @@ jobs:
       - name: Build AppDir
         run: packaging/appimage/build-appdir.sh "$RUNNER_TEMP/hourglass-linux-publish" "$RUNNER_TEMP/hourglass-linux.AppDir"
 
+      - name: Build AppImage
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          mkdir -p dist
+          packaging/appimage/build-appimage.sh \
+            "$RUNNER_TEMP/hourglass-linux.AppDir" \
+            "dist/Hourglass-${RELEASE_VERSION}-x86_64.AppImage"
+
       - name: Validate packaging
         env:
           HOURGLASS_REQUIRE_PACKAGE_VALIDATORS: "true"
@@ -84,43 +93,12 @@ jobs:
           mkdir -p dist
           archive="dist/hourglass-linux-${RELEASE_VERSION}-linux-x64.tar.gz"
           archive_directory="$RUNNER_TEMP/hourglass-linux-archive"
-          notice_directory="$archive_directory/licenses"
-          nuget_packages=$(dotnet nuget locals global-packages --list | sed -n 's/^global-packages: //p')
-          runtime_version=$(sed -nE 's/^[[:space:]]*"version": "([^"]+)".*/\1/p' "$RUNNER_TEMP/hourglass-linux-publish/hourglass-linux.runtimeconfig.json")
-          project_assets="src/Hourglass.Linux.Avalonia/obj/project.assets.json"
-
-          package_version() {
-            local package_name="$1"
-            local escaped_name="${package_name//./\\.}"
-            sed -nE "s/^[[:space:]]*\"${escaped_name}\/([^\"]+)\": \{.*/\1/p" "$project_assets" | head -n 1
-          }
-
-          stage_native_asset_notices() {
-            local package_name="$1"
-            local package_version="$2"
-            local package_directory="${nuget_packages}/${package_name}/${package_version}"
-            local destination_directory="${notice_directory}/${package_name}"
-
-            mkdir -p "$destination_directory"
-            cp "$package_directory/LICENSE.txt" "$destination_directory/LICENSE.txt"
-            cp "$package_directory/THIRD-PARTY-NOTICES.txt" "$destination_directory/THIRD-PARTY-NOTICES.txt"
-          }
-
-          test -n "$nuget_packages"
-          test -n "$runtime_version"
           mkdir -p "$archive_directory"
           cp -a "$RUNNER_TEMP/hourglass-linux-publish/." "$archive_directory/"
-          find "$archive_directory" -type f -name '*.pdb' -delete
           if find "$archive_directory" -type f -name '*.pdb' -print -quit | grep -q .; then
             printf 'Release archive staging still contains portable debug symbols.\n' >&2
             exit 1
           fi
-          mkdir -p "$notice_directory/Microsoft.NETCore.App.Runtime.linux-x64"
-          cp LICENSE.md "$notice_directory/LICENSE.md"
-          cp "$nuget_packages/microsoft.netcore.app.runtime.linux-x64/$runtime_version/LICENSE.TXT" "$notice_directory/Microsoft.NETCore.App.Runtime.linux-x64/LICENSE.TXT"
-          cp "$nuget_packages/microsoft.netcore.app.runtime.linux-x64/$runtime_version/THIRD-PARTY-NOTICES.TXT" "$notice_directory/Microsoft.NETCore.App.Runtime.linux-x64/THIRD-PARTY-NOTICES.TXT"
-          stage_native_asset_notices harfbuzzsharp.nativeassets.linux "$(package_version HarfBuzzSharp.NativeAssets.Linux)"
-          stage_native_asset_notices skiasharp.nativeassets.linux "$(package_version SkiaSharp.NativeAssets.Linux)"
 
           tar -C "$archive_directory" -czf "$archive" .
           tar -tzf "$archive" | grep -Fx './hourglass-linux'
@@ -141,7 +119,9 @@ jobs:
           RELEASE_VERSION: ${{ steps.version.outputs.value }}
         run: |
           cd dist
-          sha256sum "hourglass-linux-${RELEASE_VERSION}-linux-x64.tar.gz" > SHA256SUMS
+          sha256sum \
+            "hourglass-linux-${RELEASE_VERSION}-linux-x64.tar.gz" \
+            "Hourglass-${RELEASE_VERSION}-x86_64.AppImage" > SHA256SUMS
           sha256sum --check SHA256SUMS
 
       - name: Create GitHub Release
@@ -167,6 +147,7 @@ jobs:
 
           release_assets=(
             "dist/hourglass-linux-${RELEASE_VERSION}-linux-x64.tar.gz"
+            "dist/Hourglass-${RELEASE_VERSION}-x86_64.AppImage"
             dist/SHA256SUMS
           )
 
