@@ -478,14 +478,14 @@ AppImage validation in CI
 
 ### Compatibility testing
 
-- [ ] Test Fedora GNOME Wayland.
-- [ ] Test Ubuntu GNOME.
-- [ ] Test Arch Linux.
+- [x] Test Fedora GNOME Wayland.
+- [x] Test Ubuntu GNOME.
+- [x] Test Arch Linux.
 - [ ] Test KDE Plasma if available.
-- [ ] Test without .NET installed.
-- [ ] Confirm icon, notifications, sound, settings, and single-instance behavior.
+- [x] Test without .NET installed.
+- [x] Confirm icon, notifications, sound, settings, and single-instance behavior.
 - [ ] Confirm running from a read-only directory.
-- [ ] Confirm paths containing spaces do not break launch.
+- [x] Confirm paths containing spaces do not break launch.
 - [ ] Confirm multiple versions do not corrupt settings.
 
 ### Release integration
@@ -499,10 +499,10 @@ AppImage validation in CI
 
 ## Acceptance criteria
 
-- [ ] AppImage launches on at least three distributions.
-- [ ] No separate .NET installation is required.
-- [ ] Notifications and audio work.
-- [ ] GitHub Release includes AppImage and checksum.
+- [x] AppImage launches on at least three distributions.
+- [x] No separate .NET installation is required.
+- [x] Notifications and audio work.
+- [x] GitHub Release includes AppImage and checksum.
 
 ---
 
@@ -1368,7 +1368,7 @@ Update this table whenever a milestone changes state.
 | 1. Versioning and source of truth | Complete | Evaluated project version, AppStream metadata, and release tags are validated by the .NET release tool. |
 | 2. Storefront metadata and screenshots | Not started | AppStream exists; screenshots remain. |
 | 3. Public GitHub release pipeline | Complete | `v0.2.0-beta.1` was published and checksum-verified; its self-contained archive passed clean Fedora 44 GNOME VM validation. Ubuntu validation is tracked separately in DEV-14. |
-| 4. AppImage release | In progress | Final AppImage generation and CI/release integration are implemented; attended Ubuntu, Fedora, and Arch validation is required before publishing. |
+| 4. AppImage release | Complete | `v0.2.0-beta.9` AppImage release assets are published and checksum-verified. Attended Ubuntu 24.04, Fedora 44, and Arch GNOME Wayland validation passed without a separately installed .NET runtime. Stable `v0.2.0` preparation is the next release step. |
 | 5. Production Flatpak and Flathub | Not started | Local prototype manifest exists. |
 | 6. Fedora RPM and COPR | Not started | RPM spec not yet added. |
 | 7. Arch Linux AUR | Not started | PKGBUILD not yet added. |
@@ -1391,7 +1391,9 @@ Update this table whenever a milestone changes state.
 - [x] Publish and verify the `v0.2.0-beta.1` GitHub prerelease.
 - [x] Convert existing AppDir into a final AppImage.
 - [x] Test the prerelease on Fedora.
-- [ ] Test the prerelease on Ubuntu (DEV-14).
+- [x] Test the prerelease on Ubuntu (DEV-14).
+- [x] Test the prerelease on Arch Linux.
+- [ ] Prepare stable `v0.2.0` release metadata, final validation, and tag.
 - [ ] Begin production Flatpak conversion.
 - [ ] Resolve Flatpak audio before Flathub submission.
 
