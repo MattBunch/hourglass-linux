@@ -4,6 +4,28 @@ All notable changes to Hourglass Linux are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-09-15
+
+### Added
+
+- Provide a self-contained, checksummed x86_64 AppImage alongside the portable
+  Linux archive.
+
+### Fixed
+
+- Defer optional desktop-progress discovery until after the first window
+  request, preventing it from blocking startup in affected desktop sessions.
+
+### Validation
+
+- Validate the AppImage on Ubuntu 24.04, Fedora 44, and Arch Linux GNOME
+  Wayland desktops without a separately installed .NET runtime.
+
+### Known limitations
+
+- AppImage signing, AppImageUpdate metadata, physical multi-monitor validation,
+  and wake-from-suspend validation remain unavailable.
+
 ## [0.2.0-beta.9] - 2026-09-09
 
 ### Added
