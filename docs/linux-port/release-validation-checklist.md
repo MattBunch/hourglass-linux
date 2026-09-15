@@ -120,6 +120,50 @@ for investigating a failed launch, not evidence that a visible window launched.
 | Evidence | `sha256sum --check SHA256SUMS` passed. With `HOURGLASS_STARTUP_DIAGNOSTICS=1`, the released application visibly opened and recorded `CoordinatorCreated`, `MainWindowOpened`, and `MainWindowActivated`; all desktop-progress service construction markers completed. The launched process remained running. Manual timer validation passed for a 10-second timer: start, pause, resume, and expiry. |
 | Deferred coverage | Dock/taskbar progress visibility remains a separate desktop-integration validation concern. DEV-14 retains its broader Ubuntu release-validation checks. |
 
+## Public Beta Validation Record — `v0.2.0-beta.9`
+
+### Ubuntu GNOME Wayland
+
+| Field | Value |
+| --- | --- |
+| App version | `0.2.0-beta.9` |
+| Tag and commit | `v0.2.0-beta.9` at `3e2661c76e41b6c07c0c22f912cb7f56996caecd`. |
+| CI/artifact source | [GitHub prerelease](https://github.com/MattBunch/hourglass-linux/releases/tag/v0.2.0-beta.9) containing `Hourglass-0.2.0-beta.9-x86_64.AppImage` and `SHA256SUMS`. |
+| Package type | AppImage, downloaded and launched from `$HOME/Hourglass AppImage Validation/v0.2.0-beta.9` (a path containing whitespace). |
+| Environment | Ubuntu 24.04.4 LTS, GNOME Shell 46.0, GNOME Wayland (`XDG_SESSION_TYPE=wayland`, `WAYLAND_DISPLAY=wayland-0`, `DISPLAY=:0`); no separately installed .NET runtime. |
+| Tester and date | matt, 2026-09-14. |
+| Overall result | `Pass` |
+| Evidence | `sha256sum --check --ignore-missing SHA256SUMS` reported `Hourglass-0.2.0-beta.9-x86_64.AppImage: OK`. Diagnostics reached `CoordinatorCreated`, `MainWindowOpened`, and `MainWindowActivated`; the visible AppImage process remained running. Attended core timer, parsing, minimize/restore, settings-persistence, notification, audio, always-on-top, completion-attention, dock/status-icon, single-instance, and clean-shutdown checks were reported as passing. A second AppImage launch left only the original `hourglass-linux` process (PID 3223). While a timer ran, `systemd-inhibit --list` showed `sleep:idle` with reason `Hourglass timer is running` in `block` mode; that entry was absent after the timer stopped. |
+| Deferred coverage | A directly downloaded AppImage does not install a desktop launcher, so installed desktop-file launch and installed application-icon identity remain `Skipped`. Physical multi-monitor and wake-from-suspend validation remain outside this VM result. |
+
+### Fedora GNOME Wayland
+
+| Field | Value |
+| --- | --- |
+| App version | `0.2.0-beta.9` |
+| Tag and commit | `v0.2.0-beta.9` at `3e2661c76e41b6c07c0c22f912cb7f56996caecd`. |
+| CI/artifact source | [GitHub prerelease](https://github.com/MattBunch/hourglass-linux/releases/tag/v0.2.0-beta.9) containing `Hourglass-0.2.0-beta.9-x86_64.AppImage` and `SHA256SUMS`. |
+| Package type | AppImage, downloaded and launched from `$HOME/Hourglass AppImage Validation/v0.2.0-beta.9` (a path containing whitespace). |
+| Environment | Fedora Linux 44 Workstation Edition, GNOME Shell 50.0, GNOME Wayland (`XDG_SESSION_TYPE=wayland`, `WAYLAND_DISPLAY=wayland-0`, `DISPLAY=:0`); no separately installed .NET runtime. |
+| Tester and date | matt, 2026-09-15. |
+| Overall result | `Pass` |
+| Evidence | `sha256sum --check --ignore-missing SHA256SUMS` reported `Hourglass-0.2.0-beta.9-x86_64.AppImage: OK`. Diagnostics reached `CoordinatorCreated`, `MainWindowOpened`, and `MainWindowActivated`; the visible AppImage process remained running. Attended 10-second start, pause, resume, and expiry; notification; bundled sound; stop/restart; duration and absolute-time parsing; minimize/restore; settings persistence; always-on-top; completion attention; dock/taskbar; and status-icon checks were reported as passing. A second AppImage launch left only the original `hourglass-linux` process (PID 4100), and normal close ended that process. While a timer ran, `systemd-inhibit --list` showed `sleep:idle` with reason `Hourglass timer is running` in `block` mode; that entry was absent after the timer stopped. |
+| Deferred coverage | A directly downloaded AppImage does not install a desktop launcher, so installed desktop-file launch and installed application-icon identity remain `Skipped`. Physical multi-monitor and wake-from-suspend validation remain outside this VM result. |
+
+### Arch GNOME Wayland
+
+| Field | Value |
+| --- | --- |
+| App version | `0.2.0-beta.9` |
+| Tag and commit | `v0.2.0-beta.9` at `3e2661c76e41b6c07c0c22f912cb7f56996caecd`. |
+| CI/artifact source | [GitHub prerelease](https://github.com/MattBunch/hourglass-linux/releases/tag/v0.2.0-beta.9) containing `Hourglass-0.2.0-beta.9-x86_64.AppImage` and `SHA256SUMS`. |
+| Package type | AppImage, downloaded and launched from `/home/test/Hourglass beta9` (a path containing whitespace). |
+| Environment | Arch Linux rolling, GNOME Shell 50.4, GNOME Wayland (`XDG_SESSION_TYPE=wayland`, `WAYLAND_DISPLAY=wayland-0`, `DISPLAY=:0`); no separately installed .NET runtime. QEMU/KVM VM with a single VirtIO/SPICE display. |
+| Tester and dates | matt, 2026-09-12 and 2026-09-15. |
+| Overall result | `Pass` |
+| Evidence | Checksum verification passed on both attended runs. Diagnostics reached `CoordinatorCreated`, `MainWindowOpened`, and `MainWindowActivated`; the visible AppImage process remained running. Attended start, pause, resume, expiry, notification, bundled sound, stop/restart, duration parsing, absolute-time parsing, minimize via `Alt+F9`, settings persistence, always-on-top, completion attention, dock/taskbar, and status-icon checks were reported as passing. A second AppImage launch left only the original `hourglass-linux` process (PID 2338), and normal close ended that process. While a timer ran, `systemd-inhibit --list` showed `sleep:idle` with reason `Hourglass timer is running` in `block` mode; that entry was absent after the timer stopped. |
+| Deferred coverage | A directly downloaded AppImage does not install a desktop launcher, so installed desktop-file launch and installed application-icon identity remain `Skipped`. Physical multi-monitor and wake-from-suspend validation remain outside this VM result. |
+
 ## Public Beta Validation Record — `v0.2.0-beta.4`
 
 | Field | Value |
@@ -170,9 +214,9 @@ Run these rows from an installed launcher entry where possible so desktop identi
 | Environment | Package type | Result | Notes | Skip reason |
 | --- | --- | --- | --- | --- |
 | Fedora GNOME Wayland | Native publish | `Skipped` | Fedora Linux 44 Workstation, GNOME Shell 50.3, `XDG_SESSION_TYPE=wayland`, `WAYLAND_DISPLAY=wayland-0`, `XDG_CURRENT_DESKTOP=GNOME`. Artifact `/tmp/hourglass-linux-publish/hourglass-linux` started under a bounded desktop launch outside the Codex filesystem sandbox and created `/tmp/hourglass-linux-smoke-native-config/hourglass-linux/active-sessions.json` with default timer/session state. Bundled sounds were present under `/tmp/hourglass-linux-publish/Assets/Sounds/`. Static package validation passed. Full start, pause, resume, stop, restart, parsing, expiry, notification, sound, always-on-top, completion attention, session inhibition, desktop progress, status icon, clean shutdown, settings persistence, and single-instance handoff were not exercised end to end. GNOME stock taskbar progress and status icon support were not claimed. | Full attended GUI smoke coverage was not available in this validation run; Codex could only perform bounded launch and filesystem/artifact checks. |
-| Ubuntu GNOME Wayland | AppImage | `Not run` | `v0.2.0-beta.9` CI will provide a checksummed final AppImage for an attended clean-VM validation from a path containing whitespace. Record Ubuntu and GNOME versions, Wayland/Xwayland details, no separately installed .NET, timer workflow, notification, sound, persistence, and single-instance evidence. | Awaiting release-candidate CI artifact and attended validation. |
-| Fedora GNOME Wayland | AppImage | `Not run` | `v0.2.0-beta.9` CI will provide a checksummed final AppImage for an attended clean-VM validation from a path containing whitespace. Record Fedora and GNOME versions, Wayland details, no separately installed .NET, timer workflow, notification, sound, persistence, and single-instance evidence. | Awaiting release-candidate CI artifact and attended validation. |
-| Arch Linux GNOME Wayland | AppImage | `Skipped` | Attended validation by matt on 2026-09-12 in an Arch Linux rolling QEMU/KVM VM (UEFI; 2 vCPUs; 4 GiB RAM; single VirtIO/SPICE display). App `v0.2.0-beta.9`, commit `3e2661c76e41b6c07c0c22f912cb7f56996caecd`, was downloaded from the published GitHub release into `/home/test/Hourglass beta9`; `sha256sum --check --ignore-missing SHA256SUMS` passed for `Hourglass-0.2.0-beta.9-x86_64.AppImage`. GNOME Shell 50.4; `gnome-shell 1:50.4-1`, `xorg-xwayland 24.1.13-1`, and `fuse2 2.9.9-6`; `XDG_SESSION_TYPE=wayland`, `WAYLAND_DISPLAY=wayland-0`, `DISPLAY=:0`, session Type=wayland. Diagnostics reached `CoordinatorCreated`, `MainWindowOpened`, and `MainWindowActivated`; the AppImage process remained running and its window was visible. Attended start, pause, resume, expiry, notification, bundled sound, stop/restart, duration parsing, absolute-time parsing, minimize via `Alt+F9`, and settings-persistence checks passed. | Aggregate AppImage coverage remains incomplete: always-on-top, completion attention, session inhibition, clean shutdown, single-instance handoff, desktop-file launch, application identity, stock GNOME dock/taskbar progress, status-icon integration, and separately installed .NET state were not recorded. |
+| Ubuntu GNOME Wayland | AppImage | `Pass` | Attended Ubuntu 24.04.4 LTS GNOME Shell 46.0 Wayland validation of `v0.2.0-beta.9` is recorded above. The checksummed AppImage launched from a whitespace path without .NET, passed the reported core timer and desktop-behavior checks, handed a second launch to the existing process, and acquired then released its `sleep:idle` session inhibition. | Installed desktop-file launch and installed icon identity are `Skipped` because the downloaded AppImage was not integrated as a launcher. Physical multi-monitor and wake validation are outside this VM result. |
+| Fedora GNOME Wayland | AppImage | `Pass` | Attended Fedora 44 Workstation GNOME Shell 50.0 Wayland validation of `v0.2.0-beta.9` is recorded above. The checksummed AppImage launched from a whitespace path without .NET, passed the reported core timer and desktop-behavior checks, handed a second launch to the existing process, and acquired then released its `sleep:idle` session inhibition. | Installed desktop-file launch and installed icon identity are `Skipped` because the downloaded AppImage was not integrated as a launcher. Physical multi-monitor and wake validation are outside this VM result. |
+| Arch Linux GNOME Wayland | AppImage | `Pass` | Attended Arch Linux rolling GNOME Shell 50.4 Wayland validation of `v0.2.0-beta.9` is recorded above. The checksummed AppImage launched from a whitespace path without .NET, passed the reported core timer and desktop-behavior checks, handed a second launch to the existing process, and acquired then released its `sleep:idle` session inhibition. | Installed desktop-file launch and installed icon identity are `Skipped` because the downloaded AppImage was not integrated as a launcher. Physical multi-monitor and wake validation are outside this VM result. |
 | Fedora GNOME X11 where available | Native publish | `Skipped` | No Fedora GNOME X11 session was available from the current desktop session. | Environment not available in this validation run. |
 | Fedora GNOME X11 where available | AppImage | `Skipped` | No Fedora GNOME X11 session was available from the current desktop session, and no final `.AppImage` artifact was produced. | Environment not available in this validation run. |
 | KDE Plasma Wayland | Native publish | `Skipped` | KDE Plasma Wayland was not available on this machine during the validation run. | Environment not available in this validation run. |
