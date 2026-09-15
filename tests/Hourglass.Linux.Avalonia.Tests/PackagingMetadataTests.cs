@@ -41,10 +41,26 @@ public sealed class PackagingMetadataTests
             "https://github.com/MattBunch/hourglass-linux/issues",
             component.Elements("url").Single(element => element.Attribute("type")?.Value == "bugtracker").Value);
 
-        XElement release = Assert.IsType<XElement>(component.Element("releases")?.Elements("release").FirstOrDefault());
+        XElement releases = Assert.IsType<XElement>(component.Element("releases"));
+        XElement release = Assert.IsType<XElement>(releases.Elements("release").FirstOrDefault());
         Assert.Equal(projectVersion, release.Attribute("version")?.Value);
         Assert.Equal("2026-09-15", release.Attribute("date")?.Value);
         Assert.Null(release.Attribute("type"));
+        Assert.Equal(
+            [
+                "0.2.0",
+                "0.2.0~beta9",
+                "0.2.0~beta8",
+                "0.2.0~beta7",
+                "0.2.0~beta6",
+                "0.2.0~beta5",
+                "0.2.0~beta4",
+                "0.2.0~beta3",
+                "0.2.0~beta2",
+                "0.2.0~beta1",
+                "0.1.0",
+            ],
+            releases.Elements("release").Select(element => element.Attribute("version")?.Value));
     }
 
     [Fact]
