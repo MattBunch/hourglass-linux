@@ -19,47 +19,52 @@
     <binary>hourglass-linux</binary>
   </provides>
   <releases>
-    <release version="0.2.0-beta.9" date="2026-09-09" type="development">
+    <release version="0.2.0" date="2026-09-15">
+      <description>
+        <p>First stable Linux release with a self-contained x86_64 AppImage validated on Ubuntu, Fedora, and Arch GNOME Wayland desktops.</p>
+      </description>
+    </release>
+    <release version="0.2.0~beta9" date="2026-09-09" type="development">
       <description>
         <p>Add a reproducible, checksummed x86_64 AppImage release artifact.</p>
       </description>
     </release>
-    <release version="0.2.0-beta.8" date="2026-09-04" type="development">
+    <release version="0.2.0~beta8" date="2026-09-04" type="development">
       <description>
         <p>Defer Unity launcher desktop-progress discovery until after the first window request.</p>
       </description>
     </release>
-    <release version="0.2.0-beta.7" date="2026-09-04" type="development">
+    <release version="0.2.0~beta7" date="2026-09-04" type="development">
       <description>
         <p>Add per-service startup diagnostics for Linux desktop investigation.</p>
       </description>
     </release>
-    <release version="0.2.0-beta.6" date="2026-09-04" type="development">
+    <release version="0.2.0~beta6" date="2026-09-04" type="development">
       <description>
         <p>Add opt-in startup diagnostics for Linux desktop investigation.</p>
       </description>
     </release>
-    <release version="0.2.0-beta.5" date="2026-09-01" type="development">
+    <release version="0.2.0~beta5" date="2026-09-01" type="development">
       <description>
         <p>Select software rendering for X11 without native DRI3 probing.</p>
       </description>
     </release>
-    <release version="0.2.0-beta.4" date="2026-08-26" type="development">
+    <release version="0.2.0~beta4" date="2026-08-26" type="development">
       <description>
         <p>Use a standalone XCB connection when checking DRI3 availability.</p>
       </description>
     </release>
-    <release version="0.2.0-beta.3" date="2026-08-24" type="development">
+    <release version="0.2.0~beta3" date="2026-08-24" type="development">
       <description>
         <p>Select software rendering when the X server does not support DRI3.</p>
       </description>
     </release>
-    <release version="0.2.0-beta.2" date="2026-08-24" type="development">
+    <release version="0.2.0~beta2" date="2026-08-24" type="development">
       <description>
         <p>Improved renderer fallback for Linux virtual-machine environments.</p>
       </description>
     </release>
-    <release version="0.2.0-beta.1" date="2026-08-16" type="development">
+    <release version="0.2.0~beta1" date="2026-08-16" type="development">
       <description>
         <p>First public beta release with a self-contained Linux archive and checksum verification.</p>
       </description>
