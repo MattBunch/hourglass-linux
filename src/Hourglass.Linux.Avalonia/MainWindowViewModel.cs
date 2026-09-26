@@ -18,6 +18,10 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private readonly IAppSettingsStore appSettingsStore;
     private readonly IAudioAlertService audioAlertService;
     private readonly TimerSession session;
+    private readonly HourglassRuntime runtime;
+    private readonly bool ownsRuntime;
+    private bool isDisposed;
+    private bool automaticTicksSuspended;
     private readonly IDiagnosticSink diagnosticSink;
     private readonly INotificationService notificationService;
     private readonly ISavedTimersStore savedTimersStore;
@@ -162,7 +166,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         bool persistActiveSessionDirectly = true,
         bool restoreActiveSessionOnLoad = true,
         IUiDispatcher? uiDispatcher = null,
-        IDiagnosticSink? diagnosticSink = null)
+        IDiagnosticSink? diagnosticSink = null,
+        HourglassRuntime? runtime = null)
     {
         ArgumentNullException.ThrowIfNull(engine);
         this.wallClockNow = wallClockNow ?? throw new ArgumentNullException(nameof(wallClockNow));
@@ -180,7 +185,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         this.SessionId = string.IsNullOrWhiteSpace(sessionId) ? Guid.NewGuid().ToString("N") : sessionId.Trim();
         this.persistActiveSessionDirectly = persistActiveSessionDirectly;
         this.restoreActiveSessionOnLoad = restoreActiveSessionOnLoad;
-        this.session = new TimerSession(engine);
+        this.ownsRuntime = runtime == null;
+        this.runtime = runtime ?? new HourglassRuntime(this.diagnosticSink);
+        this.session = this.runtime.Register(this.SessionId, engine, this.PublishRuntimeTick);
 
         this.StartCommand = new RelayCommand(
             this.Start,
@@ -691,7 +698,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     {
         TimerInfo timerInfo = snapshot.ToTimerInfo();
 
-        this.session.Restore(timerInfo);
+        this.runtime.Invoke(() =>
+        {
+            this.session.Restore(timerInfo);
+            return true;
+        });
         if (snapshot.HasOptions)
         {
             this.ReplaceSettings(NormalizeThemeSelection(snapshot.Options.ApplyTo(this.settings), this.customThemes), save: false);
@@ -725,7 +736,18 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     public void Dispose()
     {
-        this.session.Dispose();
+        if (this.isDisposed)
+        {
+            return;
+        }
+
+        this.isDisposed = true;
+        this.runtime.Remove(this.SessionId);
+        if (this.ownsRuntime)
+        {
+            this.runtime.Dispose();
+        }
+
         _ = this.StopActiveAudioAsync();
         _ = this.StopAudioPreviewAsync();
         _ = this.ReleaseInhibitionAsync();
@@ -763,8 +785,39 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     public void Tick()
     {
-        this.ApplySessionTransition(this.session.Tick());
+        if (this.isDisposed)
+        {
+            return;
+        }
+
+        this.RunSessionOperation(this.session.Tick);
         this.RefreshDisplay();
+    }
+
+    internal void StartRuntimeScheduler() => this.runtime.StartScheduler();
+
+    internal Task TickRuntimeAsync() => this.runtime.TickAsync();
+
+    internal void SuspendAutomaticTicks()
+    {
+        this.automaticTicksSuspended = true;
+        this.runtime.SuspendTicks(this.SessionId);
+    }
+
+    private bool RunSessionOperation(Func<CountdownTransition> operation) => this.ApplySessionTransition(this.runtime.Invoke(operation));
+
+    private void PublishRuntimeTick(SessionTick tick)
+    {
+        this.uiDispatcher.Post(() =>
+        {
+            if (this.isDisposed || this.automaticTicksSuspended || !this.session.IsCurrent(tick.Revision))
+            {
+                return;
+            }
+
+            this.ApplySessionTransition(tick.Transition);
+            this.RefreshDisplay();
+        });
     }
 
     internal bool TryEnterInputModeFromExpired()
@@ -831,7 +884,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             return;
         }
 
-        if (!this.ApplySessionTransition(this.session.Start(parsed.Value, now)))
+        if (!this.RunSessionOperation(() => this.session.Start(parsed.Value, now)))
         {
             this.ShowValidationError();
             return;
@@ -854,7 +907,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     {
         if (this.session.Countdown.State == TimerState.Running)
         {
-            this.ApplySessionTransition(this.session.Pause());
+            this.RunSessionOperation(() => this.session.Pause());
             this.RefreshDisplay(TimerViewState.PausedStatusText);
             _ = this.ReleaseInhibitionAsync();
             this.QueueActiveSessionSave();
@@ -863,7 +916,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
         if (this.session.Countdown.State == TimerState.Paused)
         {
-            this.ApplySessionTransition(this.session.Resume(this.wallClockNow()));
+            this.RunSessionOperation(() => this.session.Resume(this.wallClockNow()));
             this.RefreshDisplay(TimerViewState.RunningStatusText);
             _ = this.AcquireInhibitionAsync();
             this.QueueActiveSessionSave();
@@ -880,7 +933,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     {
         _ = this.StopActiveAudioAsync();
 
-        if (!this.ApplySessionTransition(this.session.Restart(this.wallClockNow())))
+        if (!this.RunSessionOperation(() => this.session.Restart(this.wallClockNow())))
         {
             return;
         }
@@ -918,7 +971,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     {
         bool wasLocked = this.settings.LockInterface;
         _ = this.StopActiveAudioAsync();
-        this.ApplySessionTransition(this.session.Stop());
+        this.RunSessionOperation(() => this.session.Stop());
         this.ReplaceViewState(this.viewState with
         {
             TimerInput = timerInput,
@@ -1385,7 +1438,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         ArgumentNullException.ThrowIfNull(savedTimer);
 
         _ = this.StopActiveAudioAsync();
-        this.ApplySessionTransition(this.session.Stop());
+        this.RunSessionOperation(() => this.session.Stop());
         this.ReplaceSettings(NormalizeThemeSelection(savedTimer.Options.ApplyTo(this.settings), this.customThemes), save: true);
         this.ReplaceViewState(this.viewState with
         {
@@ -1405,7 +1458,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         ArgumentException.ThrowIfNullOrWhiteSpace(timerInput);
 
         _ = this.StopActiveAudioAsync();
-        this.ApplySessionTransition(this.session.Stop());
+        this.RunSessionOperation(() => this.session.Stop());
         this.ReplaceViewState(this.viewState with
         {
             TimerInput = timerInput,
@@ -2013,7 +2066,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     private void RestartLoopingTimer()
     {
-        if (!this.ApplySessionTransition(this.session.Restart(this.wallClockNow())))
+        if (!this.RunSessionOperation(() => this.session.Restart(this.wallClockNow())))
         {
             return;
         }

@@ -15,6 +15,12 @@ using System.Text.Json;
 
 namespace Hourglass.Linux.Avalonia;
 
+internal enum TimerSchedulingMode
+{
+    Automatic,
+    Manual
+}
+
 public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullScreenWindowTarget, IWindowGeometryTarget
 {
     private static readonly string SoundAssetsDirectory = Path.Combine(
@@ -29,7 +35,6 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
 
     private static readonly Uri StatusIconResourceUri = new("avares://hourglass-linux/Assets/hourglass.png");
 
-    private const double RefreshIntervalMilliseconds = 250;
     private const double ExpiryFlashDurationMilliseconds = 420;
     private const double ValidationFeedbackDurationMilliseconds = 650;
 
@@ -39,7 +44,6 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
     private readonly DispatcherTimer expiryFlashTimer;
     private readonly ApplicationInfoProvider applicationInfoProvider;
     private readonly IExternalUriLauncher externalUriLauncher;
-    private readonly DispatcherTimer refreshTimer;
     private readonly IStatusIconService statusIconService;
     private readonly StartupDiagnostics startupDiagnostics;
     private readonly DispatcherTimer validationFeedbackTimer;
@@ -128,7 +132,8 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
         Func<Task>? requestApplicationExit = null,
         bool suppressExpiryVisualFeedback = false,
         bool suppressCommandPanelTransitions = false,
-        StartupDiagnostics? startupDiagnostics = null)
+        StartupDiagnostics? startupDiagnostics = null,
+        TimerSchedulingMode schedulingMode = TimerSchedulingMode.Automatic)
     {
         InitializeComponent();
         if (suppressCommandPanelTransitions)
@@ -162,12 +167,10 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
             () => Dispatcher.UIThread.Post(this.RequestFinalClose),
             this.CleanupAfterClose);
 
-        this.refreshTimer = new DispatcherTimer
+        if (schedulingMode == TimerSchedulingMode.Automatic)
         {
-            Interval = TimeSpan.FromMilliseconds(RefreshIntervalMilliseconds)
-        };
-        this.refreshTimer.Tick += this.RefreshTimerTick;
-        this.refreshTimer.Start();
+            this.viewModel.StartRuntimeScheduler();
+        }
 
         this.expiryFlashTimer = new DispatcherTimer
         {
@@ -484,7 +487,7 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
     private async Task PrepareCloseAsync()
     {
         this.isClosePreparing = true;
-        this.refreshTimer.Stop();
+        this.viewModel.SuspendAutomaticTicks();
         await this.viewModel.PendingSettingsSave.ConfigureAwait(false);
         await this.desktopProgressController.ClearAsync().ConfigureAwait(false);
         await this.PrepareCoordinatorCloseOnUiThreadAsync().ConfigureAwait(false);
@@ -611,7 +614,6 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
         this.isClosed = true;
         this.expiryFlashGeneration++;
         this.validationFeedbackGeneration++;
-        this.refreshTimer.Stop();
         this.expiryFlashTimer.Stop();
         this.completionCloseTimer.Stop();
         this.validationFeedbackTimer.Stop();
@@ -624,7 +626,6 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
         this.viewModel.CloseRequested -= this.CloseRequested;
         this.viewModel.HideToNotificationAreaRequested -= this.HideToNotificationAreaRequested;
         this.statusIconService.ActionRequested -= this.StatusIconActionRequested;
-        this.refreshTimer.Tick -= this.RefreshTimerTick;
         this.expiryFlashTimer.Tick -= this.ExpiryFlashTimerTick;
         this.completionCloseTimer.Tick -= this.CompletionCloseTimerTick;
         this.validationFeedbackTimer.Tick -= this.ValidationFeedbackTimerTick;
@@ -645,11 +646,6 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
         {
             this.Close();
         }
-    }
-
-    private void RefreshTimerTick(object? sender, EventArgs e)
-    {
-        this.viewModel.Tick();
     }
 
     private void WindowSizeChanged(object? sender, SizeChangedEventArgs e)

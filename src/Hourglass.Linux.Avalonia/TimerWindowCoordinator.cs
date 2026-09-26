@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Platform;
 using Avalonia.Threading;
+using Hourglass.Application;
 using Hourglass.Linux.Services;
 using Hourglass.Platform;
 using Hourglass.Settings;
@@ -25,6 +26,7 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
     private static readonly Uri StatusIconResourceUri = new("avares://hourglass-linux/Assets/hourglass.png");
 
     private readonly DesktopProgressController desktopProgressController;
+    private readonly HourglassRuntime runtime;
     private readonly WakeAlarmController wakeAlarmController;
     private readonly IClassicDesktopStyleApplicationLifetime lifetime;
     private readonly IAudioAlertService audioAlertService;
@@ -102,6 +104,7 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
         this.lifetime = lifetime ?? throw new ArgumentNullException(nameof(lifetime));
         this.settingsStore = settingsStore ?? throw new ArgumentNullException(nameof(settingsStore));
         this.diagnosticSink = diagnosticSink ?? NoOpDiagnosticSink.Instance;
+        this.runtime = new HourglassRuntime(this.diagnosticSink);
         this.startupDiagnostics = startupDiagnostics ?? StartupDiagnostics.Disabled;
         this.appSettingsStore = new CoordinatedAppSettingsStore(this.settingsStore);
         this.notificationService = notificationService ?? throw new ArgumentNullException(nameof(notificationService));
@@ -202,6 +205,7 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
         await this.desktopProgressController.ClearAsync().ConfigureAwait(false);
         await this.statusIconService.DisposeAsync().ConfigureAwait(false);
         await this.sessionInhibitor.DisposeAsync().ConfigureAwait(false);
+        await this.runtime.DisposeAsync().ConfigureAwait(false);
     }
 
     private MainWindow? CreateWindow(
@@ -226,7 +230,8 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
             persistActiveSessionDirectly: false,
             restoreActiveSessionOnLoad: false,
             uiDispatcher: AvaloniaUiDispatcher.Instance,
-            diagnosticSink: this.diagnosticSink);
+            diagnosticSink: this.diagnosticSink,
+            runtime: this.runtime);
         this.startupDiagnostics.Record(StartupStage.MainWindowConstructionStarting);
         var window = new MainWindow(
             viewModel,

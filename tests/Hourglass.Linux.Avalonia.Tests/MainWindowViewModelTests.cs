@@ -1003,6 +1003,54 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
+    public async Task RuntimeTickUpdatesGuiThroughDispatcherWithoutWindowRefresh()
+    {
+        var clock = new ManualMonotonicClock();
+        var dispatcher = new RecordingUiDispatcher();
+        using var viewModel = CreateViewModel(clock, uiDispatcher: dispatcher);
+        viewModel.TimerInput = "2 seconds";
+        viewModel.StartCommand.Execute(null);
+        int priorPosts = dispatcher.PostCount;
+        bool projected = false;
+        viewModel.PropertyChanged += (_, args) =>
+        {
+            if (args.PropertyName == nameof(MainWindowViewModel.RemainingTime))
+            {
+                Assert.True(dispatcher.IsDispatching);
+                projected = true;
+            }
+        };
+        clock.Advance(TimeSpan.FromSeconds(1));
+
+        await viewModel.TickRuntimeAsync();
+
+        Assert.True(projected);
+        Assert.True(dispatcher.PostCount > priorPosts);
+        Assert.Equal("00:00:01", viewModel.RemainingTime);
+    }
+
+    [Fact]
+    public async Task ClosingSuspendsRuntimeUpdatesAndDisposalIsIdempotent()
+    {
+        var clock = new ManualMonotonicClock();
+        var notifications = new RecordingNotificationService();
+        var viewModel = CreateViewModel(clock, notificationService: notifications);
+        viewModel.TimerInput = "1 second";
+        viewModel.StartCommand.Execute(null);
+
+        viewModel.SuspendAutomaticTicks();
+        clock.Advance(TimeSpan.FromSeconds(2));
+        await viewModel.TickRuntimeAsync();
+
+        Assert.Equal(TimerState.Running, viewModel.State);
+        Assert.Equal("00:00:01", viewModel.RemainingTime);
+        Assert.Equal(0, notifications.CallCount);
+        viewModel.Dispose();
+        viewModel.Dispose();
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => viewModel.TickRuntimeAsync());
+    }
+
+    [Fact]
     public void StartWithAbsoluteTimeInputRunsTimer()
     {
         var clock = new ManualMonotonicClock();
@@ -1911,11 +1959,10 @@ public sealed class MainWindowViewModelTests
         Assert.Contains("Dispatcher.UIThread.CheckAccess()", codeBehind, StringComparison.Ordinal);
         Assert.Contains("Dispatcher.UIThread.Post(async () =>", codeBehind, StringComparison.Ordinal);
         Assert.Contains("this.isClosePreparing = true;", prepareClose, StringComparison.Ordinal);
-        Assert.Contains("this.refreshTimer.Stop();", prepareClose, StringComparison.Ordinal);
+        Assert.Contains("this.viewModel.SuspendAutomaticTicks();", prepareClose, StringComparison.Ordinal);
         Assert.True(
-            prepareClose.IndexOf("this.refreshTimer.Stop();", StringComparison.Ordinal)
+            prepareClose.IndexOf("this.viewModel.SuspendAutomaticTicks();", StringComparison.Ordinal)
             < prepareClose.IndexOf("this.desktopProgressController.ClearAsync()", StringComparison.Ordinal));
-        Assert.Contains("this.refreshTimer.Stop();", cleanup, StringComparison.Ordinal);
         Assert.Contains("this.expiryFlashTimer.Stop();", cleanup, StringComparison.Ordinal);
         Assert.Contains("this.validationFeedbackTimer.Stop();", cleanup, StringComparison.Ordinal);
         Assert.Contains("this.viewModel.WindowAttentionRequested -= this.WindowAttentionRequested;", cleanup, StringComparison.Ordinal);

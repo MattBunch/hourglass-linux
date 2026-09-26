@@ -10,6 +10,7 @@ using Hourglass.Timing;
 internal sealed class TimerSession : IDisposable
 {
     private readonly CountdownEngine engine;
+    private CountdownState countdown;
     private CountdownEffects pendingEffects = CountdownEffects.None;
     private bool disposed;
     private long revision;
@@ -18,6 +19,7 @@ internal sealed class TimerSession : IDisposable
     {
         ArgumentNullException.ThrowIfNull(engine);
         this.engine = engine;
+        this.countdown = engine.Snapshot;
         this.engine.Started += this.OnStarted;
         this.engine.Paused += this.OnPaused;
         this.engine.Resumed += this.OnResumed;
@@ -26,11 +28,11 @@ internal sealed class TimerSession : IDisposable
         this.engine.Tick += this.OnTicked;
     }
 
-    public CountdownState Countdown => this.engine.Snapshot;
+    public CountdownState Countdown => Volatile.Read(ref this.countdown);
 
     public long Revision => Interlocked.Read(ref this.revision);
 
-    public bool IsCurrent(long expectedRevision) => !this.disposed && this.Revision == expectedRevision;
+    public bool IsCurrent(long expectedRevision) => !Volatile.Read(ref this.disposed) && this.Revision == expectedRevision;
 
     public CountdownTransition Start(TimerStart? start, DateTime now) => this.Apply(() => this.engine.Start(start, now));
 
@@ -48,6 +50,7 @@ internal sealed class TimerSession : IDisposable
     {
         ObjectDisposedException.ThrowIf(this.disposed, this);
         this.engine.Restore(timerInfo);
+        Volatile.Write(ref this.countdown, this.engine.Snapshot);
         Interlocked.Increment(ref this.revision);
     }
 
@@ -58,7 +61,7 @@ internal sealed class TimerSession : IDisposable
             return;
         }
 
-        this.disposed = true;
+        Volatile.Write(ref this.disposed, true);
         Interlocked.Increment(ref this.revision);
         this.engine.Started -= this.OnStarted;
         this.engine.Paused -= this.OnPaused;
@@ -79,6 +82,7 @@ internal sealed class TimerSession : IDisposable
         ObjectDisposedException.ThrowIf(this.disposed, this);
         this.pendingEffects = CountdownEffects.None;
         bool succeeded = action();
+        Volatile.Write(ref this.countdown, this.engine.Snapshot);
         if (HasLifecycleEffect(this.pendingEffects.First) || HasLifecycleEffect(this.pendingEffects.Second)
             || HasLifecycleEffect(this.pendingEffects.Third) || HasLifecycleEffect(this.pendingEffects.Fourth))
         {

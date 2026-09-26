@@ -75,7 +75,8 @@ public sealed class DemoContext : IAsyncDisposable
             createWindowAttentionService: _ => services.WindowAttentionService,
             loadSettingsOnOpened: false,
             suppressExpiryVisualFeedback: true,
-            suppressCommandPanelTransitions: true);
+            suppressCommandPanelTransitions: true,
+            schedulingMode: TimerSchedulingMode.Manual);
         this.Window.Width = options.Width;
         this.Window.Height = options.Height;
         this.Window.CanResize = false;
