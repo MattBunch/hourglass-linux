@@ -154,7 +154,7 @@ Highest risks: session/expiry extraction, window-independent persistence, runtim
 
 ## Progress ledger
 
-### Stage 0 — Validated, ready for first commit
+### Stage 0 — Complete (b30a4da)
 
 - Completed: full specification/research reading, architecture inspection, agreed lifetime decisions, clean worktree check, remote fetch and dedicated feature branch from develop.
 - Changed: plan, ADR, full research reference and reproducible isolated tools/Hourglass.TerminalSpike; no domain/GUI changes.
@@ -163,5 +163,12 @@ Highest risks: session/expiry extraction, window-independent persistence, runtim
 - The initial sandbox test run failed with MSB1025 / SocketException (13), permission denied creating MSBuild IPC sockets. The identical test command passed with escalated permission.
 - Spike: pinned System.CommandLine 2.0.0 / Terminal.Gui 2.5.0; parser streams/validation/cancellation and all five PTY scenarios passed. See tools/Hourglass.TerminalSpike/README.md for reproduction and Alt+Enter encoding.
 - GUI regression status: existing automated tests passed; attended desktop and hardware checks Not run.
-- Remaining: first coherent commit, then stage A. The original Downloads research path is absent; the preserved repository research remains the reference.
-- A-I: not started.
+- The original Downloads research path is absent; the preserved repository research remains the reference.
+
+### Stage A — Complete
+
+- Added Application and Application.Tests to the modern solution. Contracts provide immutable snapshots, typed lifecycle/edit commands, explicit expected-failure results and an async local/remote client boundary.
+- Session IDs remain strings, matching existing persistence (including non-GUID IDs). Edit revisions describe committed changes, not repaint ticks.
+- Guards inspect direct project references and resolved transitive dependencies. Snapshot tests protect earlier values and published collection ownership.
+- GUI execution is unchanged. B-I remain pending.
+- Validation: restore and Release warning-as-error build passed; all 767 solution tests passed (four new Application tests); solution format verification passed. Existing GUI tests remain green.
