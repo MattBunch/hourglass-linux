@@ -10,12 +10,14 @@ namespace Hourglass.Linux.Avalonia;
 
 public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 {
+    internal Task PendingExpiryEffects { get; private set; } = Task.CompletedTask;
+
     private const string ActiveSessionKey = "active-session";
     private const string CustomThemesKey = "custom-themes";
 
     private readonly IAppSettingsStore appSettingsStore;
     private readonly IAudioAlertService audioAlertService;
-    private readonly CountdownEngine engine;
+    private readonly TimerSession session;
     private readonly IDiagnosticSink diagnosticSink;
     private readonly INotificationService notificationService;
     private readonly ISavedTimersStore savedTimersStore;
@@ -162,7 +164,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         IUiDispatcher? uiDispatcher = null,
         IDiagnosticSink? diagnosticSink = null)
     {
-        this.engine = engine ?? throw new ArgumentNullException(nameof(engine));
+        ArgumentNullException.ThrowIfNull(engine);
         this.wallClockNow = wallClockNow ?? throw new ArgumentNullException(nameof(wallClockNow));
         this.notificationService = notificationService ?? throw new ArgumentNullException(nameof(notificationService));
         this.sessionInhibitor = sessionInhibitor ?? throw new ArgumentNullException(nameof(sessionInhibitor));
@@ -178,15 +180,15 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         this.SessionId = string.IsNullOrWhiteSpace(sessionId) ? Guid.NewGuid().ToString("N") : sessionId.Trim();
         this.persistActiveSessionDirectly = persistActiveSessionDirectly;
         this.restoreActiveSessionOnLoad = restoreActiveSessionOnLoad;
-        this.engine.Expired += this.OnEngineExpired;
+        this.session = new TimerSession(engine);
 
         this.StartCommand = new RelayCommand(
             this.Start,
             () => this.viewState.PresentationMode == TimerPresentationMode.Input);
         this.PauseResumeCommand = new RelayCommand(
             this.PauseOrResume,
-            () => !this.IsTimerModificationLocked && (this.engine.State is TimerState.Running or TimerState.Paused));
-        this.ResetCommand = new RelayCommand(this.Reset, () => !this.IsTimerModificationLocked && this.engine.State != TimerState.Stopped);
+            () => !this.IsTimerModificationLocked && (this.session.Countdown.State is TimerState.Running or TimerState.Paused));
+        this.ResetCommand = new RelayCommand(this.Reset, () => !this.IsTimerModificationLocked && this.session.Countdown.State != TimerState.Stopped);
         this.RestartCommand = new RelayCommand(this.Restart, () => !this.IsTimerModificationLocked && this.viewState.IsRestartVisible);
         this.CancelEditCommand = new RelayCommand(
             this.CancelActiveTimerEdit,
@@ -361,7 +363,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             if (value != this.viewState.TimerInput)
             {
                 this.ReplaceViewState(this.viewState with { TimerInput = value, HasValidationError = false });
-                this.RefreshDisplay(this.engine.State == TimerState.Stopped ? TimerViewState.ReadyStatusText : this.StatusText);
+                this.RefreshDisplay(this.session.Countdown.State == TimerState.Stopped ? TimerViewState.ReadyStatusText : this.StatusText);
                 this.OnPropertyChanged(nameof(this.CanSaveCurrentTimer));
                 this.RaiseCommandCanExecuteChanged(this.SaveCurrentTimerCommand);
                 this.QueueActiveSessionSave();
@@ -393,8 +395,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         this.settings.WindowTitleMode,
         ApplicationStrings.ApplicationTitle,
         this.TimerTitle,
-        FormatOptionalTimerTime(this.engine.Snapshot.TimeLeft),
-        FormatOptionalTimerTime(this.engine.Snapshot.TimeElapsed));
+        FormatOptionalTimerTime(this.session.Countdown.TimeLeft),
+        FormatOptionalTimerTime(this.session.Countdown.TimeElapsed));
 
     public string RemainingTime => this.viewState.RemainingTime;
 
@@ -411,7 +413,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     public TimerState State => this.viewState.State;
 
-    public DateTime? EndTime => this.engine.EndTime;
+    public DateTime? EndTime => this.session.Countdown.EndTime;
 
     public double ProgressPercent => this.viewState.ProgressPercent;
 
@@ -549,12 +551,12 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         TimerStart.FromString(this.TimerInput) is { IsValid: true };
 
     public bool IsTimerModificationLocked =>
-        this.settings.LockInterface && (this.engine.State is TimerState.Running or TimerState.Paused);
+        this.settings.LockInterface && (this.session.Countdown.State is TimerState.Running or TimerState.Paused);
 
     public bool CanModifyCustomThemes => !this.IsTimerModificationLocked;
 
     public bool ShouldPromptOnExit =>
-        this.settings.PromptOnExit && (this.engine.State is TimerState.Running or TimerState.Paused);
+        this.settings.PromptOnExit && (this.session.Countdown.State is TimerState.Running or TimerState.Paused);
 
     public StatusIconMenuState StatusIconMenuState => new(
         this.WindowTitle,
@@ -596,7 +598,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             return;
         }
 
-        if (this.engine.State == TimerState.Stopped)
+        if (this.session.Countdown.State == TimerState.Stopped)
         {
             this.ReplaceViewState(this.viewState with { TimerInput = loadedSettings.GetInitialTimerInput(TimerViewState.DefaultTimerInput) });
             this.RefreshDisplay(TimerViewState.ReadyStatusText);
@@ -689,7 +691,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     {
         TimerInfo timerInfo = snapshot.ToTimerInfo();
 
-        this.engine.Restore(timerInfo);
+        this.session.Restore(timerInfo);
         if (snapshot.HasOptions)
         {
             this.ReplaceSettings(NormalizeThemeSelection(snapshot.Options.ApplyTo(this.settings), this.customThemes), save: false);
@@ -700,7 +702,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             : ToTimerPresentationMode(snapshot.PresentationMode);
         this.ReplaceViewState(TimerViewState.FromTimerState(
             string.IsNullOrWhiteSpace(snapshot.TimerInput) ? TimerViewState.DefaultTimerInput : snapshot.TimerInput,
-            this.engine.Snapshot,
+            this.session.Countdown,
             snapshot.TimerTitle,
             null,
             presentationMode,
@@ -711,19 +713,19 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             this.IsTimerModificationLocked));
         this.RefreshDisplay(timerInfo.State == TimerState.Stopped ? TimerViewState.ReadyStatusText : null, hasValidationError: false);
 
-        if (this.engine.State == TimerState.Running)
+        if (this.session.Countdown.State == TimerState.Running)
         {
             _ = this.AcquireInhibitionAsync();
         }
         else if (snapshot.ExpiredWhileClosed)
         {
-            _ = this.HandleRestoredExpiredAsync();
+            this.PendingExpiryEffects = this.HandleRestoredExpiredAsync();
         }
     }
 
     public void Dispose()
     {
-        this.engine.Expired -= this.OnEngineExpired;
+        this.session.Dispose();
         _ = this.StopActiveAudioAsync();
         _ = this.StopAudioPreviewAsync();
         _ = this.ReleaseInhibitionAsync();
@@ -735,7 +737,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             this.TimerInput,
             this.TimerTitle ?? string.Empty,
             ToActiveTimerPresentationMode(this.viewState.PresentationMode),
-            this.engine.Snapshot,
+            this.session.Countdown,
             this.wallClockNow(),
             SavedTimerOptions.FromSettings(this.settings),
             windowGeometry)
@@ -761,13 +763,13 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     public void Tick()
     {
-        this.engine.Update();
+        this.ApplySessionTransition(this.session.Tick());
         this.RefreshDisplay();
     }
 
     internal bool TryEnterInputModeFromExpired()
     {
-        if (this.engine.State != TimerState.Expired)
+        if (this.session.Countdown.State != TimerState.Expired)
         {
             return false;
         }
@@ -788,12 +790,12 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             return false;
         }
 
-        if (this.engine.State == TimerState.Expired)
+        if (this.session.Countdown.State == TimerState.Expired)
         {
             return this.TryEnterInputModeFromExpired();
         }
 
-        if (this.engine.State is not (TimerState.Running or TimerState.Paused))
+        if (this.session.Countdown.State is not (TimerState.Running or TimerState.Paused))
         {
             return false;
         }
@@ -829,7 +831,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             return;
         }
 
-        if (!this.engine.Start(parsed.Value, now))
+        if (!this.ApplySessionTransition(this.session.Start(parsed.Value, now)))
         {
             this.ShowValidationError();
             return;
@@ -850,18 +852,18 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     private void PauseOrResume()
     {
-        if (this.engine.State == TimerState.Running)
+        if (this.session.Countdown.State == TimerState.Running)
         {
-            this.engine.Pause();
+            this.ApplySessionTransition(this.session.Pause());
             this.RefreshDisplay(TimerViewState.PausedStatusText);
             _ = this.ReleaseInhibitionAsync();
             this.QueueActiveSessionSave();
             return;
         }
 
-        if (this.engine.State == TimerState.Paused)
+        if (this.session.Countdown.State == TimerState.Paused)
         {
-            this.engine.Resume(this.wallClockNow());
+            this.ApplySessionTransition(this.session.Resume(this.wallClockNow()));
             this.RefreshDisplay(TimerViewState.RunningStatusText);
             _ = this.AcquireInhibitionAsync();
             this.QueueActiveSessionSave();
@@ -878,7 +880,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     {
         _ = this.StopActiveAudioAsync();
 
-        if (!this.engine.Restart(this.wallClockNow()))
+        if (!this.ApplySessionTransition(this.session.Restart(this.wallClockNow())))
         {
             return;
         }
@@ -916,7 +918,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     {
         bool wasLocked = this.settings.LockInterface;
         _ = this.StopActiveAudioAsync();
-        this.engine.Stop();
+        this.ApplySessionTransition(this.session.Stop());
         this.ReplaceViewState(this.viewState with
         {
             TimerInput = timerInput,
@@ -1081,7 +1083,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             this.settings with { DoNotKeepComputerAwake = nextDoNotKeepComputerAwake },
             save: true);
 
-        if (this.engine.State == TimerState.Running)
+        if (this.session.Countdown.State == TimerState.Running)
         {
             if (nextDoNotKeepComputerAwake)
             {
@@ -1315,7 +1317,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             return;
         }
 
-        if (this.engine.State == TimerState.Expired)
+        if (this.session.Countdown.State == TimerState.Expired)
         {
             this.TryEnterInputModeFromExpired();
         }
@@ -1330,7 +1332,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             PresentationMode = TimerPresentationMode.Input,
             HasValidationError = false
         });
-        this.RefreshDisplay(this.engine.State == TimerState.Stopped ? TimerViewState.ReadyStatusText : this.StatusText, hasValidationError: false);
+        this.RefreshDisplay(this.session.Countdown.State == TimerState.Stopped ? TimerViewState.ReadyStatusText : this.StatusText, hasValidationError: false);
         this.QueueActiveSessionSave();
     }
 
@@ -1383,7 +1385,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         ArgumentNullException.ThrowIfNull(savedTimer);
 
         _ = this.StopActiveAudioAsync();
-        this.engine.Stop();
+        this.ApplySessionTransition(this.session.Stop());
         this.ReplaceSettings(NormalizeThemeSelection(savedTimer.Options.ApplyTo(this.settings), this.customThemes), save: true);
         this.ReplaceViewState(this.viewState with
         {
@@ -1403,7 +1405,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         ArgumentException.ThrowIfNullOrWhiteSpace(timerInput);
 
         _ = this.StopActiveAudioAsync();
-        this.engine.Stop();
+        this.ApplySessionTransition(this.session.Stop());
         this.ReplaceViewState(this.viewState with
         {
             TimerInput = timerInput,
@@ -1452,7 +1454,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         bool wasTimerModificationLocked = this.viewState.IsLocked;
         TimerViewState nextViewState = TimerViewState.FromTimerState(
             this.TimerInput,
-            this.engine.Snapshot,
+            this.session.Countdown,
             this.TimerTitle ?? string.Empty,
             explicitStatus,
             this.viewState.PresentationMode,
@@ -1725,17 +1727,25 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         this.OnPropertyChanged(nameof(this.StatusIconMenuState));
     }
 
-    private async void OnEngineExpired(object? sender, EventArgs e)
+    private bool ApplySessionTransition(CountdownTransition transition)
     {
-        await this.HandleEngineExpiredAsync().ConfigureAwait(false);
+        CountdownEffects effects = transition.Effects;
+        if (effects.First == CountdownEffect.Expired || effects.Second == CountdownEffect.Expired
+            || effects.Third == CountdownEffect.Expired || effects.Fourth == CountdownEffect.Expired)
+        {
+            this.PendingExpiryEffects = this.HandleEngineExpiredAsync();
+        }
+
+        return transition.Succeeded;
     }
 
     private async Task HandleEngineExpiredAsync()
     {
+        long revision = this.session.Revision;
         ExpiryDecision decision = ExpiryDecision.FromOptions(
             TimerDefaults.FromSettings(this.settings),
             ApplicationPreferences.FromSettings(this.settings),
-            this.engine.SupportsRestart);
+            this.session.Countdown.SupportsRestart);
         this.ReplaceViewState(this.viewState with
         {
             PresentationMode = TimerPresentationMode.Status,
@@ -1755,12 +1765,31 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         }
 
         await this.ReleaseInhibitionAsync().ConfigureAwait(false);
+        if (!this.session.IsCurrent(revision))
+        {
+            return;
+        }
+
         await this.NotifyTimerExpiredAsync().ConfigureAwait(false);
-        await this.PlayTimerExpiredAudioAsync().ConfigureAwait(false);
+        if (!this.session.IsCurrent(revision))
+        {
+            return;
+        }
+
+        await this.PlayTimerExpiredAudioAsync(revision).ConfigureAwait(false);
+        if (!this.session.IsCurrent(revision))
+        {
+            return;
+        }
 
         if (this.settings.ShutDownWhenExpired && this.systemPowerService.IsShutdownSupported)
         {
             await this.RequestShutdownAsync().ConfigureAwait(false);
+        }
+
+        if (!this.session.IsCurrent(revision))
+        {
+            return;
         }
 
         if (decision.Restart)
@@ -1777,6 +1806,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     private async Task HandleRestoredExpiredAsync()
     {
+        long revision = this.session.Revision;
         this.ReplaceViewState(this.viewState with
         {
             PresentationMode = TimerPresentationMode.Status,
@@ -1795,7 +1825,10 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         }
 
         await this.NotifyTimerExpiredAsync().ConfigureAwait(false);
-        await this.PlayTimerExpiredAudioAsync().ConfigureAwait(false);
+        if (this.session.IsCurrent(revision))
+        {
+            await this.PlayTimerExpiredAudioAsync(revision).ConfigureAwait(false);
+        }
     }
 
     private void ClearLockInterfaceAfterCompletion()
@@ -1891,7 +1924,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         }
     }
 
-    private async Task PlayTimerExpiredAudioAsync()
+    private async Task PlayTimerExpiredAudioAsync(long revision)
     {
         if (!this.settings.AudioAlertsEnabled || this.IsNoSoundSelected)
         {
@@ -1902,9 +1935,22 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         try
         {
             await this.StopActiveAudioAsync().ConfigureAwait(false);
-            this.activeAudioPlayback = this.settings.LoopSound
+            if (!this.session.IsCurrent(revision))
+            {
+                return;
+            }
+
+            IAsyncDisposable? playback = this.settings.LoopSound
                 ? await this.audioAlertService.PlayAlertLoopingAsync(this.settings.AudioAlertSoundId).ConfigureAwait(false)
                 : await this.audioAlertService.PlayAlertAsync(this.settings.AudioAlertSoundId).ConfigureAwait(false);
+            if (this.session.IsCurrent(revision))
+            {
+                this.activeAudioPlayback = playback;
+            }
+            else if (playback != null)
+            {
+                await playback.DisposeAsync().ConfigureAwait(false);
+            }
         }
         catch (Exception exception)
         {
@@ -1967,7 +2013,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     private void RestartLoopingTimer()
     {
-        if (!this.engine.Restart(this.wallClockNow()))
+        if (!this.ApplySessionTransition(this.session.Restart(this.wallClockNow())))
         {
             return;
         }

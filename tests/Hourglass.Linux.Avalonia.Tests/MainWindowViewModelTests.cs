@@ -3090,6 +3090,41 @@ public sealed class MainWindowViewModelTests
         Assert.Equal("00:00:01", viewModel.RemainingTime);
     }
 
+    [Theory]
+    [InlineData("stop")]
+    [InlineData("restart")]
+    [InlineData("dispose")]
+    public async Task DelayedExpiryDoesNotPlayAudioOrLoopAfterSessionChanges(string action)
+    {
+        var clock = new ManualMonotonicClock();
+        var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var notifications = new RecordingNotificationService { Completion = completion.Task };
+        var audio = new RecordingAudioAlertService();
+        var viewModel = CreateViewModel(clock, notificationService: notifications, audioAlertService: audio);
+        viewModel.ToggleLoopTimerCommand.Execute(null);
+        viewModel.TimerInput = "1 second";
+        viewModel.StartCommand.Execute(null);
+        clock.Advance(TimeSpan.FromSeconds(1));
+        viewModel.Tick();
+        Task pending = viewModel.PendingExpiryEffects;
+        Assert.False(pending.IsCompleted);
+
+        switch (action)
+        {
+            case "stop": viewModel.ResetCommand.Execute(null); break;
+            case "restart": viewModel.RestartCommand.Execute(null); break;
+            case "dispose": viewModel.Dispose(); break;
+        }
+
+        TimerState state = viewModel.State;
+        completion.SetResult();
+        await pending;
+
+        Assert.Equal(state, viewModel.State);
+        Assert.Equal(0, audio.CallCount);
+        viewModel.Dispose();
+    }
+
     [Fact]
     public void LoopSoundUsesStoppablePlaybackAndStopsOnDismissal()
     {

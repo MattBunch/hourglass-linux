@@ -173,10 +173,15 @@ Highest risks: session/expiry extraction, window-independent persistence, runtim
 - GUI execution is unchanged. B-I remain pending.
 - Validation: restore and Release warning-as-error build passed; all 767 solution tests passed (four new Application tests); solution format verification passed. Existing GUI tests remain green.
 
-### Stage B — In progress: pure policies extracted
+### Stage B — In progress: pure policies and session engine boundary extracted
 
 - Avalonia now references Application and delegates timer input validation, time/progress formatting and expiry loop/close/attention decisions to shared pure functions.
 - Added 11 policy cases for invalid inputs, supplied wall-clock parsing, expiry precedence and display semantics. Focused Application tests passed (15 total).
 - Qualified the Avalonia Application base type to avoid the new Hourglass.Application namespace collision.
 - Validation: restore, Release build with warnings as errors, all 778 solution tests and solution format verification passed. Existing 354 Avalonia tests passed.
-- Engine scheduling, session/effect ownership and GUI adapter migration remain pending. This is the first small extraction, not stage B completion.
+- TimerSession now contains the engine and captures its synchronous lifecycle signals as CountdownTransition results. The GUI reads immutable CountdownState values and applies returned effects instead of subscribing directly to engine expiry. Legacy engine-taking GUI constructors remain a migration bridge.
+- Session lifecycle revisions invalidate delayed expiry work after stop/restart/restore/disposal. GUI expiry tasks are available to deterministic regression tests; stale notification completions cannot play audio, restart or close a changed session, and stale acquired audio playback is disposed.
+- Five session tests cover immutable earlier state, exactly-once expiry, pause-at-expiry, monotonic resume, absolute restart rejection and disposal. Three GUI regression cases cover delayed notifications across stop/restart/disposal.
+- Intentional remaining mutation: TimerSession captures engine events locally; Avalonia still schedules Tick, owns effect adapters/settings and composes sessions through a temporary internal assembly bridge. The serialized runtime queue, independent scheduler, session registry, shared effect/lease coordinator and complete GUI adapter migration remain pending. Stage B is not complete.
+- Next boundary: move ticking and session registration into HourglassRuntime, route GUI lifecycle commands through its serialized queue, then extract effect/lease ownership with revision-aware completion dispatch. Retain deterministic direct-tick seams for tests and DemoRecorder.
+- Session-boundary validation: restore, warning-as-error Release build, format and version validation passed. The default full run hit the existing DisposeWaitsForActiveRequestHandler timing assertion (production drain is bounded to 250 ms); the isolated rerun passed and the full suite with `-m:1` passed all 786 tests. No test assertion or production IPC timeout was weakened.
