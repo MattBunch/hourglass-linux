@@ -194,3 +194,10 @@ Highest risks: session/expiry extraction, window-independent persistence, runtim
 - Added seven runtime tests and two GUI behavioral tests for multi-session ticking without windows, serialization, callback isolation/reentrancy, cancellation, removal/disposal, dispatcher publication and close behavior. Replaced the obsolete window-timer source assertion with the new wiring plus behavior coverage.
 - Validation: restore, warning-as-error Release build, format and full solution tests (`-m:1`) passed: 795 tests. The first integration run caught the obsolete refreshTimer source assertion; its replacement passed. Attended GUI/terminal/hardware checks remain Not run.
 - Still pending in B: shared expiry/effect and lease ownership, fully typed frontend commands and complete view-state adaptation. Registration and synchronous GUI command invocation are deliberate migration bridges. C-I remain pending.
+
+### Stage B — Shared expiry sequencing continuation
+
+- TimerExpiryCoordinator now sequences inhibition release, notification, audio and optional shutdown through a narrow effect interface. It returns a revision-tagged restart/close/none/superseded result; it never mutates timers through frontend callbacks.
+- GUI presentation prepares completion visuals and applies final restart/close on its dispatcher. Restart validates the expected revision inside the runtime queue. Restored expiry shares notification/audio sequencing while preserving its no-loop/no-shutdown/no-auto-close behavior.
+- Six new Application tests cover effect ordering, supersession at each boundary and restored expiry. Restore, Release warning-as-error build, format, release-version validation and all 801 solution tests (`-m:1`) passed, including 359 Avalonia tests and 89 DemoRecorder tests.
+- Remaining B work: move audio/inhibition lease ownership out of the GUI adapter, drain asynchronous effects during shutdown, and replace the internal migration bridge with typed session commands and complete immutable metadata. Then proceed to C's shared persistence/settings/restoration and D-I's terminal clients, IPC, host and distribution. DEV-18 is not complete.

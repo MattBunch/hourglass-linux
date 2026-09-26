@@ -18,6 +18,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private readonly IAppSettingsStore appSettingsStore;
     private readonly IAudioAlertService audioAlertService;
     private readonly TimerSession session;
+    private readonly ITimerExpiryEffects expiryEffects;
     private readonly HourglassRuntime runtime;
     private readonly bool ownsRuntime;
     private bool isDisposed;
@@ -188,6 +189,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         this.ownsRuntime = runtime == null;
         this.runtime = runtime ?? new HourglassRuntime(this.diagnosticSink);
         this.session = this.runtime.Register(this.SessionId, engine, this.PublishRuntimeTick);
+        this.expiryEffects = new GuiExpiryEffects(this);
 
         this.StartCommand = new RelayCommand(
             this.Start,
@@ -1817,44 +1819,24 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             PublishSafely(this.WindowAttentionRequested);
         }
 
-        await this.ReleaseInhibitionAsync().ConfigureAwait(false);
-        if (!this.session.IsCurrent(revision))
+        ExpiryCompletion completion = await TimerExpiryCoordinator.CompleteAsync(
+            this.session, revision, decision, this.expiryEffects).ConfigureAwait(false);
+        await this.uiDispatcher.InvokeAsync(() =>
         {
-            return;
-        }
+            if (!this.session.IsCurrent(completion.Revision))
+            {
+                return;
+            }
 
-        await this.NotifyTimerExpiredAsync().ConfigureAwait(false);
-        if (!this.session.IsCurrent(revision))
-        {
-            return;
-        }
-
-        await this.PlayTimerExpiredAudioAsync(revision).ConfigureAwait(false);
-        if (!this.session.IsCurrent(revision))
-        {
-            return;
-        }
-
-        if (this.settings.ShutDownWhenExpired && this.systemPowerService.IsShutdownSupported)
-        {
-            await this.RequestShutdownAsync().ConfigureAwait(false);
-        }
-
-        if (!this.session.IsCurrent(revision))
-        {
-            return;
-        }
-
-        if (decision.Restart)
-        {
-            this.RestartLoopingTimer();
-            return;
-        }
-
-        if (decision.Close)
-        {
-            PublishSafely(this.CloseRequested);
-        }
+            if (completion.Action == ExpiryAction.Restart)
+            {
+                this.RestartLoopingTimer(completion.Revision);
+            }
+            else if (completion.Action == ExpiryAction.Close)
+            {
+                PublishSafely(this.CloseRequested);
+            }
+        }).ConfigureAwait(false);
     }
 
     private async Task HandleRestoredExpiredAsync()
@@ -1877,11 +1859,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             PublishSafely(this.WindowAttentionRequested);
         }
 
-        await this.NotifyTimerExpiredAsync().ConfigureAwait(false);
-        if (this.session.IsCurrent(revision))
-        {
-            await this.PlayTimerExpiredAudioAsync(revision).ConfigureAwait(false);
-        }
+        await TimerExpiryCoordinator.NotifyRestoredAsync(this.session, revision, this.expiryEffects).ConfigureAwait(false);
     }
 
     private void ClearLockInterfaceAfterCompletion()
@@ -2064,9 +2042,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         }
     }
 
-    private void RestartLoopingTimer()
+    private void RestartLoopingTimer(long expectedRevision)
     {
-        if (!this.RunSessionOperation(() => this.session.Restart(this.wallClockNow())))
+        if (!this.RunSessionOperation(() => this.session.IsCurrent(expectedRevision)
+            ? this.session.Restart(this.wallClockNow())
+            : CountdownTransition.Invalid(this.session.Countdown)))
         {
             return;
         }
@@ -2505,6 +2485,15 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             backend,
             message,
             exception));
+    }
+
+    private sealed class GuiExpiryEffects(MainWindowViewModel owner) : ITimerExpiryEffects
+    {
+        public bool IsShutdownRequested => owner.settings.ShutDownWhenExpired && owner.systemPowerService.IsShutdownSupported;
+        public Task ReleaseInhibitionAsync() => owner.ReleaseInhibitionAsync();
+        public Task NotifyAsync() => owner.NotifyTimerExpiredAsync();
+        public Task PlayAudioAsync(long revision) => owner.PlayTimerExpiredAudioAsync(revision);
+        public Task RequestShutdownAsync() => owner.RequestShutdownAsync();
     }
 
     private sealed class NoOpSettingsStore : ISettingsStore
