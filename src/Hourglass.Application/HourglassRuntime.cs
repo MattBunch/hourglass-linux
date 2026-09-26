@@ -22,15 +22,19 @@ internal sealed class HourglassRuntime : IDisposable, IAsyncDisposable
     private readonly CancellationTokenSource schedulerCancellation = new();
     private readonly object lifetimeGate = new();
     private readonly IDiagnosticSink diagnostics;
+    private readonly TimeProvider timeProvider;
+    private readonly List<Task> retiredEffects = [];
+    private static readonly TimeSpan EffectDrainTimeout = TimeSpan.FromSeconds(5);
     private readonly Task worker;
     private Task scheduler = Task.CompletedTask;
     private Task? shutdown;
     private bool schedulerStarted;
     private bool stopping;
 
-    public HourglassRuntime(IDiagnosticSink? diagnostics = null)
+    public HourglassRuntime(IDiagnosticSink? diagnostics = null, TimeProvider? timeProvider = null)
     {
         this.diagnostics = diagnostics ?? NoOpDiagnosticSink.Instance;
+        this.timeProvider = timeProvider ?? TimeProvider.System;
         this.worker = Task.Run(this.ProcessCommandsAsync);
     }
 
@@ -52,22 +56,58 @@ internal sealed class HourglassRuntime : IDisposable, IAsyncDisposable
         });
     }
 
-    public void Remove(string id)
+    public SessionEffects AttachEffects(string id, INotificationService notifications, IAudioAlertService audio,
+        ISessionInhibitor inhibitor, ISystemPowerService power) => this.Invoke(() =>
     {
-        if (Volatile.Read(ref this.stopping))
+        Registration registration = this.sessions[id];
+        SessionEffects effects = new(this, registration.Session, notifications, audio, inhibitor, power, this.diagnostics);
+        this.sessions[id] = registration with { Effects = effects };
+        return effects;
+    });
+
+    public void Remove(string id) => _ = this.RemoveAsync(id);
+
+    public async Task RemoveAsync(string id)
+    {
+        Task cleanup;
+        try
         {
+            cleanup = this.Invoke(() =>
+            {
+                if (!this.sessions.Remove(id, out Registration? registration))
+                {
+                    return Task.CompletedTask;
+                }
+
+                registration.Session.Dispose();
+                Task effects = registration.Effects?.Close() ?? Task.CompletedTask;
+                this.retiredEffects.RemoveAll(task => task.IsCompleted);
+                this.retiredEffects.Add(effects);
+                return effects;
+            });
+        }
+        catch (ObjectDisposedException)
+        {
+            await this.DisposeAsync().ConfigureAwait(false);
             return;
         }
 
-        this.Invoke(() =>
-        {
-            if (this.sessions.Remove(id, out Registration? registration))
-            {
-                registration.Session.Dispose();
-            }
+        await this.DrainAsync(cleanup, "remove-session").ConfigureAwait(false);
+    }
 
+    internal async Task<bool> DrainAsync(Task cleanup, string operation)
+    {
+        try
+        {
+            await cleanup.WaitAsync(EffectDrainTimeout, this.timeProvider).ConfigureAwait(false);
             return true;
-        });
+        }
+        catch (TimeoutException exception)
+        {
+            this.diagnostics.TryRecord(new(DiagnosticSeverity.Warning, DiagnosticFailureClass.BestEffort,
+                "runtime", operation, "session-effects", "Effect drain timed out; cleanup remains active for late completions.", exception));
+            return false;
+        }
     }
 
     public void SuspendTicks(string id) => this.Invoke(() =>
@@ -100,7 +140,12 @@ internal sealed class HourglassRuntime : IDisposable, IAsyncDisposable
 
                 try
                 {
-                    completion.TrySetResult(command());
+                    T result = command();
+                    foreach (Registration registration in this.sessions.Values)
+                    {
+                        registration.Effects?.SynchronizeRevision();
+                    }
+                    completion.TrySetResult(result);
                 }
                 catch (Exception exception)
                 {
@@ -169,7 +214,7 @@ internal sealed class HourglassRuntime : IDisposable, IAsyncDisposable
         }
     }
 
-    public void Dispose() => this.DisposeAsync().AsTask().GetAwaiter().GetResult();
+    public void Dispose() => _ = this.DisposeAsync();
 
     public ValueTask DisposeAsync()
     {
@@ -213,20 +258,37 @@ internal sealed class HourglassRuntime : IDisposable, IAsyncDisposable
 
     private async Task ShutdownAsync()
     {
-        await this.schedulerCancellation.CancelAsync().ConfigureAwait(false);
-        await this.scheduler.ConfigureAwait(false);
-        this.commands.Writer.TryComplete();
-        await this.worker.ConfigureAwait(false);
-        foreach (Registration registration in this.sessions.Values)
+        try
         {
-            registration.Session.Dispose();
+            await this.schedulerCancellation.CancelAsync().ConfigureAwait(false);
+            await this.scheduler.ConfigureAwait(false);
         }
+        catch (Exception exception)
+        {
+            this.diagnostics.TryRecord(new(DiagnosticSeverity.Warning, DiagnosticFailureClass.BestEffort,
+                "runtime", "stop-scheduler", "session", "Runtime scheduler failed during shutdown.", exception));
+        }
+        finally
+        {
+            this.commands.Writer.TryComplete();
+            await this.worker.ConfigureAwait(false);
+            // The worker has stopped; no ownership decision can now overlap cleanup.
+            foreach (Registration registration in this.sessions.Values)
+            {
+                registration.Session.Dispose();
+                if (registration.Effects != null)
+                {
+                    this.retiredEffects.Add(registration.Effects.Close());
+                }
+            }
 
-        this.sessions.Clear();
-        this.schedulerCancellation.Dispose();
+            this.sessions.Clear();
+            await this.DrainAsync(Task.WhenAll(this.retiredEffects), "shutdown").ConfigureAwait(false);
+            this.schedulerCancellation.Dispose();
+        }
     }
 
-    private sealed record Registration(TimerSession Session, Action<SessionTick> Publish, bool TickEnabled = true);
+    private sealed record Registration(TimerSession Session, Action<SessionTick> Publish, bool TickEnabled = true, SessionEffects? Effects = null);
 }
 
 internal sealed record SessionTick(CountdownTransition Transition, long Revision);

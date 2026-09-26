@@ -665,6 +665,7 @@ public sealed class MainWindowViewModelTests
 
         clock.Advance(TimeSpan.FromSeconds(2));
         viewModel.Tick();
+        await viewModel.PendingExpiryEffects;
 
         Assert.Equal(TimerState.Expired, viewModel.State);
         Assert.True(viewModel.IsCompletionTextVisible);
@@ -680,6 +681,7 @@ public sealed class MainWindowViewModelTests
         Assert.Equal(1, sessionInhibitor.ReleaseCount);
 
         viewModel.Tick();
+        await viewModel.PendingExpiryEffects;
 
         Assert.Equal(1, flashCount);
         Assert.Equal(0, attentionCount);
@@ -1180,7 +1182,7 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
-    public void RestartAfterExpiryCreatesOneNewExpiryCycle()
+    public async Task RestartAfterExpiryCreatesOneNewExpiryCycle()
     {
         var clock = new ManualMonotonicClock();
         var notificationService = new RecordingNotificationService();
@@ -1197,13 +1199,16 @@ public sealed class MainWindowViewModelTests
         viewModel.StartCommand.Execute(null);
         clock.Advance(TimeSpan.FromSeconds(1));
         viewModel.Tick();
+        await viewModel.PendingExpiryEffects;
 
         viewModel.RestartCommand.Execute(null);
         Assert.Equal(TimerState.Running, viewModel.State);
         Assert.False(viewModel.HasCompletionEmphasis);
         clock.Advance(TimeSpan.FromSeconds(1));
         viewModel.Tick();
+        await viewModel.PendingExpiryEffects;
         viewModel.Tick();
+        await viewModel.PendingExpiryEffects;
 
         Assert.Equal(2, attentionCount);
         Assert.Equal(2, flashCount);
@@ -1707,6 +1712,7 @@ public sealed class MainWindowViewModelTests
         string[] allowListedFragments =
         [
             "\"active-session\"",
+            "\"audio-preview\"",
             "\"active-sessions\"",
             "\"app\"",
             "\"application/json\"",
@@ -2205,6 +2211,7 @@ public sealed class MainWindowViewModelTests
         viewModel.StartCommand.Execute(null);
         clock.Advance(TimeSpan.FromSeconds(2));
         viewModel.Tick();
+        await viewModel.PendingExpiryEffects;
 
         Assert.Equal(1, audioAlertService.CallCount);
         Assert.Equal(AudioAlertSoundIds.QuietBeep, audioAlertService.SoundId);
@@ -2274,7 +2281,7 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
-    public void AttentionHandlerFailureDoesNotPreventNotificationOrAudio()
+    public async Task AttentionHandlerFailureDoesNotPreventNotificationOrAudio()
     {
         var clock = new ManualMonotonicClock();
         var notificationService = new RecordingNotificationService();
@@ -2289,6 +2296,7 @@ public sealed class MainWindowViewModelTests
         viewModel.StartCommand.Execute(null);
         clock.Advance(TimeSpan.FromSeconds(2));
         viewModel.Tick();
+        await viewModel.PendingExpiryEffects;
 
         Assert.Equal(TimerState.Expired, viewModel.State);
         Assert.Equal(1, notificationService.CallCount);
@@ -2314,7 +2322,7 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
-    public void AudioFailureDoesNotPreventCompleteDisplayOrNotification()
+    public async Task AudioFailureDoesNotPreventCompleteDisplayOrNotification()
     {
         var clock = new ManualMonotonicClock();
         var audioAlertService = new RecordingAudioAlertService { ThrowOnPlay = true };
@@ -2328,6 +2336,7 @@ public sealed class MainWindowViewModelTests
         viewModel.StartCommand.Execute(null);
         clock.Advance(TimeSpan.FromSeconds(2));
         viewModel.Tick();
+        await viewModel.PendingExpiryEffects;
 
         Assert.Equal(1, audioAlertService.CallCount);
         Assert.Equal(1, notificationService.CallCount);
@@ -3114,7 +3123,7 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
-    public void LoopTimerRestartsDurationTimersAndEmitsOneExpiryCycle()
+    public async Task LoopTimerRestartsDurationTimersAndEmitsOneExpiryCycle()
     {
         var clock = new ManualMonotonicClock();
         var notificationService = new RecordingNotificationService();
@@ -3128,6 +3137,7 @@ public sealed class MainWindowViewModelTests
 
         clock.Advance(TimeSpan.FromSeconds(1));
         viewModel.Tick();
+        await viewModel.PendingExpiryEffects;
 
         Assert.Equal(TimerState.Running, viewModel.State);
         Assert.Equal("Running", viewModel.StatusText);
@@ -3173,7 +3183,7 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
-    public void LoopSoundUsesStoppablePlaybackAndStopsOnDismissal()
+    public async Task LoopSoundUsesStoppablePlaybackAndStopsOnDismissal()
     {
         var clock = new ManualMonotonicClock();
         var audioAlertService = new RecordingAudioAlertService();
@@ -3184,7 +3194,9 @@ public sealed class MainWindowViewModelTests
 
         clock.Advance(TimeSpan.FromSeconds(1));
         viewModel.Tick();
+        await viewModel.PendingExpiryEffects;
         bool dismissed = viewModel.TryHandleEscape();
+        await viewModel.PendingSessionEffects;
 
         Assert.True(dismissed);
         Assert.Equal(1, audioAlertService.LoopingCallCount);
@@ -3928,6 +3940,7 @@ public sealed class MainWindowViewModelTests
         viewModel.StartCommand.Execute(null);
         clock.Advance(TimeSpan.FromSeconds(2));
         viewModel.Tick();
+        await viewModel.PendingExpiryEffects;
 
         Assert.Equal(TimerState.Expired, viewModel.State);
         Assert.Equal(0, notificationService.CallCount);

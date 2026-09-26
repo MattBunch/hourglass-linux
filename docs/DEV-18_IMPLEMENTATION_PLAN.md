@@ -201,3 +201,12 @@ Highest risks: session/expiry extraction, window-independent persistence, runtim
 - GUI presentation prepares completion visuals and applies final restart/close on its dispatcher. Restart validates the expected revision inside the runtime queue. Restored expiry shares notification/audio sequencing while preserving its no-loop/no-shutdown/no-auto-close behavior.
 - Six new Application tests cover effect ordering, supersession at each boundary and restored expiry. Restore, Release warning-as-error build, format, release-version validation and all 801 solution tests (`-m:1`) passed, including 359 Avalonia tests and 89 DemoRecorder tests.
 - Remaining B work: move audio/inhibition lease ownership out of the GUI adapter, drain asynchronous effects during shutdown, and replace the internal migration bridge with typed session commands and complete immutable metadata. Then proceed to C's shared persistence/settings/restoration and D-I's terminal clients, IPC, host and distribution. DEV-18 is not complete.
+
+### Stage B — Application effect ownership
+
+- SessionEffects now owns notification/audio/power adapters and audio/inhibition leases. Immutable expiry requests capture options and notification text; no application effect reads frontend properties.
+- Resource generations and lifecycle revisions guard acquisition/adoption on the runtime queue. Cancellation callbacks, service calls and lease disposal run outside that queue. Late or superseded acquisitions are disposed exactly once, including preference changes during notification work.
+- Runtime registrations retain effect work through removal. Async cleanup and a five-second TimeProvider-based drain deadline retain late cleanup and report incomplete drains. GUI IDisposable initiates cleanup; awaited production close integration follows in the next commit.
+- Added nine deterministic application cases covering late audio/inhibition acquisition across lifecycle changes/removal/preferences, reverse completion, notification-time preferences, and queue responsiveness. Existing GUI assertions now await asynchronous expiry where needed.
+- Validation: warning-as-error Release build and all 810 tests passed (`-m:1`). Formatting applied. Baseline 801 tests also passed before changes. Sandbox GUI VSTest failed to create its socket; the escalated full run passed. Attended desktop/audio/hardware checks Not run.
+- Next unit: await cleanup from window close, drain preview/shared inhibition, kill canceled notification subprocesses, and add explicit deadline/shutdown regression coverage.

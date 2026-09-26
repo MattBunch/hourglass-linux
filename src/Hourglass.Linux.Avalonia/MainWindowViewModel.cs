@@ -8,8 +8,9 @@ using Hourglass.Timing;
 
 namespace Hourglass.Linux.Avalonia;
 
-public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
+public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable, IAsyncDisposable
 {
+    internal Task PendingSessionEffects => this.sessionEffects.Pending;
     internal Task PendingExpiryEffects { get; private set; } = Task.CompletedTask;
 
     private const string ActiveSessionKey = "active-session";
@@ -18,15 +19,15 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private readonly IAppSettingsStore appSettingsStore;
     private readonly IAudioAlertService audioAlertService;
     private readonly TimerSession session;
-    private readonly ITimerExpiryEffects expiryEffects;
+    private readonly SessionEffects sessionEffects;
     private readonly HourglassRuntime runtime;
     private readonly bool ownsRuntime;
     private bool isDisposed;
+    private Task? disposal;
+    private Task pendingAudioPreview = Task.CompletedTask;
     private bool automaticTicksSuspended;
     private readonly IDiagnosticSink diagnosticSink;
-    private readonly INotificationService notificationService;
     private readonly ISavedTimersStore savedTimersStore;
-    private readonly ISessionInhibitor sessionInhibitor;
     private readonly ISettingsStore settingsStore;
     private readonly bool persistActiveSessionDirectly;
     private readonly bool restoreActiveSessionOnLoad;
@@ -35,9 +36,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private readonly ISystemPowerService systemPowerService;
     private readonly IUiDispatcher uiDispatcher;
     private readonly Func<DateTime> wallClockNow;
-    private IAsyncDisposable? activeAudioPlayback;
     private CancellationTokenSource? audioPreviewCancellation;
-    private IAsyncDisposable? inhibitionLease;
     private Task pendingActiveSessionSave = Task.CompletedTask;
     private Task pendingCustomThemesSave = Task.CompletedTask;
     private Task pendingSavedTimersSave = Task.CompletedTask;
@@ -172,8 +171,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     {
         ArgumentNullException.ThrowIfNull(engine);
         this.wallClockNow = wallClockNow ?? throw new ArgumentNullException(nameof(wallClockNow));
-        this.notificationService = notificationService ?? throw new ArgumentNullException(nameof(notificationService));
-        this.sessionInhibitor = sessionInhibitor ?? throw new ArgumentNullException(nameof(sessionInhibitor));
+        ArgumentNullException.ThrowIfNull(notificationService);
+        ArgumentNullException.ThrowIfNull(sessionInhibitor);
         this.settingsStore = settingsStore ?? throw new ArgumentNullException(nameof(settingsStore));
         this.appSettingsStore = appSettingsStore ?? throw new ArgumentNullException(nameof(appSettingsStore));
         this.savedTimersStore = savedTimersStore ?? throw new ArgumentNullException(nameof(savedTimersStore));
@@ -189,7 +188,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         this.ownsRuntime = runtime == null;
         this.runtime = runtime ?? new HourglassRuntime(this.diagnosticSink);
         this.session = this.runtime.Register(this.SessionId, engine, this.PublishRuntimeTick);
-        this.expiryEffects = new GuiExpiryEffects(this);
+        this.sessionEffects = this.runtime.AttachEffects(this.SessionId, notificationService, audioAlertService, sessionInhibitor, systemPowerService);
 
         this.StartCommand = new RelayCommand(
             this.Start,
@@ -736,23 +735,29 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         }
     }
 
-    public void Dispose()
+    public void Dispose() => _ = this.DisposeAsync();
+
+    public ValueTask DisposeAsync()
     {
-        if (this.isDisposed)
+        if (this.disposal == null)
         {
-            return;
+            this.isDisposed = true;
+            this.disposal = this.DisposeCoreAsync();
         }
 
-        this.isDisposed = true;
-        this.runtime.Remove(this.SessionId);
+        return new ValueTask(this.disposal);
+    }
+
+    private async Task DisposeCoreAsync()
+    {
+        Task removal = this.runtime.RemoveAsync(this.SessionId);
+        await this.StopAudioPreviewAsync().ConfigureAwait(false);
+        await this.runtime.DrainAsync(this.pendingAudioPreview, "audio-preview").ConfigureAwait(false);
+        await removal.ConfigureAwait(false);
         if (this.ownsRuntime)
         {
-            this.runtime.Dispose();
+            await this.runtime.DisposeAsync().ConfigureAwait(false);
         }
-
-        _ = this.StopActiveAudioAsync();
-        _ = this.StopAudioPreviewAsync();
-        _ = this.ReleaseInhibitionAsync();
     }
 
     internal ActiveTimerSessionDocument CreateActiveSessionDocument(WindowGeometrySnapshot? windowGeometry = null)
@@ -1325,7 +1330,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             return;
         }
 
-        _ = this.PreviewAudioAlertSoundAsync();
+        this.pendingAudioPreview = this.PreviewAudioAlertSoundAsync();
     }
 
     private async Task PreviewAudioAlertSoundAsync()
@@ -1339,7 +1344,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
         try
         {
-            await this.audioAlertService.PlayAlertAsync(this.settings.AudioAlertSoundId, cancellation.Token).ConfigureAwait(false);
+            await using IAsyncDisposable? preview = await this.audioAlertService.PlayAlertAsync(this.settings.AudioAlertSoundId, cancellation.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
         {
@@ -1592,6 +1597,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         }
 
         this.settings = next;
+        if (previous.AudioAlertsEnabled != next.AudioAlertsEnabled || previous.AudioAlertSoundId != next.AudioAlertSoundId
+            || previous.LoopSound != next.LoopSound)
+        {
+            _ = this.StopActiveAudioAsync();
+        }
 
         if (!previous.RecentTimerInputs.SequenceEqual(next.RecentTimerInputs, StringComparer.Ordinal))
         {
@@ -1819,8 +1829,12 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             PublishSafely(this.WindowAttentionRequested);
         }
 
-        ExpiryCompletion completion = await TimerExpiryCoordinator.CompleteAsync(
-            this.session, revision, decision, this.expiryEffects).ConfigureAwait(false);
+        ExpiryCompletion completion = await this.sessionEffects.CompleteAsync(this.CreateExpiryRequest(revision), decision).ConfigureAwait(false);
+        // Application effect tracking ends before a close callback can await removal.
+        if (completion.Action is not (ExpiryAction.Restart or ExpiryAction.Close))
+        {
+            return;
+        }
         await this.uiDispatcher.InvokeAsync(() =>
         {
             if (!this.session.IsCurrent(completion.Revision))
@@ -1859,7 +1873,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             PublishSafely(this.WindowAttentionRequested);
         }
 
-        await TimerExpiryCoordinator.NotifyRestoredAsync(this.session, revision, this.expiryEffects).ConfigureAwait(false);
+        await this.sessionEffects.CompleteAsync(this.CreateExpiryRequest(revision),
+            new ExpiryDecision(false, false, false), restored: true).ConfigureAwait(false);
     }
 
     private void ClearLockInterfaceAfterCompletion()
@@ -1930,84 +1945,13 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         }
     }
 
-    private async Task NotifyTimerExpiredAsync()
-    {
-        if (!this.settings.NotificationsEnabled)
-        {
-            return;
-        }
+    private ExpiryEffectRequest CreateExpiryRequest(long revision) => new(revision,
+        this.settings.NotificationsEnabled,
+        WindowTitleFormatter.Format(WindowTitleMode.TimerTitle, ApplicationStrings.ApplicationTitle, this.TimerTitle, string.Empty, string.Empty),
+        ApplicationStrings.StatusTimerComplete, this.settings.AudioAlertsEnabled && !this.IsNoSoundSelected,
+        this.settings.AudioAlertSoundId, this.settings.LoopSound, this.settings.ShutDownWhenExpired);
 
-        try
-        {
-            string notificationTitle = WindowTitleFormatter.Format(
-                WindowTitleMode.TimerTitle,
-                ApplicationStrings.ApplicationTitle,
-                this.TimerTitle,
-                string.Empty,
-                string.Empty);
-            await this.notificationService.ShowTimerExpiredAsync(
-                notificationTitle,
-                ApplicationStrings.StatusTimerComplete).ConfigureAwait(false);
-        }
-        catch (Exception exception)
-        {
-            this.RecordBestEffort("notifications", "show-expired", this.notificationService.GetType().Name, "Timer expiry notification failed.", exception);
-        }
-    }
-
-    private async Task PlayTimerExpiredAudioAsync(long revision)
-    {
-        if (!this.settings.AudioAlertsEnabled || this.IsNoSoundSelected)
-        {
-            await this.StopActiveAudioAsync().ConfigureAwait(false);
-            return;
-        }
-
-        try
-        {
-            await this.StopActiveAudioAsync().ConfigureAwait(false);
-            if (!this.session.IsCurrent(revision))
-            {
-                return;
-            }
-
-            IAsyncDisposable? playback = this.settings.LoopSound
-                ? await this.audioAlertService.PlayAlertLoopingAsync(this.settings.AudioAlertSoundId).ConfigureAwait(false)
-                : await this.audioAlertService.PlayAlertAsync(this.settings.AudioAlertSoundId).ConfigureAwait(false);
-            if (this.session.IsCurrent(revision))
-            {
-                this.activeAudioPlayback = playback;
-            }
-            else if (playback != null)
-            {
-                await playback.DisposeAsync().ConfigureAwait(false);
-            }
-        }
-        catch (Exception exception)
-        {
-            this.RecordBestEffort("audio-alerts", "play-expired", this.audioAlertService.GetType().Name, "Timer expiry audio failed.", exception);
-        }
-    }
-
-    private async Task StopActiveAudioAsync()
-    {
-        IAsyncDisposable? playback = this.activeAudioPlayback;
-        this.activeAudioPlayback = null;
-
-        if (playback == null)
-        {
-            return;
-        }
-
-        try
-        {
-            await playback.DisposeAsync().ConfigureAwait(false);
-        }
-        catch (Exception exception)
-        {
-            this.RecordBestEffort("audio-alerts", "stop-active", this.audioAlertService.GetType().Name, "Active audio playback disposal failed.", exception);
-        }
-    }
+    private Task StopActiveAudioAsync() => this.sessionEffects.StopAudioAsync();
 
     private async Task StopAudioPreviewAsync()
     {
@@ -2027,18 +1971,6 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         }
         catch (ObjectDisposedException)
         {
-        }
-    }
-
-    private async Task RequestShutdownAsync()
-    {
-        try
-        {
-            await this.systemPowerService.RequestShutdownAsync().ConfigureAwait(false);
-        }
-        catch (Exception exception)
-        {
-            this.RecordUserRequested("system-power", "shutdown", this.systemPowerService.GetType().Name, "Shutdown request failed.", exception);
         }
     }
 
@@ -2062,48 +1994,10 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         this.QueueActiveSessionSave();
     }
 
-    private async Task AcquireInhibitionAsync()
-    {
-        await this.ReleaseInhibitionAsync().ConfigureAwait(false);
+    private Task AcquireInhibitionAsync() => this.sessionEffects.AcquireInhibitionAsync(
+        !this.settings.DoNotKeepComputerAwake, ApplicationStrings.SessionInhibitionReason);
 
-        if (this.settings.DoNotKeepComputerAwake)
-        {
-            return;
-        }
-
-        try
-        {
-            this.inhibitionLease = await this.sessionInhibitor.InhibitAsync(
-                ApplicationStrings.SessionInhibitionReason,
-                inhibitSuspend: true,
-                inhibitIdle: true).ConfigureAwait(false);
-        }
-        catch (Exception exception)
-        {
-            this.inhibitionLease = null;
-            this.RecordBestEffort("session-inhibition", "acquire", this.sessionInhibitor.GetType().Name, "Session inhibition acquire failed.", exception);
-        }
-    }
-
-    private async Task ReleaseInhibitionAsync()
-    {
-        IAsyncDisposable? lease = this.inhibitionLease;
-        this.inhibitionLease = null;
-
-        if (lease == null)
-        {
-            return;
-        }
-
-        try
-        {
-            await lease.DisposeAsync().ConfigureAwait(false);
-        }
-        catch (Exception exception)
-        {
-            this.RecordBestEffort("session-inhibition", "release", this.sessionInhibitor.GetType().Name, "Session inhibition release failed.", exception);
-        }
-    }
+    private Task ReleaseInhibitionAsync() => this.sessionEffects.ReleaseInhibitionAsync();
 
     private void QueueSettingsSave(LinuxAppSettings previousSettings, LinuxAppSettings requestedSettings)
     {
@@ -2485,15 +2379,6 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             backend,
             message,
             exception));
-    }
-
-    private sealed class GuiExpiryEffects(MainWindowViewModel owner) : ITimerExpiryEffects
-    {
-        public bool IsShutdownRequested => owner.settings.ShutDownWhenExpired && owner.systemPowerService.IsShutdownSupported;
-        public Task ReleaseInhibitionAsync() => owner.ReleaseInhibitionAsync();
-        public Task NotifyAsync() => owner.NotifyTimerExpiredAsync();
-        public Task PlayAudioAsync(long revision) => owner.PlayTimerExpiredAudioAsync(revision);
-        public Task RequestShutdownAsync() => owner.RequestShutdownAsync();
     }
 
     private sealed class NoOpSettingsStore : ISettingsStore
