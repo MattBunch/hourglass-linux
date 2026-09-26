@@ -172,3 +172,11 @@ Highest risks: session/expiry extraction, window-independent persistence, runtim
 - Guards inspect direct project references and resolved transitive dependencies. Snapshot tests protect earlier values and published collection ownership.
 - GUI execution is unchanged. B-I remain pending.
 - Validation: restore and Release warning-as-error build passed; all 767 solution tests passed (four new Application tests); solution format verification passed. Existing GUI tests remain green.
+
+### Stage B — In progress: pure policies extracted
+
+- Avalonia now references Application and delegates timer input validation, time/progress formatting and expiry loop/close/attention decisions to shared pure functions.
+- Added 11 policy cases for invalid inputs, supplied wall-clock parsing, expiry precedence and display semantics. Focused Application tests passed (15 total).
+- Qualified the Avalonia Application base type to avoid the new Hourglass.Application namespace collision.
+- Validation: restore, Release build with warnings as errors, all 778 solution tests and solution format verification passed. Existing 354 Avalonia tests passed.
+- Engine scheduling, session/effect ownership and GUI adapter migration remain pending. This is the first small extraction, not stage B completion.

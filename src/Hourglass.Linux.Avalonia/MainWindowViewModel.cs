@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using Hourglass.Application;
 using Hourglass.Platform;
 using Hourglass.Serialization;
 using Hourglass.Settings;
@@ -822,15 +823,13 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private void Start()
     {
         DateTime now = this.wallClockNow();
-        TimerStart? timerStart = TimerStart.FromString(this.TimerInput);
-
-        if (timerStart == null || !timerStart.IsValid || !timerStart.TryGetEndTime(now, out DateTime endTime) || endTime < now)
+        if (TimerInputValidation.Parse(this.TimerInput, now) is not ApplicationResult<TimerStart>.Success parsed)
         {
             this.ShowValidationError();
             return;
         }
 
-        if (!this.engine.Start(timerStart, now))
+        if (!this.engine.Start(parsed.Value, now))
         {
             this.ShowValidationError();
             return;
@@ -1733,8 +1732,10 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     private async Task HandleEngineExpiredAsync()
     {
-        bool loopTimer = this.settings.LoopTimer && this.engine.SupportsRestart;
-        bool closeWhenExpired = this.settings.CloseWhenExpired && !loopTimer && !this.settings.LoopSound;
+        ExpiryDecision decision = ExpiryDecision.FromOptions(
+            TimerDefaults.FromSettings(this.settings),
+            ApplicationPreferences.FromSettings(this.settings),
+            this.engine.SupportsRestart);
         this.ReplaceViewState(this.viewState with
         {
             PresentationMode = TimerPresentationMode.Status,
@@ -1748,7 +1749,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
         PublishSafely(this.ExpiryVisualFeedbackRequested);
 
-        if (this.settings.PopUpWhenExpired && !closeWhenExpired)
+        if (decision.RequestAttention)
         {
             PublishSafely(this.WindowAttentionRequested);
         }
@@ -1762,13 +1763,13 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             await this.RequestShutdownAsync().ConfigureAwait(false);
         }
 
-        if (loopTimer)
+        if (decision.Restart)
         {
             this.RestartLoopingTimer();
             return;
         }
 
-        if (closeWhenExpired)
+        if (decision.Close)
         {
             PublishSafely(this.CloseRequested);
         }

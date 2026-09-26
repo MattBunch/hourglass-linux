@@ -6,7 +6,7 @@ using Hourglass.Platform;
 
 namespace Hourglass.Linux.Avalonia;
 
-public sealed partial class App : Application
+public sealed partial class App : global::Avalonia.Application
 {
     private TimerWindowCoordinator? coordinator;
     private readonly StartupDiagnostics startupDiagnostics;
