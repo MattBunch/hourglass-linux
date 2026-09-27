@@ -86,13 +86,35 @@ public sealed class NotifySendNotificationService : INotificationService
             StartInfo = startInfo
         };
 
+        cancellationToken.ThrowIfCancellationRequested();
         if (!process.Start())
         {
             return -1;
         }
 
-        await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
-        return process.ExitCode;
+        return await WaitForOwnedProcessAsync(process, cancellationToken).ConfigureAwait(false);
+    }
+
+    internal static async Task<int> WaitForOwnedProcessAsync(Process process, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+            return process.ExitCode;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            try
+            {
+                if (!process.HasExited)
+                {
+                    process.Kill(entireProcessTree: true);
+                }
+            }
+            catch (InvalidOperationException) when (process.HasExited) { }
+            await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
+            throw;
+        }
     }
 
     private void RecordFailure(string message, Exception? exception)

@@ -20,6 +20,7 @@ internal sealed class SessionEffects
     private readonly object tasksGate = new();
     private readonly HashSet<Task> pending = [];
     private CancellationTokenSource revisionCancellation = new();
+    private readonly List<Task> revisionWork = [];
     private long revision;
     private volatile bool closed;
 
@@ -50,7 +51,8 @@ internal sealed class SessionEffects
         }
 
         this.revision = this.session.Revision;
-        this.Cancel(this.revisionCancellation);
+        this.Cancel(this.revisionCancellation, Task.WhenAll(this.revisionWork));
+        this.revisionWork.Clear();
         this.revisionCancellation = new();
     }
 
@@ -72,6 +74,7 @@ internal sealed class SessionEffects
             {
                 ObjectDisposedException.ThrowIf(this.closed, this);
                 this.Track(completion.Task);
+                this.revisionWork.Add(completion.Task);
                 return (this.revisionCancellation.Token, this.playback.Generation);
             });
         }
@@ -100,7 +103,7 @@ internal sealed class SessionEffects
                 }
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested) { }
-            catch (ObjectDisposedException) when (this.closed) { }
+            catch (ObjectDisposedException) when (this.closed || this.runtime.IsStopping) { }
             catch (Exception exception)
             {
                 this.Record("expiry", "complete", exception);
@@ -118,7 +121,8 @@ internal sealed class SessionEffects
         if (!this.closed)
         {
             this.closed = true;
-            this.Cancel(this.revisionCancellation);
+            this.Cancel(this.revisionCancellation, Task.WhenAll(this.revisionWork));
+            this.revisionWork.Clear();
             this.Clear(this.playback);
             this.Clear(this.inhibition);
         }
@@ -146,6 +150,7 @@ internal sealed class SessionEffects
                 }
                 Task released = this.Clear(slot);
                 slot.Cancellation = CancellationTokenSource.CreateLinkedTokenSource(this.revisionCancellation.Token);
+                slot.Work = completion.Task;
                 this.Track(completion.Task);
                 return (slot.Generation, this.session.Revision, slot.Cancellation.Token, released);
             });
@@ -190,7 +195,7 @@ internal sealed class SessionEffects
                 }
             }
             catch (OperationCanceledException) when (request.Token.IsCancellationRequested) { }
-            catch (ObjectDisposedException) when (request.Token.IsCancellationRequested || this.closed) { }
+            catch (ObjectDisposedException) when (request.Token.IsCancellationRequested || this.closed || this.runtime.IsStopping) { }
             catch (Exception exception)
             {
                 this.Record(category, operation, exception);
@@ -212,23 +217,28 @@ internal sealed class SessionEffects
         slot.Generation++;
         if (slot.Cancellation != null)
         {
-            this.Cancel(slot.Cancellation);
+            this.Cancel(slot.Cancellation, slot.Work);
             slot.Cancellation = null;
         }
 
         IAsyncDisposable? lease = slot.Lease;
         slot.Lease = null;
-        return lease == null ? Task.CompletedTask : this.Track(Task.Run(() => this.ReleaseAsync(lease, "session-effects", "release")));
+        if (lease != null)
+        {
+            slot.Released = this.Track(Task.WhenAll(slot.Released,
+                Task.Run(() => this.ReleaseAsync(lease, "session-effects", "release"))));
+        }
+        return slot.Released;
     }
 
-    private void Cancel(CancellationTokenSource cancellation)
+    private void Cancel(CancellationTokenSource cancellation, Task work)
     {
         // CancelAsync marks the token immediately and schedules callbacks off the queue.
         Task canceled = cancellation.CancelAsync();
         this.Track(FinishAsync());
         async Task FinishAsync()
         {
-            try { await canceled.ConfigureAwait(false); }
+            try { await Task.WhenAll(canceled, work).ConfigureAwait(false); }
             catch (Exception exception) { this.Record("session-effects", "cancel", exception); }
             finally { cancellation.Dispose(); }
         }
@@ -258,6 +268,8 @@ internal sealed class SessionEffects
 
     private sealed class LeaseSlot
     {
+        public Task Released { get; set; } = Task.CompletedTask;
+        public Task Work { get; set; } = Task.CompletedTask;
         public long Generation { get; set; }
         public CancellationTokenSource? Cancellation { get; set; }
         public IAsyncDisposable? Lease { get; set; }
@@ -266,7 +278,8 @@ internal sealed class SessionEffects
     private sealed class Adapter(SessionEffects owner, ExpiryEffectRequest request, CancellationToken token, long audioGeneration) : ITimerExpiryEffects
     {
         public bool IsShutdownRequested => request.Shutdown && owner.power.IsShutdownSupported;
-        public Task ReleaseInhibitionAsync() => owner.ReleaseInhibitionAsync();
+        public Task ReleaseInhibitionAsync() => owner.ReplaceLeaseAsync(owner.inhibition, null,
+            "session-inhibition", "release", expectedRevision: request.Revision);
         public Task NotifyAsync() => request.NotificationsEnabled
             ? this.PerformAsync(() => owner.notifications.ShowTimerExpiredAsync(request.Title, request.Body, token), "notifications", "show-expired")
             : Task.CompletedTask;

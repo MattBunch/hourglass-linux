@@ -488,9 +488,16 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
     {
         this.isClosePreparing = true;
         this.viewModel.SuspendAutomaticTicks();
-        await this.viewModel.PendingSettingsSave.ConfigureAwait(false);
-        await this.desktopProgressController.ClearAsync().ConfigureAwait(false);
-        await this.PrepareCoordinatorCloseOnUiThreadAsync().ConfigureAwait(false);
+        try
+        {
+            await this.viewModel.PendingSettingsSave.ConfigureAwait(false);
+            await this.desktopProgressController.ClearAsync().ConfigureAwait(false);
+            await this.PrepareCoordinatorCloseOnUiThreadAsync().ConfigureAwait(false);
+        }
+        finally
+        {
+            await this.viewModel.DisposeAsync().ConfigureAwait(false);
+        }
     }
 
     internal Task CloseCoordinatedAsync()
@@ -538,8 +545,8 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
             this.Close();
         }
 
-        await this.closeCoordinator.PendingPreparation.ConfigureAwait(true);
-        Dispatcher.UIThread.RunJobs();
+        await this.closeCoordinator.PendingPreparation.ConfigureAwait(false);
+        await Dispatcher.UIThread.InvokeAsync(() => Dispatcher.UIThread.RunJobs());
     }
 
     private Task PrepareCoordinatorCloseOnUiThreadAsync()

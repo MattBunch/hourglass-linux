@@ -28,6 +28,8 @@ internal sealed class HourglassRuntime : IDisposable, IAsyncDisposable
     private readonly Task worker;
     private Task scheduler = Task.CompletedTask;
     private Task? shutdown;
+    internal Task EffectsCompletion { get; private set; } = Task.CompletedTask;
+    internal bool IsStopping => Volatile.Read(ref this.stopping);
     private bool schedulerStarted;
     private bool stopping;
 
@@ -106,7 +108,21 @@ internal sealed class HourglassRuntime : IDisposable, IAsyncDisposable
         {
             this.diagnostics.TryRecord(new(DiagnosticSeverity.Warning, DiagnosticFailureClass.BestEffort,
                 "runtime", operation, "session-effects", "Effect drain timed out; cleanup remains active for late completions.", exception));
+            _ = this.ObserveLateCleanupAsync(cleanup, operation);
             return false;
+        }
+    }
+
+    private async Task ObserveLateCleanupAsync(Task cleanup, string operation)
+    {
+        try
+        {
+            await cleanup.ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            this.diagnostics.TryRecord(new(DiagnosticSeverity.Warning, DiagnosticFailureClass.BestEffort,
+                "runtime", operation, "session-effects", "Late effect cleanup failed.", exception));
         }
     }
 
@@ -214,7 +230,7 @@ internal sealed class HourglassRuntime : IDisposable, IAsyncDisposable
         }
     }
 
-    public void Dispose() => _ = this.DisposeAsync();
+    public void Dispose() => _ = this.ObserveLateCleanupAsync(this.DisposeAsync().AsTask(), "dispose");
 
     public ValueTask DisposeAsync()
     {
@@ -283,7 +299,8 @@ internal sealed class HourglassRuntime : IDisposable, IAsyncDisposable
             }
 
             this.sessions.Clear();
-            await this.DrainAsync(Task.WhenAll(this.retiredEffects), "shutdown").ConfigureAwait(false);
+            this.EffectsCompletion = Task.WhenAll(this.retiredEffects);
+            await this.DrainAsync(this.EffectsCompletion, "shutdown").ConfigureAwait(false);
             this.schedulerCancellation.Dispose();
         }
     }

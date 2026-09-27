@@ -237,9 +237,11 @@ public sealed class RecorderIsolationTests
         string contextSource = File.ReadAllText(contextSourcePath);
         string windowSource = File.ReadAllText(windowSourcePath);
 
-        Assert.Contains("await this.Window.CloseCoordinatedWithPreapprovedExitAsync().ConfigureAwait(true);", contextSource, StringComparison.Ordinal);
-        Assert.Contains("await this.closeCoordinator.PendingPreparation.ConfigureAwait(true);", windowSource, StringComparison.Ordinal);
-        Assert.Contains("Dispatcher.UIThread.RunJobs();", windowSource, StringComparison.Ordinal);
+        Assert.Contains("Task close = this.Window.CloseCoordinatedWithPreapprovedExitAsync();", contextSource, StringComparison.Ordinal);
+        Assert.Contains("PumpUntilComplete(close);", contextSource, StringComparison.Ordinal);
+        Assert.Contains("await close.ConfigureAwait(true);", contextSource, StringComparison.Ordinal);
+        Assert.Contains("await this.closeCoordinator.PendingPreparation.ConfigureAwait(false);", windowSource, StringComparison.Ordinal);
+        Assert.Contains("await Dispatcher.UIThread.InvokeAsync(() => Dispatcher.UIThread.RunJobs());", windowSource, StringComparison.Ordinal);
     }
 
     [Fact]

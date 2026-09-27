@@ -24,6 +24,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable, I
     private readonly bool ownsRuntime;
     private bool isDisposed;
     private Task? disposal;
+    private readonly object disposalGate = new();
     private Task pendingAudioPreview = Task.CompletedTask;
     private bool automaticTicksSuspended;
     private readonly IDiagnosticSink diagnosticSink;
@@ -735,24 +736,52 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable, I
         }
     }
 
-    public void Dispose() => _ = this.DisposeAsync();
+    public void Dispose() => _ = this.ObserveDisposalAsync();
+
+    private async Task ObserveDisposalAsync()
+    {
+        try { await this.DisposeAsync().ConfigureAwait(false); }
+        catch (Exception) { /* DisposeAsync already recorded the failure. */ }
+    }
 
     public ValueTask DisposeAsync()
     {
-        if (this.disposal == null)
+        TaskCompletionSource completion;
+        lock (this.disposalGate)
         {
+            if (this.disposal != null)
+            {
+                return new ValueTask(this.disposal);
+            }
+
             this.isDisposed = true;
-            this.disposal = this.DisposeCoreAsync();
+            completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            this.disposal = completion.Task;
         }
 
-        return new ValueTask(this.disposal);
+        _ = CompleteAsync();
+        return new ValueTask(completion.Task);
+
+        async Task CompleteAsync()
+        {
+            try
+            {
+                await this.DisposeCoreAsync().ConfigureAwait(false);
+                completion.SetResult();
+            }
+            catch (Exception exception)
+            {
+                this.RecordBestEffort("session-effects", "dispose", nameof(MainWindowViewModel), "Session cleanup failed.", exception);
+                completion.SetException(exception);
+            }
+        }
     }
 
     private async Task DisposeCoreAsync()
     {
         Task removal = this.runtime.RemoveAsync(this.SessionId);
-        await this.StopAudioPreviewAsync().ConfigureAwait(false);
-        await this.runtime.DrainAsync(this.pendingAudioPreview, "audio-preview").ConfigureAwait(false);
+        Task cancelPreview = this.StopAudioPreviewAsync();
+        await this.runtime.DrainAsync(Task.WhenAll(cancelPreview, this.pendingAudioPreview), "audio-preview").ConfigureAwait(false);
         await removal.ConfigureAwait(false);
         if (this.ownsRuntime)
         {
@@ -1330,12 +1359,17 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable, I
             return;
         }
 
-        this.pendingAudioPreview = this.PreviewAudioAlertSoundAsync();
+        Task preview = this.PreviewAudioAlertSoundAsync();
+        this.pendingAudioPreview = this.pendingAudioPreview.IsCompleted ? preview : Task.WhenAll(this.pendingAudioPreview, preview);
     }
 
     private async Task PreviewAudioAlertSoundAsync()
     {
         await this.StopAudioPreviewAsync().ConfigureAwait(false);
+        if (this.isDisposed)
+        {
+            return;
+        }
 
         var cancellation = new CancellationTokenSource();
         this.audioPreviewCancellation = cancellation;
@@ -1837,7 +1871,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable, I
         }
         await this.uiDispatcher.InvokeAsync(() =>
         {
-            if (!this.session.IsCurrent(completion.Revision))
+            if (this.isDisposed || this.automaticTicksSuspended || !this.session.IsCurrent(completion.Revision))
             {
                 return;
             }
@@ -1971,6 +2005,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable, I
         }
         catch (ObjectDisposedException)
         {
+        }
+        catch (Exception exception)
+        {
+            this.RecordBestEffort("audio-preview", "cancel", this.audioAlertService.GetType().Name,
+                "Audio preview cancellation failed.", exception);
         }
     }
 

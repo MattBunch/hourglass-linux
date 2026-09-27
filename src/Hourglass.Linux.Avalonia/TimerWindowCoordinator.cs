@@ -200,12 +200,24 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         this.statusIconService.ActionRequested -= this.StatusIconActionRequested;
-        await this.pendingSessionSave.ConfigureAwait(false);
-        await this.wakeAlarmController.DisposeAsync().ConfigureAwait(false);
-        await this.desktopProgressController.ClearAsync().ConfigureAwait(false);
-        await this.statusIconService.DisposeAsync().ConfigureAwait(false);
+        try
+        {
+            await this.pendingSessionSave.ConfigureAwait(false);
+            await this.wakeAlarmController.DisposeAsync().ConfigureAwait(false);
+            await this.desktopProgressController.ClearAsync().ConfigureAwait(false);
+            await this.statusIconService.DisposeAsync().ConfigureAwait(false);
+        }
+        finally
+        {
+            await this.runtime.DisposeAsync().ConfigureAwait(false);
+            await this.runtime.DrainAsync(this.DisposeInhibitorAfterSessionsAsync(), "shared-inhibition").ConfigureAwait(false);
+        }
+    }
+
+    private async Task DisposeInhibitorAfterSessionsAsync()
+    {
+        await this.runtime.EffectsCompletion.ConfigureAwait(false);
         await this.sessionInhibitor.DisposeAsync().ConfigureAwait(false);
-        await this.runtime.DisposeAsync().ConfigureAwait(false);
     }
 
     private MainWindow? CreateWindow(

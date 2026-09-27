@@ -4,6 +4,7 @@ namespace Hourglass.Linux.Avalonia;
 
 internal sealed class CoordinatedSessionInhibitor(ISessionInhibitor inner) : ISessionInhibitor, IAsyncDisposable
 {
+    private readonly CancellationTokenSource lifetimeCancellation = new();
     private readonly SemaphoreSlim gate = new(1, 1);
     private readonly ISessionInhibitor inner = inner ?? throw new ArgumentNullException(nameof(inner));
     private Task<IAsyncDisposable?>? acquisitionTask;
@@ -91,6 +92,7 @@ internal sealed class CoordinatedSessionInhibitor(ISessionInhibitor inner) : ISe
             this.gate.Release();
         }
 
+        await this.lifetimeCancellation.CancelAsync().ConfigureAwait(false);
         if (pendingAcquisition != null)
         {
             try
@@ -106,6 +108,7 @@ internal sealed class CoordinatedSessionInhibitor(ISessionInhibitor inner) : ISe
         {
             await lease.DisposeAsync().ConfigureAwait(false);
         }
+        this.lifetimeCancellation.Dispose();
     }
 
     private async Task<IAsyncDisposable?> AcquireSharedLeaseAsync(
@@ -120,7 +123,7 @@ internal sealed class CoordinatedSessionInhibitor(ISessionInhibitor inner) : ISe
                 reason,
                 inhibitSuspend,
                 inhibitIdle,
-                CancellationToken.None).ConfigureAwait(false);
+                this.lifetimeCancellation.Token).ConfigureAwait(false);
         }
         catch
         {

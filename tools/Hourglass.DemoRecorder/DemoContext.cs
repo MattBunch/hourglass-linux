@@ -308,8 +308,25 @@ public sealed class DemoContext : IAsyncDisposable
         this.disposed = true;
         await this.FlushAsync(CancellationToken.None).ConfigureAwait(true);
         this.aboutWindow?.Close();
-        await this.Window.CloseCoordinatedWithPreapprovedExitAsync().ConfigureAwait(true);
+        Task close = this.Window.CloseCoordinatedWithPreapprovedExitAsync();
+        PumpUntilComplete(close);
+        await close.ConfigureAwait(true);
         await this.FlushAsync(CancellationToken.None).ConfigureAwait(true);
+    }
+
+    // The recorder has no desktop main loop. Keep its dispatcher alive across async close preparation.
+    private static void PumpUntilComplete(Task operation)
+    {
+        if (operation.IsCompleted)
+        {
+            return;
+        }
+
+        DispatcherFrame frame = new();
+        _ = operation.ContinueWith(
+            _ => Dispatcher.UIThread.Post(() => frame.Continue = false),
+            CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+        Dispatcher.UIThread.PushFrame(frame);
     }
 
     private Task FlushAsync(CancellationToken cancellationToken)
