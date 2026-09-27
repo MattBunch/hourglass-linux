@@ -8,7 +8,7 @@ using Hourglass.Timing;
 /// Serializes short session mutations. Platform effects and frontend dispatch happen after the queue releases.
 /// Registration is an internal migration bridge until the public client owns all session metadata.
 /// </summary>
-internal sealed class HourglassRuntime : IDisposable, IAsyncDisposable
+public sealed partial class HourglassRuntime : IHourglassClient, IDisposable, IAsyncDisposable
 {
     private const int MaximumQueuedCommands = 256;
     private const int TickIntervalMilliseconds = 250;
@@ -23,24 +23,31 @@ internal sealed class HourglassRuntime : IDisposable, IAsyncDisposable
     private readonly object lifetimeGate = new();
     private readonly IDiagnosticSink diagnostics;
     private readonly TimeProvider timeProvider;
+    private readonly IMonotonicClock clock;
+    private readonly SessionRuntimeServices services;
+    private readonly Func<DateTime> wallClockNow;
     private readonly List<Task> retiredEffects = [];
     private static readonly TimeSpan EffectDrainTimeout = TimeSpan.FromSeconds(5);
     private readonly Task worker;
     private Task scheduler = Task.CompletedTask;
     private Task? shutdown;
-    internal Task EffectsCompletion { get; private set; } = Task.CompletedTask;
+    public Task EffectsCompletion { get; private set; } = Task.CompletedTask;
     internal bool IsStopping => Volatile.Read(ref this.stopping);
     private bool schedulerStarted;
     private bool stopping;
+    private int executingThreadId;
 
-    public HourglassRuntime(IDiagnosticSink? diagnostics = null, TimeProvider? timeProvider = null)
+    public HourglassRuntime(IDiagnosticSink? diagnostics = null, TimeProvider? timeProvider = null, IMonotonicClock? clock = null, Func<DateTime>? wallClockNow = null, SessionRuntimeServices? services = null)
     {
         this.diagnostics = diagnostics ?? NoOpDiagnosticSink.Instance;
         this.timeProvider = timeProvider ?? TimeProvider.System;
+        this.services = services ?? SessionRuntimeServices.Unsupported;
+        this.clock = clock ?? new SystemMonotonicClock();
+        this.wallClockNow = wallClockNow ?? (() => DateTime.Now);
         this.worker = Task.Run(this.ProcessCommandsAsync);
     }
 
-    public TimerSession Register(string id, CountdownEngine engine, Action<SessionTick> publish)
+    internal TimerSession Register(string id, CountdownEngine engine, Action<SessionTick> publish)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(id);
         ArgumentNullException.ThrowIfNull(engine);
@@ -58,7 +65,7 @@ internal sealed class HourglassRuntime : IDisposable, IAsyncDisposable
         });
     }
 
-    public SessionEffects AttachEffects(string id, INotificationService notifications, IAudioAlertService audio,
+    internal SessionEffects AttachEffects(string id, INotificationService notifications, IAudioAlertService audio,
         ISessionInhibitor inhibitor, ISystemPowerService power) => this.Invoke(() =>
     {
         Registration registration = this.sessions[id];
@@ -81,6 +88,7 @@ internal sealed class HourglassRuntime : IDisposable, IAsyncDisposable
                     return Task.CompletedTask;
                 }
 
+                if (registration.Authoritative) { this.Publish(registration, CountdownEffects.None, removed: true); }
                 registration.Session.Dispose();
                 Task effects = registration.Effects?.Close() ?? Task.CompletedTask;
                 this.retiredEffects.RemoveAll(task => task.IsCompleted);
@@ -97,7 +105,7 @@ internal sealed class HourglassRuntime : IDisposable, IAsyncDisposable
         await this.DrainAsync(cleanup, "remove-session").ConfigureAwait(false);
     }
 
-    internal async Task<bool> DrainAsync(Task cleanup, string operation)
+    public async Task<bool> DrainAsync(Task cleanup, string operation)
     {
         try
         {
@@ -136,9 +144,10 @@ internal sealed class HourglassRuntime : IDisposable, IAsyncDisposable
         return true;
     });
 
-    public T Invoke<T>(Func<T> command) => this.InvokeAsync(command).GetAwaiter().GetResult();
+    internal T Invoke<T>(Func<T> command) => Volatile.Read(ref this.executingThreadId) == Environment.CurrentManagedThreadId
+        ? command() : this.InvokeAsync(command).GetAwaiter().GetResult();
 
-    public async Task<T> InvokeAsync<T>(Func<T> command, CancellationToken cancellationToken = default)
+    internal async Task<T> InvokeAsync<T>(Func<T> command, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(command);
         ObjectDisposedException.ThrowIf(Volatile.Read(ref this.stopping), this);
@@ -204,6 +213,11 @@ internal sealed class HourglassRuntime : IDisposable, IAsyncDisposable
                 }
 
                 CountdownTransition transition = registration.Session.Tick();
+                if (registration.Authoritative)
+                {
+                    this.ProcessTransition(registration, transition);
+                    this.Publish(registration, transition.Effects);
+                }
                 updates.Add((registration, new SessionTick(transition, registration.Session.Revision)));
             }
 
@@ -250,7 +264,9 @@ internal sealed class HourglassRuntime : IDisposable, IAsyncDisposable
     {
         await foreach (Action command in this.commands.Reader.ReadAllAsync().ConfigureAwait(false))
         {
-            command();
+            Volatile.Write(ref this.executingThreadId, Environment.CurrentManagedThreadId);
+            try { command(); }
+            finally { Volatile.Write(ref this.executingThreadId, 0); }
         }
     }
 
@@ -291,6 +307,7 @@ internal sealed class HourglassRuntime : IDisposable, IAsyncDisposable
             // The worker has stopped; no ownership decision can now overlap cleanup.
             foreach (Registration registration in this.sessions.Values)
             {
+                foreach (SessionSubscription subscription in registration.Subscriptions) { subscription.Dispose(); }
                 registration.Session.Dispose();
                 if (registration.Effects != null)
                 {
@@ -305,7 +322,13 @@ internal sealed class HourglassRuntime : IDisposable, IAsyncDisposable
         }
     }
 
-    private sealed record Registration(TimerSession Session, Action<SessionTick> Publish, bool TickEnabled = true, SessionEffects? Effects = null);
+    private sealed record Registration(TimerSession Session, Action<SessionTick> Publish, bool TickEnabled = true, SessionEffects? Effects = null, string Id = "", bool Authoritative = false)
+    {
+        public List<SessionSubscription> Subscriptions { get; } = [];
+        public long Sequence { get; set; }
+        public long CompletionGeneration { get; set; }
+        public Task LifecycleWork { get; set; } = Task.CompletedTask;
+    }
 }
 
 internal sealed record SessionTick(CountdownTransition Transition, long Revision);

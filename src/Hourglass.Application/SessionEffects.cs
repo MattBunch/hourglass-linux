@@ -83,7 +83,7 @@ internal sealed class SessionEffects
             return Task.FromResult(new ExpiryCompletion(request.Revision, ExpiryAction.Superseded));
         }
 
-        _ = RunAsync();
+        _ = Task.Run(RunAsync);
         return completion.Task;
 
         async Task RunAsync()
@@ -164,7 +164,7 @@ internal sealed class SessionEffects
             return Task.CompletedTask;
         }
 
-        _ = RunAsync();
+        _ = Task.Run(RunAsync);
         return completion.Task;
 
         async Task RunAsync()

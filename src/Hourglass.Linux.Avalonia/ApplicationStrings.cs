@@ -139,6 +139,11 @@ public static class ApplicationStrings
     public static string SavedTimersRemove => GetString();
     public static string SavedTimersSaveCurrent => GetString();
     public static string SessionInhibitionReason => GetString();
+    public static string StatusSessionConflict => GetString();
+    public static string StatusSessionLocked => GetString();
+    public static string StatusRuntimeUnavailable => GetString();
+    public static string StatusInvalidTransition => GetString();
+    public static string StatusApplicationCommandFailed => GetString();
     public static string StatusInvalidTimer => GetString();
     public static string StatusPaused => GetString();
     public static string StatusReady => GetString();

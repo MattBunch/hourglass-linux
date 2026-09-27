@@ -35,6 +35,26 @@ public sealed class ArchitectureTests
         }
     }
 
+    [Fact]
+    public void PresentationCannotAccessInternalSessionsOrConstructEngines()
+    {
+        string root = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(FindProject()) ?? throw new DirectoryNotFoundException(), "../.."));
+        string assemblyInfo = File.ReadAllText(Path.Combine(root, "src/Hourglass.Application/AssemblyInfo.cs"));
+        Assert.DoesNotContain("hourglass-linux", assemblyInfo, StringComparison.Ordinal);
+        foreach (string directory in new[] { "src/Hourglass.Linux.Avalonia", "tools/Hourglass.DemoRecorder" })
+        {
+            foreach (string file in Directory.EnumerateFiles(Path.Combine(root, directory), "*.cs", SearchOption.AllDirectories)
+                .Where(file => !file.Contains("/obj/", StringComparison.Ordinal) && !file.Contains("/bin/", StringComparison.Ordinal)))
+            {
+                string source = File.ReadAllText(file);
+                Assert.DoesNotMatch(@"\bCountdownEngine\b", source);
+                Assert.DoesNotMatch(@"\bSessionEffects\b", source);
+                Assert.DoesNotContain("runtime.Invoke", source, StringComparison.Ordinal);
+                Assert.DoesNotMatch(@"\bTimerSession\b", source);
+            }
+        }
+    }
+
     private static string FindProject()
     {
         for (DirectoryInfo? directory = new(AppContext.BaseDirectory); directory != null; directory = directory.Parent)

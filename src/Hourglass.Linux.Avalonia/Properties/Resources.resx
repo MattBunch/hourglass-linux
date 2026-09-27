@@ -534,4 +534,19 @@
   <data name="WindowTitleTimerTitlePlusTimeLeft" xml:space="preserve">
     <value>Timer title plus time left</value>
   </data>
+  <data name="StatusSessionConflict" xml:space="preserve">
+    <value>The timer changed while you were editing. Cancel and reopen the editor to use the latest timer.</value>
+  </data>
+  <data name="StatusSessionLocked" xml:space="preserve">
+    <value>Unlock the timer before changing its timing or options.</value>
+  </data>
+  <data name="StatusRuntimeUnavailable" xml:space="preserve">
+    <value>The timer runtime is unavailable.</value>
+  </data>
+  <data name="StatusInvalidTransition" xml:space="preserve">
+    <value>This action is unavailable in the current timer state.</value>
+  </data>
+  <data name="StatusApplicationCommandFailed" xml:space="preserve">
+    <value>The timer command could not be completed.</value>
+  </data>
 </root>

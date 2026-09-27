@@ -9,6 +9,8 @@ public enum ApplicationErrorCode
     Unsupported,
     PersistenceFailure,
     Conflict,
+    Locked,
+    InvalidTransition,
     InternalFailure
 }
 

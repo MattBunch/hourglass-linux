@@ -52,7 +52,7 @@ public sealed class DemoContext : IAsyncDisposable
         }
 
         this.viewModel = new MainWindowViewModel(
-            new CountdownEngine(services.Clock),
+            services.Clock,
             () => services.Clock.WallClockNow,
             services.NotificationService,
             services.SessionInhibitor,
@@ -66,6 +66,8 @@ public sealed class DemoContext : IAsyncDisposable
             persistActiveSessionDirectly: false,
             restoreActiveSessionOnLoad: false,
             uiDispatcher: AvaloniaUiDispatcher.Instance);
+        PumpUntilComplete(this.viewModel.PendingCommands);
+        this.viewModel.PendingCommands.GetAwaiter().GetResult();
         this.Window = new MainWindow(
             this.viewModel,
             services.DesktopProgressService,
@@ -108,7 +110,9 @@ public sealed class DemoContext : IAsyncDisposable
     {
         cancellationToken.ThrowIfCancellationRequested();
         this.Window.Show();
-        await this.viewModel.LoadSettingsAsync(cancellationToken).ConfigureAwait(true);
+        Task load = this.viewModel.LoadSettingsAsync(cancellationToken);
+        PumpUntilComplete(load);
+        await load.ConfigureAwait(true);
         await this.FlushAsync(cancellationToken).ConfigureAwait(true);
     }
 
@@ -245,7 +249,12 @@ public sealed class DemoContext : IAsyncDisposable
         TimeSpan step = TimeSpan.FromTicks(targetTicks - this.scenarioTicks);
         this.services.Clock.Advance(step);
         this.scenarioTicks = targetTicks;
-        this.viewModel.Tick();
+        Task advance = this.viewModel.AdvanceAsync();
+        PumpUntilComplete(advance);
+        advance.GetAwaiter().GetResult();
+        Task effects = this.viewModel.PendingSessionEffects;
+        PumpUntilComplete(effects);
+        effects.GetAwaiter().GetResult();
     }
 
     private static void ApplyDemoFont(Control control)
@@ -332,6 +341,8 @@ public sealed class DemoContext : IAsyncDisposable
     private Task FlushAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        PumpUntilComplete(this.viewModel.PendingCommands);
+        this.viewModel.PendingCommands.GetAwaiter().GetResult();
         Dispatcher.UIThread.RunJobs();
         Avalonia.Headless.AvaloniaHeadlessPlatform.ForceRenderTimerTick();
         return Task.CompletedTask;

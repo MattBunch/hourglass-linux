@@ -8,18 +8,24 @@ using Hourglass.Timing;
 
 namespace Hourglass.Linux.Avalonia;
 
-public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable, IAsyncDisposable
+public sealed partial class MainWindowViewModel : INotifyPropertyChanged, IDisposable, IAsyncDisposable
 {
-    internal Task PendingSessionEffects => this.sessionEffects.Pending;
-    internal Task PendingExpiryEffects { get; private set; } = Task.CompletedTask;
+    internal Task PendingSessionEffects => this.WaitForApplicationEffectsAsync();
+    internal Task PendingExpiryEffects => this.WaitForApplicationEffectsAsync();
+    public Task PendingCommands { get; private set; } = Task.CompletedTask;
 
     private const string ActiveSessionKey = "active-session";
     private const string CustomThemesKey = "custom-themes";
 
     private readonly IAppSettingsStore appSettingsStore;
     private readonly IAudioAlertService audioAlertService;
-    private readonly TimerSession session;
-    private readonly SessionEffects sessionEffects;
+    private readonly IHourglassClient client;
+    private TimerSessionSnapshot sessionSnapshot = new(string.Empty, 0, TimerViewState.DefaultTimerInput, string.Empty, CountdownState.Stopped, new(), SessionActions.Start);
+    private SessionSubscription? subscription;
+    private int pendingCommands;
+    private long? editRevision;
+    private bool projectingSnapshot;
+    private readonly Dictionary<long, long> acknowledgedRevisions = [];
     private readonly HourglassRuntime runtime;
     private readonly bool ownsRuntime;
     private bool isDisposed;
@@ -50,7 +56,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable, I
 
     public MainWindowViewModel()
         : this(
-            new CountdownEngine(new SystemMonotonicClock()),
+            new SystemMonotonicClock(),
             () => DateTime.Now,
             UnsupportedNotificationService.Instance,
             UnsupportedSessionInhibitor.Instance,
@@ -60,9 +66,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable, I
     {
     }
 
-    public MainWindowViewModel(CountdownEngine engine, Func<DateTime> wallClockNow)
+    public MainWindowViewModel(IMonotonicClock clock, Func<DateTime> wallClockNow)
         : this(
-            engine,
+            clock,
             wallClockNow,
             UnsupportedNotificationService.Instance,
             UnsupportedSessionInhibitor.Instance,
@@ -73,11 +79,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable, I
     }
 
     public MainWindowViewModel(
-        CountdownEngine engine,
+        IMonotonicClock clock,
         Func<DateTime> wallClockNow,
         INotificationService notificationService)
         : this(
-            engine,
+            clock,
             wallClockNow,
             notificationService,
             UnsupportedSessionInhibitor.Instance,
@@ -88,12 +94,12 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable, I
     }
 
     public MainWindowViewModel(
-        CountdownEngine engine,
+        IMonotonicClock clock,
         Func<DateTime> wallClockNow,
         INotificationService notificationService,
         ISettingsStore settingsStore)
         : this(
-            engine,
+            clock,
             wallClockNow,
             notificationService,
             UnsupportedSessionInhibitor.Instance,
@@ -104,13 +110,13 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable, I
     }
 
     public MainWindowViewModel(
-        CountdownEngine engine,
+        IMonotonicClock clock,
         Func<DateTime> wallClockNow,
         INotificationService notificationService,
         ISessionInhibitor sessionInhibitor,
         ISettingsStore settingsStore)
         : this(
-            engine,
+            clock,
             wallClockNow,
             notificationService,
             sessionInhibitor,
@@ -121,7 +127,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable, I
     }
 
     public MainWindowViewModel(
-        CountdownEngine engine,
+        IMonotonicClock clock,
         Func<DateTime> wallClockNow,
         INotificationService notificationService,
         ISessionInhibitor sessionInhibitor,
@@ -134,7 +140,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable, I
         bool persistActiveSessionDirectly = true,
         bool restoreActiveSessionOnLoad = true)
         : this(
-            engine,
+            clock,
             wallClockNow,
             notificationService,
             sessionInhibitor,
@@ -152,7 +158,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable, I
     }
 
     internal MainWindowViewModel(
-        CountdownEngine engine,
+        IMonotonicClock clock,
         Func<DateTime> wallClockNow,
         INotificationService notificationService,
         ISessionInhibitor sessionInhibitor,
@@ -170,7 +176,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable, I
         IDiagnosticSink? diagnosticSink = null,
         HourglassRuntime? runtime = null)
     {
-        ArgumentNullException.ThrowIfNull(engine);
+        ArgumentNullException.ThrowIfNull(clock);
         this.wallClockNow = wallClockNow ?? throw new ArgumentNullException(nameof(wallClockNow));
         ArgumentNullException.ThrowIfNull(notificationService);
         ArgumentNullException.ThrowIfNull(sessionInhibitor);
@@ -187,74 +193,76 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable, I
         this.persistActiveSessionDirectly = persistActiveSessionDirectly;
         this.restoreActiveSessionOnLoad = restoreActiveSessionOnLoad;
         this.ownsRuntime = runtime == null;
-        this.runtime = runtime ?? new HourglassRuntime(this.diagnosticSink);
-        this.session = this.runtime.Register(this.SessionId, engine, this.PublishRuntimeTick);
-        this.sessionEffects = this.runtime.AttachEffects(this.SessionId, notificationService, audioAlertService, sessionInhibitor, systemPowerService);
+        this.runtime = runtime ?? new HourglassRuntime(this.diagnosticSink, clock: clock, wallClockNow: wallClockNow,
+            services: new SessionRuntimeServices(notificationService, audioAlertService, sessionInhibitor, systemPowerService,
+                ApplicationStrings.ApplicationTitle, ApplicationStrings.StatusTimerComplete, ApplicationStrings.SessionInhibitionReason));
+        this.client = this.runtime;
 
         this.StartCommand = new RelayCommand(
             this.Start,
-            () => this.viewState.PresentationMode == TimerPresentationMode.Input);
+            () => this.pendingCommands == 0 && this.viewState.PresentationMode == TimerPresentationMode.Input);
         this.PauseResumeCommand = new RelayCommand(
             this.PauseOrResume,
-            () => !this.IsTimerModificationLocked && (this.session.Countdown.State is TimerState.Running or TimerState.Paused));
-        this.ResetCommand = new RelayCommand(this.Reset, () => !this.IsTimerModificationLocked && this.session.Countdown.State != TimerState.Stopped);
-        this.RestartCommand = new RelayCommand(this.Restart, () => !this.IsTimerModificationLocked && this.viewState.IsRestartVisible);
+            () => this.pendingCommands == 0 && !this.IsTimerModificationLocked && (this.sessionSnapshot.Countdown.State is TimerState.Running or TimerState.Paused));
+        this.ResetCommand = new RelayCommand(this.Reset, () => this.pendingCommands == 0 && !this.IsTimerModificationLocked && this.sessionSnapshot.Countdown.State != TimerState.Stopped);
+        this.RestartCommand = new RelayCommand(this.Restart, () => this.pendingCommands == 0 && !this.IsTimerModificationLocked && this.viewState.IsRestartVisible);
         this.CancelEditCommand = new RelayCommand(
             this.CancelActiveTimerEdit,
-            () => !this.IsTimerModificationLocked && this.viewState.IsCancelVisible);
-        this.ToggleNotificationsCommand = new RelayCommand(this.ToggleNotifications, () => !this.IsTimerModificationLocked);
-        this.ToggleAudioAlertsCommand = new RelayCommand(this.ToggleAudioAlerts, () => !this.IsTimerModificationLocked);
-        this.ToggleAlwaysOnTopCommand = new RelayCommand(this.ToggleAlwaysOnTop, () => !this.IsTimerModificationLocked);
-        this.ToggleShowProgressInTaskbarCommand = new RelayCommand(this.ToggleShowProgressInTaskbar, () => !this.IsTimerModificationLocked);
+            () => this.pendingCommands == 0 && !this.IsTimerModificationLocked && this.viewState.IsCancelVisible);
+        this.ToggleNotificationsCommand = new RelayCommand(this.ToggleNotifications, () => this.pendingCommands == 0 && !this.IsTimerModificationLocked);
+        this.ToggleAudioAlertsCommand = new RelayCommand(this.ToggleAudioAlerts, () => this.pendingCommands == 0 && !this.IsTimerModificationLocked);
+        this.ToggleAlwaysOnTopCommand = new RelayCommand(this.ToggleAlwaysOnTop, () => this.pendingCommands == 0 && !this.IsTimerModificationLocked);
+        this.ToggleShowProgressInTaskbarCommand = new RelayCommand(this.ToggleShowProgressInTaskbar, () => this.pendingCommands == 0 && !this.IsTimerModificationLocked);
         this.ToggleShowInNotificationAreaCommand = new RelayCommand(
             this.ToggleShowInNotificationArea,
-            () => !this.IsTimerModificationLocked && this.IsStatusIconSupported);
+            () => this.pendingCommands == 0 && !this.IsTimerModificationLocked && this.IsStatusIconSupported);
         this.HideToNotificationAreaCommand = new RelayCommand(
             this.RequestHideToNotificationArea,
             () => this.CanHideToNotificationArea);
-        this.TogglePopUpWhenExpiredCommand = new RelayCommand(this.TogglePopUpWhenExpired, () => !this.IsTimerModificationLocked);
-        this.TogglePromptOnExitCommand = new RelayCommand(this.TogglePromptOnExit, () => !this.IsTimerModificationLocked);
-        this.ToggleReverseProgressBarCommand = new RelayCommand(this.ToggleReverseProgressBar, () => !this.IsTimerModificationLocked);
-        this.ToggleShowTimeElapsedCommand = new RelayCommand(this.ToggleShowTimeElapsed, () => !this.IsTimerModificationLocked);
-        this.ToggleLoopTimerCommand = new RelayCommand(this.ToggleLoopTimer, () => !this.IsTimerModificationLocked);
-        this.ToggleLoopSoundCommand = new RelayCommand(this.ToggleLoopSound, () => !this.IsTimerModificationLocked);
-        this.ToggleCloseWhenExpiredCommand = new RelayCommand(this.ToggleCloseWhenExpired, () => !this.IsTimerModificationLocked);
-        this.ToggleLockInterfaceCommand = new RelayCommand(this.ToggleLockInterface, () => !this.IsTimerModificationLocked);
-        this.ToggleDoNotKeepComputerAwakeCommand = new RelayCommand(this.ToggleDoNotKeepComputerAwake, () => !this.IsTimerModificationLocked);
+        this.TogglePopUpWhenExpiredCommand = new RelayCommand(this.TogglePopUpWhenExpired, () => this.pendingCommands == 0 && !this.IsTimerModificationLocked);
+        this.TogglePromptOnExitCommand = new RelayCommand(this.TogglePromptOnExit, () => this.pendingCommands == 0 && !this.IsTimerModificationLocked);
+        this.ToggleReverseProgressBarCommand = new RelayCommand(this.ToggleReverseProgressBar, () => this.pendingCommands == 0 && !this.IsTimerModificationLocked);
+        this.ToggleShowTimeElapsedCommand = new RelayCommand(this.ToggleShowTimeElapsed, () => this.pendingCommands == 0 && !this.IsTimerModificationLocked);
+        this.ToggleLoopTimerCommand = new RelayCommand(this.ToggleLoopTimer, () => this.pendingCommands == 0 && !this.IsTimerModificationLocked);
+        this.ToggleLoopSoundCommand = new RelayCommand(this.ToggleLoopSound, () => this.pendingCommands == 0 && !this.IsTimerModificationLocked);
+        this.ToggleCloseWhenExpiredCommand = new RelayCommand(this.ToggleCloseWhenExpired, () => this.pendingCommands == 0 && !this.IsTimerModificationLocked);
+        this.ToggleLockInterfaceCommand = new RelayCommand(this.ToggleLockInterface, () => this.pendingCommands == 0);
+        this.ToggleDoNotKeepComputerAwakeCommand = new RelayCommand(this.ToggleDoNotKeepComputerAwake, () => this.pendingCommands == 0 && !this.IsTimerModificationLocked);
         this.ToggleShutDownWhenExpiredCommand = new RelayCommand(
             this.ToggleShutDownWhenExpired,
-            () => !this.IsTimerModificationLocked && this.systemPowerService.IsShutdownSupported);
-        this.ToggleRestoreActiveSessionOnStartupCommand = new RelayCommand(this.ToggleRestoreActiveSessionOnStartup, () => !this.IsTimerModificationLocked);
-        this.ToggleOpenSavedTimersOnStartupCommand = new RelayCommand(this.ToggleOpenSavedTimersOnStartup, () => !this.IsTimerModificationLocked);
-        this.SelectThemePreferenceCommand = new RelayCommand<string>(this.SelectThemePreference, value => !string.IsNullOrWhiteSpace(value) && !this.IsTimerModificationLocked);
-        this.SelectCustomThemeCommand = new RelayCommand<string>(this.SelectCustomTheme, id => !string.IsNullOrWhiteSpace(id) && !this.IsTimerModificationLocked);
-        this.DuplicateCustomThemeCommand = new RelayCommand<string>(this.DuplicateCustomTheme, id => !string.IsNullOrWhiteSpace(id) && !this.IsTimerModificationLocked);
-        this.DeleteCustomThemeCommand = new RelayCommand<string>(this.DeleteCustomTheme, id => !string.IsNullOrWhiteSpace(id) && !this.IsTimerModificationLocked);
-        this.SelectWindowTitleModeCommand = new RelayCommand<string>(this.SelectWindowTitleMode, value => !string.IsNullOrWhiteSpace(value) && !this.IsTimerModificationLocked);
+            () => this.pendingCommands == 0 && !this.IsTimerModificationLocked && this.systemPowerService.IsShutdownSupported);
+        this.ToggleRestoreActiveSessionOnStartupCommand = new RelayCommand(this.ToggleRestoreActiveSessionOnStartup, () => this.pendingCommands == 0 && !this.IsTimerModificationLocked);
+        this.ToggleOpenSavedTimersOnStartupCommand = new RelayCommand(this.ToggleOpenSavedTimersOnStartup, () => this.pendingCommands == 0 && !this.IsTimerModificationLocked);
+        this.SelectThemePreferenceCommand = new RelayCommand<string>(this.SelectThemePreference, value => this.pendingCommands == 0 && !string.IsNullOrWhiteSpace(value) && !this.IsTimerModificationLocked);
+        this.SelectCustomThemeCommand = new RelayCommand<string>(this.SelectCustomTheme, id => this.pendingCommands == 0 && !string.IsNullOrWhiteSpace(id) && !this.IsTimerModificationLocked);
+        this.DuplicateCustomThemeCommand = new RelayCommand<string>(this.DuplicateCustomTheme, id => this.pendingCommands == 0 && !string.IsNullOrWhiteSpace(id) && !this.IsTimerModificationLocked);
+        this.DeleteCustomThemeCommand = new RelayCommand<string>(this.DeleteCustomTheme, id => this.pendingCommands == 0 && !string.IsNullOrWhiteSpace(id) && !this.IsTimerModificationLocked);
+        this.SelectWindowTitleModeCommand = new RelayCommand<string>(this.SelectWindowTitleMode, value => this.pendingCommands == 0 && !string.IsNullOrWhiteSpace(value) && !this.IsTimerModificationLocked);
         this.SelectAudioAlertSoundCommand = new RelayCommand<string>(this.SelectAudioAlertSound, value => this.CanSelectAudioAlertSound(value));
         this.PreviewAudioAlertSoundCommand = new RelayCommand(this.PreviewAudioAlertSound, () => this.CanPreviewAudioAlertSound);
         this.StopAudioAlertPreviewCommand = new RelayCommand(this.StopAudioAlertPreview, () => this.IsAudioPreviewActive);
-        this.NewTimerCommand = new RelayCommand(this.RequestNewTimer, () => !this.IsTimerModificationLocked);
-        this.SelectRecentInputCommand = new RelayCommand<string>(this.SelectRecentInput, input => !string.IsNullOrWhiteSpace(input) && !this.IsTimerModificationLocked);
+        this.NewTimerCommand = new RelayCommand(this.RequestNewTimer, () => this.pendingCommands == 0 && !this.IsTimerModificationLocked);
+        this.SelectRecentInputCommand = new RelayCommand<string>(this.SelectRecentInput, input => this.pendingCommands == 0 && !string.IsNullOrWhiteSpace(input) && !this.IsTimerModificationLocked);
         this.ClearRecentInputsCommand = new RelayCommand(this.ClearRecentInputs, () => this.RecentInputMenuItems.Length > 0 && !this.IsTimerModificationLocked);
-        this.SaveCurrentTimerCommand = new RelayCommand(this.SaveCurrentTimer, () => !this.IsTimerModificationLocked && this.CanSaveCurrentTimer);
-        this.OpenSavedTimerCommand = new RelayCommand<string>(this.OpenSavedTimer, id => !string.IsNullOrWhiteSpace(id) && !this.IsTimerModificationLocked);
-        this.RemoveSavedTimerCommand = new RelayCommand<string>(this.RemoveSavedTimer, id => !string.IsNullOrWhiteSpace(id) && !this.IsTimerModificationLocked);
+        this.SaveCurrentTimerCommand = new RelayCommand(this.SaveCurrentTimer, () => this.pendingCommands == 0 && !this.IsTimerModificationLocked && this.CanSaveCurrentTimer);
+        this.OpenSavedTimerCommand = new RelayCommand<string>(this.OpenSavedTimer, id => this.pendingCommands == 0 && !string.IsNullOrWhiteSpace(id) && !this.IsTimerModificationLocked);
+        this.RemoveSavedTimerCommand = new RelayCommand<string>(this.RemoveSavedTimer, id => this.pendingCommands == 0 && !string.IsNullOrWhiteSpace(id) && !this.IsTimerModificationLocked);
         this.ClearSavedTimersCommand = new RelayCommand(this.ClearSavedTimers, () => this.SavedTimerMenuItems.Length > 0 && !this.IsTimerModificationLocked);
         this.OpenAllSavedTimersCommand = new RelayCommand(this.RequestOpenAllSavedTimers, () => this.SavedTimerMenuItems.Length > 0 && !this.IsTimerModificationLocked);
 
         this.RefreshDisplay();
+        this.QueueOperation(this.InitializeSessionAsync);
     }
 
     public MainWindowViewModel(
-        CountdownEngine engine,
+        IMonotonicClock clock,
         Func<DateTime> wallClockNow,
         INotificationService notificationService,
         ISessionInhibitor sessionInhibitor,
         ISettingsStore settingsStore,
         IAudioAlertService audioAlertService)
         : this(
-            engine,
+            clock,
             wallClockNow,
             notificationService,
             sessionInhibitor,
@@ -372,7 +380,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable, I
             if (value != this.viewState.TimerInput)
             {
                 this.ReplaceViewState(this.viewState with { TimerInput = value, HasValidationError = false });
-                this.RefreshDisplay(this.session.Countdown.State == TimerState.Stopped ? TimerViewState.ReadyStatusText : this.StatusText);
+                this.RefreshDisplay(this.sessionSnapshot.Countdown.State == TimerState.Stopped ? TimerViewState.ReadyStatusText : this.StatusText);
                 this.OnPropertyChanged(nameof(this.CanSaveCurrentTimer));
                 this.RaiseCommandCanExecuteChanged(this.SaveCurrentTimerCommand);
                 this.QueueActiveSessionSave();
@@ -392,10 +400,27 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable, I
                 return;
             }
 
-            this.TryEnterInputModeFromExpired();
+            bool expired = this.sessionSnapshot.Countdown.State == TimerState.Expired;
             this.ReplaceViewState(this.viewState with { TimerTitle = nextTitle }, nameof(this.TimerTitle));
             this.PublishWindowTitleIfChanged();
 
+            if (expired)
+            {
+                string input = this.TimerInput;
+                TimerDefaults options = TimerDefaults.FromSettings(this.settings);
+                ApplicationPreferences preferences = ApplicationPreferences.FromSettings(this.settings);
+                this.QueueOperation(async () =>
+                {
+                    if (!await this.ExecuteAndApplyAsync(new SessionCommand.Prepare(this.SessionId, input, nextTitle, options, preferences)).ConfigureAwait(false)) { return; }
+                    await this.DispatchAsync(() =>
+                    {
+                        this.ReplaceViewState(this.viewState with { TimerInput = input, PresentationMode = TimerPresentationMode.Input, InputBeforeEdit = null, HasValidationError = false });
+                        this.RefreshDisplay(TimerViewState.ReadyStatusText);
+                        this.QueueActiveSessionSave();
+                    }).ConfigureAwait(false);
+                });
+            }
+            else { this.SubmitMetadataUpdate(title: nextTitle); }
             this.QueueActiveSessionSave();
         }
     }
@@ -404,8 +429,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable, I
         this.settings.WindowTitleMode,
         ApplicationStrings.ApplicationTitle,
         this.TimerTitle,
-        FormatOptionalTimerTime(this.session.Countdown.TimeLeft),
-        FormatOptionalTimerTime(this.session.Countdown.TimeElapsed));
+        FormatOptionalTimerTime(this.sessionSnapshot.Countdown.TimeLeft),
+        FormatOptionalTimerTime(this.sessionSnapshot.Countdown.TimeElapsed));
 
     public string RemainingTime => this.viewState.RemainingTime;
 
@@ -422,7 +447,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable, I
 
     public TimerState State => this.viewState.State;
 
-    public DateTime? EndTime => this.session.Countdown.EndTime;
+    public DateTime? EndTime => this.sessionSnapshot.Countdown.EndTime;
 
     public double ProgressPercent => this.viewState.ProgressPercent;
 
@@ -560,12 +585,12 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable, I
         TimerStart.FromString(this.TimerInput) is { IsValid: true };
 
     public bool IsTimerModificationLocked =>
-        this.settings.LockInterface && (this.session.Countdown.State is TimerState.Running or TimerState.Paused);
+        this.settings.LockInterface && (this.sessionSnapshot.Countdown.State is TimerState.Running or TimerState.Paused);
 
     public bool CanModifyCustomThemes => !this.IsTimerModificationLocked;
 
     public bool ShouldPromptOnExit =>
-        this.settings.PromptOnExit && (this.session.Countdown.State is TimerState.Running or TimerState.Paused);
+        this.settings.PromptOnExit && (this.sessionSnapshot.Countdown.State is TimerState.Running or TimerState.Paused);
 
     public StatusIconMenuState StatusIconMenuState => new(
         this.WindowTitle,
@@ -581,11 +606,18 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable, I
 
     public bool HasCompletionEmphasis => this.viewState.HasCompletionEmphasis;
 
-    internal Task PendingSettingsSave => Task.WhenAll(
-        this.pendingSettingsSave,
-        this.pendingCustomThemesSave,
-        this.pendingSavedTimersSave,
-        this.pendingActiveSessionSave);
+    internal Task PendingSettingsSave => this.WaitForSettingsAsync();
+
+    private async Task WaitForSettingsAsync()
+    {
+        while (true)
+        {
+            Task commands = this.PendingCommands;
+            await commands.ConfigureAwait(false);
+            await Task.WhenAll(this.pendingSettingsSave, this.pendingCustomThemesSave, this.pendingSavedTimersSave, this.pendingActiveSessionSave).ConfigureAwait(false);
+            if (ReferenceEquals(commands, this.PendingCommands)) { return; }
+        }
+    }
 
     internal DesktopProgressRequest DesktopProgressRequest =>
         DesktopProgressProjection.FromViewState(this.viewState, this.settings.ShowProgressInTaskbar);
@@ -604,14 +636,19 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable, I
             && loadedSettings.RestoreActiveSessionOnStartup
             && await this.TryRestoreActiveSessionAsync(cancellationToken))
         {
+            await this.PendingCommands.ConfigureAwait(false);
             return;
         }
 
-        if (this.session.Countdown.State == TimerState.Stopped)
+        await this.PendingCommands.ConfigureAwait(false);
+        await this.DispatchAsync(() =>
         {
-            this.ReplaceViewState(this.viewState with { TimerInput = loadedSettings.GetInitialTimerInput(TimerViewState.DefaultTimerInput) });
-            this.RefreshDisplay(TimerViewState.ReadyStatusText);
-        }
+            if (this.sessionSnapshot.Countdown.State == TimerState.Stopped)
+            {
+                this.ReplaceViewState(this.viewState with { TimerInput = loadedSettings.GetInitialTimerInput(TimerViewState.DefaultTimerInput) });
+                this.RefreshDisplay(TimerViewState.ReadyStatusText);
+            }
+        }).ConfigureAwait(false);
     }
 
     private async Task<T> LoadDocumentAsync<T>(string key, T fallback, CancellationToken cancellationToken)
@@ -698,42 +735,26 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable, I
 
     private void RestoreActiveSessionSnapshot(ActiveTimerSessionSnapshot snapshot)
     {
-        TimerInfo timerInfo = snapshot.ToTimerInfo();
-
-        this.runtime.Invoke(() =>
-        {
-            this.session.Restore(timerInfo);
-            return true;
-        });
         if (snapshot.HasOptions)
         {
             this.ReplaceSettings(NormalizeThemeSelection(snapshot.Options.ApplyTo(this.settings), this.customThemes), save: false);
         }
-
-        TimerPresentationMode presentationMode = timerInfo.State == TimerState.Expired
-            ? TimerPresentationMode.Status
-            : ToTimerPresentationMode(snapshot.PresentationMode);
-        this.ReplaceViewState(TimerViewState.FromTimerState(
-            string.IsNullOrWhiteSpace(snapshot.TimerInput) ? TimerViewState.DefaultTimerInput : snapshot.TimerInput,
-            this.session.Countdown,
-            snapshot.TimerTitle,
-            null,
-            presentationMode,
-            null,
-            false,
-            this.settings.ShowTimeElapsed,
-            this.settings.ReverseProgressBar,
-            this.IsTimerModificationLocked));
-        this.RefreshDisplay(timerInfo.State == TimerState.Stopped ? TimerViewState.ReadyStatusText : null, hasValidationError: false);
-
-        if (this.session.Countdown.State == TimerState.Running)
+        ApplicationPreferences preferences = ApplicationPreferences.FromSettings(this.settings);
+        this.QueueOperation(async () =>
         {
-            _ = this.AcquireInhibitionAsync();
-        }
-        else if (snapshot.ExpiredWhileClosed)
-        {
-            this.PendingExpiryEffects = this.HandleRestoredExpiredAsync();
-        }
+            ApplicationResult<TimerSessionSnapshot> result = await this.runtime.RestoreSessionAsync(this.SessionId, snapshot, preferences).ConfigureAwait(false);
+            await this.ApplyResultAsync(result).ConfigureAwait(false);
+            await this.DispatchAsync(() =>
+            {
+                TimerPresentationMode presentation = snapshot.CountdownState.State == TimerState.Expired
+                    ? TimerPresentationMode.Status : ToTimerPresentationMode(snapshot.PresentationMode);
+                string input = string.IsNullOrWhiteSpace(snapshot.TimerInput) ? TimerViewState.DefaultTimerInput : snapshot.TimerInput;
+                bool editing = presentation == TimerPresentationMode.Input && this.sessionSnapshot.Countdown.State is TimerState.Running or TimerState.Paused;
+                this.editRevision = editing ? this.sessionSnapshot.Revision : null;
+                this.ReplaceViewState(this.viewState with { TimerInput = input, TimerTitle = snapshot.TimerTitle, PresentationMode = presentation, InputBeforeEdit = editing ? snapshot.TimerStartInput : null, HasValidationError = false });
+                this.RefreshDisplay(hasValidationError: false);
+            }).ConfigureAwait(false);
+        });
     }
 
     public void Dispose() => _ = this.ObserveDisposalAsync();
@@ -779,6 +800,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable, I
 
     private async Task DisposeCoreAsync()
     {
+        await this.PendingCommands.ConfigureAwait(false);
+        this.subscription?.Dispose();
         Task removal = this.runtime.RemoveAsync(this.SessionId);
         Task cancelPreview = this.StopAudioPreviewAsync();
         await this.runtime.DrainAsync(Task.WhenAll(cancelPreview, this.pendingAudioPreview), "audio-preview").ConfigureAwait(false);
@@ -795,7 +818,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable, I
             this.TimerInput,
             this.TimerTitle ?? string.Empty,
             ToActiveTimerPresentationMode(this.viewState.PresentationMode),
-            this.session.Countdown,
+            this.sessionSnapshot.Countdown,
             this.wallClockNow(),
             SavedTimerOptions.FromSettings(this.settings),
             windowGeometry)
@@ -819,46 +842,26 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable, I
         return true;
     }
 
-    public void Tick()
+    public async Task AdvanceAsync()
     {
-        if (this.isDisposed)
-        {
-            return;
-        }
-
-        this.RunSessionOperation(this.session.Tick);
-        this.RefreshDisplay();
+        await this.PendingCommands.ConfigureAwait(false);
+        ObjectDisposedException.ThrowIf(this.isDisposed, this);
+        await this.runtime.TickAsync().ConfigureAwait(false);
+        await this.DrainNotificationsAsync().ConfigureAwait(false);
+        await this.ApplyResultAsync(await this.client.GetSessionAsync(this.SessionId).ConfigureAwait(false)).ConfigureAwait(false);
     }
 
     internal void StartRuntimeScheduler() => this.runtime.StartScheduler();
-
-    internal Task TickRuntimeAsync() => this.runtime.TickAsync();
-
+    internal Task TickRuntimeAsync() => this.AdvanceAsync();
     internal void SuspendAutomaticTicks()
     {
         this.automaticTicksSuspended = true;
         this.runtime.SuspendTicks(this.SessionId);
     }
 
-    private bool RunSessionOperation(Func<CountdownTransition> operation) => this.ApplySessionTransition(this.runtime.Invoke(operation));
-
-    private void PublishRuntimeTick(SessionTick tick)
-    {
-        this.uiDispatcher.Post(() =>
-        {
-            if (this.isDisposed || this.automaticTicksSuspended || !this.session.IsCurrent(tick.Revision))
-            {
-                return;
-            }
-
-            this.ApplySessionTransition(tick.Transition);
-            this.RefreshDisplay();
-        });
-    }
-
     internal bool TryEnterInputModeFromExpired()
     {
-        if (this.session.Countdown.State != TimerState.Expired)
+        if (this.sessionSnapshot.Countdown.State != TimerState.Expired)
         {
             return false;
         }
@@ -879,16 +882,17 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable, I
             return false;
         }
 
-        if (this.session.Countdown.State == TimerState.Expired)
+        if (this.sessionSnapshot.Countdown.State == TimerState.Expired)
         {
             return this.TryEnterInputModeFromExpired();
         }
 
-        if (this.session.Countdown.State is not (TimerState.Running or TimerState.Paused))
+        if (this.sessionSnapshot.Countdown.State is not (TimerState.Running or TimerState.Paused))
         {
             return false;
         }
 
+        this.editRevision = this.sessionSnapshot.Revision;
         this.ReplaceViewState(this.viewState with
         {
             PresentationMode = TimerPresentationMode.Input,
@@ -913,77 +917,44 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable, I
 
     private void Start()
     {
-        DateTime now = this.wallClockNow();
-        if (TimerInputValidation.Parse(this.TimerInput, now) is not ApplicationResult<TimerStart>.Success parsed)
+        string input = this.TimerInput;
+        string title = this.TimerTitle ?? string.Empty;
+        long revision = this.editRevision ?? this.sessionSnapshot.Revision;
+        this.QueueOperation(async () =>
         {
-            this.ShowValidationError();
-            return;
-        }
-
-        if (!this.RunSessionOperation(() => this.session.Start(parsed.Value, now)))
-        {
-            this.ShowValidationError();
-            return;
-        }
-
-        _ = this.StopActiveAudioAsync();
-
-        this.ReplaceViewState(this.viewState with
-        {
-            PresentationMode = TimerPresentationMode.Status,
-            InputBeforeEdit = null
+            SessionCommand command = this.sessionSnapshot.Countdown.State is TimerState.Running or TimerState.Paused
+                ? new SessionCommand.Update(this.SessionId, this.ResolveAcknowledgedRevision(revision), input, title)
+                : new SessionCommand.Start(this.SessionId, input, title, TimerDefaults.FromSettings(this.settings));
+            if (!await this.ExecuteAndApplyAsync(command).ConfigureAwait(false)) { return; }
+            await this.DispatchAsync(() =>
+            {
+                this.editRevision = null;
+                this.ReplaceViewState(this.viewState with { PresentationMode = TimerPresentationMode.Status, InputBeforeEdit = null, TimerInput = input });
+                this.RefreshDisplay(hasValidationError: false);
+                this.ReplaceSettings(this.settings.AddRecentTimerInput(input), save: true);
+                this.QueueActiveSessionSave();
+            }).ConfigureAwait(false);
         });
-        this.RefreshDisplay(TimerViewState.RunningStatusText, hasValidationError: false);
-        _ = this.AcquireInhibitionAsync();
-        this.ReplaceSettings(this.settings.AddRecentTimerInput(this.TimerInput), save: true);
-        this.QueueActiveSessionSave();
     }
 
-    private void PauseOrResume()
+    private void PauseOrResume() => this.SubmitLifecycle(this.sessionSnapshot.Countdown.State == TimerState.Running
+        ? new SessionCommand.Pause(this.SessionId) : new SessionCommand.Resume(this.SessionId));
+
+    private void Reset() => this.StopAndShowInput(this.TimerInput);
+
+    private void Restart() => this.SubmitLifecycle(new SessionCommand.Restart(this.SessionId));
+
+    private void SubmitLifecycle(SessionCommand command) => this.QueueOperation(async () =>
     {
-        if (this.session.Countdown.State == TimerState.Running)
+        if (!await this.ExecuteAndApplyAsync(command).ConfigureAwait(false)) { return; }
+        await this.DispatchAsync(() =>
         {
-            this.RunSessionOperation(() => this.session.Pause());
-            this.RefreshDisplay(TimerViewState.PausedStatusText);
-            _ = this.ReleaseInhibitionAsync();
+            this.editRevision = null;
+            this.ReplaceViewState(this.viewState with { PresentationMode = TimerPresentationMode.Status, InputBeforeEdit = null, HasValidationError = false });
+            this.RefreshDisplay();
             this.QueueActiveSessionSave();
-            return;
-        }
-
-        if (this.session.Countdown.State == TimerState.Paused)
-        {
-            this.RunSessionOperation(() => this.session.Resume(this.wallClockNow()));
-            this.RefreshDisplay(TimerViewState.RunningStatusText);
-            _ = this.AcquireInhibitionAsync();
-            this.QueueActiveSessionSave();
-        }
-    }
-
-    private void Reset()
-    {
-        _ = this.StopActiveAudioAsync();
-        this.StopAndShowInput(this.TimerInput);
-    }
-
-    private void Restart()
-    {
-        _ = this.StopActiveAudioAsync();
-
-        if (!this.RunSessionOperation(() => this.session.Restart(this.wallClockNow())))
-        {
-            return;
-        }
-
-        this.ReplaceViewState(this.viewState with
-        {
-            PresentationMode = TimerPresentationMode.Status,
-            InputBeforeEdit = null,
-            HasValidationError = false
-        });
-        this.RefreshDisplay(TimerViewState.RunningStatusText, hasValidationError: false);
-        _ = this.AcquireInhibitionAsync();
-        this.QueueActiveSessionSave();
-    }
+        }).ConfigureAwait(false);
+    });
 
     private void CancelActiveTimerEdit()
     {
@@ -1005,24 +976,18 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable, I
 
     private void StopAndShowInput(string timerInput)
     {
-        bool wasLocked = this.settings.LockInterface;
-        _ = this.StopActiveAudioAsync();
-        this.RunSessionOperation(() => this.session.Stop());
-        this.ReplaceViewState(this.viewState with
+        this.QueueOperation(async () =>
         {
-            TimerInput = timerInput,
-            PresentationMode = TimerPresentationMode.Input,
-            InputBeforeEdit = null,
-            HasValidationError = false
+            if (!await this.ExecuteAndApplyAsync(new SessionCommand.Stop(this.SessionId)).ConfigureAwait(false)) { return; }
+            await this.DispatchAsync(() =>
+            {
+                this.editRevision = null;
+                this.ReplaceViewState(this.viewState with { TimerInput = timerInput, PresentationMode = TimerPresentationMode.Input, InputBeforeEdit = null, HasValidationError = false });
+                this.RefreshDisplay(TimerViewState.ReadyStatusText);
+                if (this.settings.LockInterface) { this.ReplaceSettings(this.settings with { LockInterface = false }, save: true); }
+                this.QueueActiveSessionSave();
+            }).ConfigureAwait(false);
         });
-        this.RefreshDisplay(TimerViewState.ReadyStatusText);
-        _ = this.ReleaseInhibitionAsync();
-        this.QueueActiveSessionSave();
-
-        if (wasLocked)
-        {
-            this.ReplaceSettings(this.settings with { LockInterface = false }, save: true);
-        }
     }
 
     private void ToggleNotifications()
@@ -1036,7 +1001,6 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable, I
     {
         if (this.settings.AudioAlertsEnabled)
         {
-            _ = this.StopActiveAudioAsync();
             _ = this.StopAudioPreviewAsync();
         }
 
@@ -1132,7 +1096,6 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable, I
         bool nextLoopSound = !this.settings.LoopSound;
         if (!nextLoopSound)
         {
-            _ = this.StopActiveAudioAsync();
         }
 
         this.ReplaceSettings(
@@ -1159,6 +1122,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable, I
 
     private void ToggleLockInterface()
     {
+        if (this.IsTimerModificationLocked)
+        {
+            this.QueueOperation(async () => { await this.ExecuteAndApplyAsync(new SessionCommand.Unlock(this.SessionId)).ConfigureAwait(false); });
+            return;
+        }
         this.ReplaceSettings(
             this.settings with { LockInterface = !this.settings.LockInterface },
             save: true);
@@ -1172,17 +1140,6 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable, I
             this.settings with { DoNotKeepComputerAwake = nextDoNotKeepComputerAwake },
             save: true);
 
-        if (this.session.Countdown.State == TimerState.Running)
-        {
-            if (nextDoNotKeepComputerAwake)
-            {
-                _ = this.ReleaseInhibitionAsync();
-            }
-            else
-            {
-                _ = this.AcquireInhibitionAsync();
-            }
-        }
     }
 
     private void ToggleShutDownWhenExpired()
@@ -1324,7 +1281,6 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable, I
         bool audioAlertsEnabled = !StringComparer.Ordinal.Equals(soundId, AudioAlertSoundIds.None);
         if (!audioAlertsEnabled)
         {
-            _ = this.StopActiveAudioAsync();
             _ = this.StopAudioPreviewAsync();
         }
 
@@ -1411,7 +1367,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable, I
             return;
         }
 
-        if (this.session.Countdown.State == TimerState.Expired)
+        if (this.sessionSnapshot.Countdown.State == TimerState.Expired)
         {
             this.TryEnterInputModeFromExpired();
         }
@@ -1426,7 +1382,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable, I
             PresentationMode = TimerPresentationMode.Input,
             HasValidationError = false
         });
-        this.RefreshDisplay(this.session.Countdown.State == TimerState.Stopped ? TimerViewState.ReadyStatusText : this.StatusText, hasValidationError: false);
+        this.RefreshDisplay(this.sessionSnapshot.Countdown.State == TimerState.Stopped ? TimerViewState.ReadyStatusText : this.StatusText, hasValidationError: false);
         this.QueueActiveSessionSave();
     }
 
@@ -1477,39 +1433,27 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable, I
     internal void ApplySavedTimer(SavedTimerDefinition savedTimer)
     {
         ArgumentNullException.ThrowIfNull(savedTimer);
-
-        _ = this.StopActiveAudioAsync();
-        this.RunSessionOperation(() => this.session.Stop());
-        this.ReplaceSettings(NormalizeThemeSelection(savedTimer.Options.ApplyTo(this.settings), this.customThemes), save: true);
-        this.ReplaceViewState(this.viewState with
+        LinuxAppSettings previous = this.settings;
+        LinuxAppSettings requested = NormalizeThemeSelection(savedTimer.Options.ApplyTo(this.settings), this.customThemes);
+        this.QueueOperation(async () =>
         {
-            TimerInput = savedTimer.TimerInput,
-            TimerTitle = savedTimer.TimerTitle,
-            PresentationMode = TimerPresentationMode.Input,
-            InputBeforeEdit = null,
-            HasValidationError = false
+            if (!await this.ExecuteAndApplyAsync(new SessionCommand.Prepare(this.SessionId, savedTimer.TimerInput, savedTimer.TimerTitle,
+                TimerDefaults.FromSettings(requested), ApplicationPreferences.FromSettings(requested))).ConfigureAwait(false)) { return; }
+            await this.DispatchAsync(() =>
+            {
+                this.ReplaceSettings(requested, save: false);
+                this.QueueSettingsSave(previous, requested);
+                this.ReplaceViewState(this.viewState with { TimerInput = savedTimer.TimerInput, TimerTitle = savedTimer.TimerTitle, PresentationMode = TimerPresentationMode.Input, InputBeforeEdit = null, HasValidationError = false });
+                this.RefreshDisplay(TimerViewState.ReadyStatusText, hasValidationError: false);
+                this.QueueActiveSessionSave();
+            }).ConfigureAwait(false);
         });
-        this.RefreshDisplay(TimerViewState.ReadyStatusText, hasValidationError: false);
-        _ = this.ReleaseInhibitionAsync();
-        this.QueueActiveSessionSave();
     }
 
     internal void ApplyLaunchTimerRequest(string timerInput, string? timerTitle)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(timerInput);
-
-        _ = this.StopActiveAudioAsync();
-        this.RunSessionOperation(() => this.session.Stop());
-        this.ReplaceViewState(this.viewState with
-        {
-            TimerInput = timerInput,
-            TimerTitle = timerTitle ?? string.Empty,
-            PresentationMode = TimerPresentationMode.Input,
-            InputBeforeEdit = null,
-            HasValidationError = false
-        });
-        this.RefreshDisplay(TimerViewState.ReadyStatusText, hasValidationError: false);
-        _ = this.ReleaseInhibitionAsync();
+        this.ReplaceViewState(this.viewState with { TimerInput = timerInput, TimerTitle = timerTitle ?? string.Empty, PresentationMode = TimerPresentationMode.Input, InputBeforeEdit = null, HasValidationError = false });
         this.Start();
     }
 
@@ -1545,51 +1489,61 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable, I
 
     private void RefreshDisplay(string? explicitStatus = null, bool? hasValidationError = null)
     {
-        bool wasTimerModificationLocked = this.viewState.IsLocked;
-        TimerViewState nextViewState = TimerViewState.FromTimerState(
-            this.TimerInput,
-            this.session.Countdown,
-            this.TimerTitle ?? string.Empty,
-            explicitStatus,
-            this.viewState.PresentationMode,
-            this.viewState.InputBeforeEdit,
-            hasValidationError ?? this.viewState.HasValidationError,
-            this.settings.ShowTimeElapsed,
-            this.settings.ReverseProgressBar,
-            this.IsTimerModificationLocked);
-
-        this.ReplaceViewState(nextViewState);
-        this.OnPropertyChanged(nameof(this.TimerInput));
-        this.OnPropertyChanged(nameof(this.RemainingTime));
-        this.OnPropertyChanged(nameof(this.StatusText));
-        this.OnPropertyChanged(nameof(this.TimerInputHelpText));
-        this.OnPropertyChanged(nameof(this.PauseResumeText));
-        this.OnPropertyChanged(nameof(this.IsInputEnabled));
-        this.OnPropertyChanged(nameof(this.IsRunning));
-        this.OnPropertyChanged(nameof(this.State));
-        this.OnPropertyChanged(nameof(this.ShouldPromptOnExit));
-        this.OnPropertyChanged(nameof(this.IsTimerModificationLocked));
-        if (wasTimerModificationLocked != nextViewState.IsLocked)
+        lock (this.presentationGate)
         {
-            this.OnPropertyChanged(nameof(this.CanModifyCustomThemes));
-        }
 
-        this.OnPropertyChanged(nameof(this.ProgressPercent));
-        this.OnPropertyChanged(nameof(this.DesktopProgressRequest));
-        this.OnPropertyChanged(nameof(this.IsTimerInputVisible));
-        this.OnPropertyChanged(nameof(this.IsRemainingTimeVisible));
-        this.OnPropertyChanged(nameof(this.IsCompletionTextVisible));
-        this.OnPropertyChanged(nameof(this.IsStartVisible));
-        this.OnPropertyChanged(nameof(this.IsPauseVisible));
-        this.OnPropertyChanged(nameof(this.IsResumeVisible));
-        this.OnPropertyChanged(nameof(this.IsStopVisible));
-        this.OnPropertyChanged(nameof(this.IsRestartVisible));
-        this.OnPropertyChanged(nameof(this.IsCancelVisible));
-        this.OnPropertyChanged(nameof(this.StatusIconMenuState));
-        this.PublishWindowTitleIfChanged();
-        this.OnPropertyChanged(nameof(this.HasValidationError));
-        this.OnPropertyChanged(nameof(this.HasCompletionEmphasis));
-        this.OnPropertyChanged(nameof(this.CanSaveCurrentTimer));
+            explicitStatus ??= (hasValidationError ?? this.viewState.HasValidationError) ? this.viewState.StatusText : null;
+            bool wasTimerModificationLocked = this.viewState.IsLocked;
+            TimerViewState nextViewState = TimerViewState.FromTimerState(
+                this.TimerInput,
+                this.sessionSnapshot.Countdown,
+                this.TimerTitle ?? string.Empty,
+                explicitStatus,
+                this.viewState.PresentationMode,
+                this.viewState.InputBeforeEdit,
+                hasValidationError ?? this.viewState.HasValidationError,
+                this.settings.ShowTimeElapsed,
+                this.settings.ReverseProgressBar,
+                this.IsTimerModificationLocked);
+
+            this.ReplaceViewState(nextViewState);
+            this.OnPropertyChanged(nameof(this.TimerInput));
+            this.OnPropertyChanged(nameof(this.RemainingTime));
+            this.OnPropertyChanged(nameof(this.StatusText));
+            this.OnPropertyChanged(nameof(this.TimerInputHelpText));
+            this.OnPropertyChanged(nameof(this.PauseResumeText));
+            this.OnPropertyChanged(nameof(this.IsInputEnabled));
+            this.OnPropertyChanged(nameof(this.IsRunning));
+            this.OnPropertyChanged(nameof(this.State));
+            this.OnPropertyChanged(nameof(this.ShouldPromptOnExit));
+            this.OnPropertyChanged(nameof(this.IsTimerModificationLocked));
+            if (wasTimerModificationLocked != nextViewState.IsLocked)
+            {
+                this.OnPropertyChanged(nameof(this.CanModifyCustomThemes));
+            }
+
+            this.OnPropertyChanged(nameof(this.ProgressPercent));
+            this.OnPropertyChanged(nameof(this.DesktopProgressRequest));
+            this.OnPropertyChanged(nameof(this.IsTimerInputVisible));
+            this.OnPropertyChanged(nameof(this.IsRemainingTimeVisible));
+            this.OnPropertyChanged(nameof(this.IsCompletionTextVisible));
+            this.OnPropertyChanged(nameof(this.IsStartVisible));
+            this.OnPropertyChanged(nameof(this.IsPauseVisible));
+            this.OnPropertyChanged(nameof(this.IsResumeVisible));
+            this.OnPropertyChanged(nameof(this.IsStopVisible));
+            this.OnPropertyChanged(nameof(this.IsRestartVisible));
+            this.OnPropertyChanged(nameof(this.IsCancelVisible));
+            this.OnPropertyChanged(nameof(this.StatusIconMenuState));
+            this.PublishWindowTitleIfChanged();
+            this.OnPropertyChanged(nameof(this.HasValidationError));
+            this.OnPropertyChanged(nameof(this.HasCompletionEmphasis));
+            this.OnPropertyChanged(nameof(this.CanSaveCurrentTimer));
+            this.RefreshCommandAvailability();
+        }
+    }
+
+    private void RefreshCommandAvailability()
+    {
         this.RaiseCommandCanExecuteChanged(this.StartCommand);
         this.RaiseCommandCanExecuteChanged(this.PauseResumeCommand);
         this.RaiseCommandCanExecuteChanged(this.ResetCommand);
@@ -1610,156 +1564,165 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable, I
 
     private void ReplaceViewState(TimerViewState next, string? changedPropertyName = null)
     {
-        if (this.viewState == next)
+        lock (this.presentationGate)
         {
-            return;
-        }
 
-        this.viewState = next;
-        this.OnPropertyChanged(changedPropertyName);
+            if (this.viewState == next)
+            {
+                return;
+            }
+
+            this.viewState = next;
+            this.OnPropertyChanged(changedPropertyName);
+        }
     }
 
     private void ReplaceSettings(LinuxAppSettings next, bool save)
     {
-        ArgumentNullException.ThrowIfNull(next);
-        next = NormalizeThemeSelection(next, this.customThemes);
-
-        LinuxAppSettings previous = this.settings;
-        if (previous == next)
+        lock (this.presentationGate)
         {
-            return;
+
+            ArgumentNullException.ThrowIfNull(next);
+            next = NormalizeThemeSelection(next, this.customThemes);
+
+            LinuxAppSettings previous = this.settings;
+            if (previous == next)
+            {
+                return;
+            }
+
+            this.settings = next;
+            bool applicationChange = !this.projectingSnapshot && (TimerDefaults.FromSettings(previous) != TimerDefaults.FromSettings(next)
+                || ApplicationPreferences.FromSettings(previous) != ApplicationPreferences.FromSettings(next));
+            if (applicationChange)
+            {
+                this.SubmitMetadataUpdate(options: TimerDefaults.FromSettings(next), preferences: ApplicationPreferences.FromSettings(next), previousSettings: save ? previous : null, requestedSettings: save ? next : null);
+            }
+
+            if (!previous.RecentTimerInputs.SequenceEqual(next.RecentTimerInputs, StringComparer.Ordinal))
+            {
+                this.OnPropertyChanged(nameof(this.RecentInputMenuItems));
+                this.RaiseCommandCanExecuteChanged(this.ClearRecentInputsCommand);
+            }
+
+            if (previous.NotificationsEnabled != next.NotificationsEnabled)
+            {
+                this.OnPropertyChanged(nameof(this.NotificationsEnabled));
+            }
+
+            if (previous.AudioAlertsEnabled != next.AudioAlertsEnabled)
+            {
+                this.OnPropertyChanged(nameof(this.AudioAlertsEnabled));
+                this.OnPropertyChanged(nameof(this.IsNoSoundSelected));
+                this.OnPropertyChanged(nameof(this.IsLoudBeepSoundSelected));
+                this.OnPropertyChanged(nameof(this.IsNormalBeepSoundSelected));
+                this.OnPropertyChanged(nameof(this.IsQuietBeepSoundSelected));
+                this.OnPropertyChanged(nameof(this.CanPreviewAudioAlertSound));
+                this.RaiseCommandCanExecuteChanged(this.PreviewAudioAlertSoundCommand);
+            }
+
+            if (!StringComparer.Ordinal.Equals(previous.AudioAlertSoundId, next.AudioAlertSoundId))
+            {
+                this.OnPropertyChanged(nameof(this.AudioAlertSoundId));
+                this.OnPropertyChanged(nameof(this.IsNoSoundSelected));
+                this.OnPropertyChanged(nameof(this.IsLoudBeepSoundSelected));
+                this.OnPropertyChanged(nameof(this.IsNormalBeepSoundSelected));
+                this.OnPropertyChanged(nameof(this.IsQuietBeepSoundSelected));
+                this.OnPropertyChanged(nameof(this.CanPreviewAudioAlertSound));
+                this.RaiseCommandCanExecuteChanged(this.PreviewAudioAlertSoundCommand);
+            }
+
+            if (previous.AlwaysOnTop != next.AlwaysOnTop)
+            {
+                this.OnPropertyChanged(nameof(this.AlwaysOnTop));
+            }
+
+            if (previous.ShowProgressInTaskbar != next.ShowProgressInTaskbar)
+            {
+                this.OnPropertyChanged(nameof(this.ShowProgressInTaskbar));
+                this.OnPropertyChanged(nameof(this.DesktopProgressRequest));
+            }
+
+            if (previous.ShowInNotificationArea != next.ShowInNotificationArea)
+            {
+                this.OnPropertyChanged(nameof(this.ShowInNotificationArea));
+                this.OnPropertyChanged(nameof(this.CanHideToNotificationArea));
+                this.OnPropertyChanged(nameof(this.StatusIconMenuState));
+            }
+
+            if (previous.PopUpWhenExpired != next.PopUpWhenExpired)
+            {
+                this.OnPropertyChanged(nameof(this.PopUpWhenExpired));
+            }
+
+            if (previous.PromptOnExit != next.PromptOnExit)
+            {
+                this.OnPropertyChanged(nameof(this.PromptOnExit));
+                this.OnPropertyChanged(nameof(this.ShouldPromptOnExit));
+            }
+
+            PublishSettingsChange(previous.ReverseProgressBar, next.ReverseProgressBar, nameof(this.ReverseProgressBar));
+            PublishSettingsChange(previous.ShowTimeElapsed, next.ShowTimeElapsed, nameof(this.ShowTimeElapsed));
+            PublishSettingsChange(previous.LoopTimer, next.LoopTimer, nameof(this.LoopTimer));
+            PublishSettingsChange(previous.LoopSound, next.LoopSound, nameof(this.LoopSound));
+            PublishSettingsChange(previous.CloseWhenExpired, next.CloseWhenExpired, nameof(this.CloseWhenExpired));
+            PublishSettingsChange(previous.DoNotKeepComputerAwake, next.DoNotKeepComputerAwake, nameof(this.DoNotKeepComputerAwake));
+            PublishSettingsChange(previous.ShutDownWhenExpired, next.ShutDownWhenExpired, nameof(this.ShutDownWhenExpired));
+            PublishSettingsChange(previous.RestoreActiveSessionOnStartup, next.RestoreActiveSessionOnStartup, nameof(this.RestoreActiveSessionOnStartup));
+            PublishSettingsChange(previous.OpenSavedTimersOnStartup, next.OpenSavedTimersOnStartup, nameof(this.OpenSavedTimersOnStartup));
+
+            if (previous.ThemePreference != next.ThemePreference)
+            {
+                this.OnPropertyChanged(nameof(this.ThemePreference));
+                this.OnPropertyChanged(nameof(this.CustomThemeId));
+                this.OnPropertyChanged(nameof(this.IsSystemThemeSelected));
+                this.OnPropertyChanged(nameof(this.IsLightThemeSelected));
+                this.OnPropertyChanged(nameof(this.IsDarkThemeSelected));
+                this.OnPropertyChanged(nameof(this.IsCustomThemeSelected));
+                this.OnPropertyChanged(nameof(this.CurrentCustomTheme));
+                this.OnPropertyChanged(nameof(this.CanExportCustomTheme));
+                this.OnPropertyChanged(nameof(this.CustomThemeMenuItems));
+            }
+
+            if (!StringComparer.Ordinal.Equals(previous.CustomThemeId, next.CustomThemeId))
+            {
+                this.OnPropertyChanged(nameof(this.CustomThemeId));
+                this.OnPropertyChanged(nameof(this.CurrentCustomTheme));
+                this.OnPropertyChanged(nameof(this.CanExportCustomTheme));
+                this.OnPropertyChanged(nameof(this.CustomThemeMenuItems));
+            }
+
+            if (previous.WindowTitleMode != next.WindowTitleMode)
+            {
+                this.OnPropertyChanged(nameof(this.WindowTitleMode));
+                this.OnPropertyChanged(nameof(this.IsApplicationNameTitleModeSelected));
+                this.OnPropertyChanged(nameof(this.IsTimeLeftTitleModeSelected));
+                this.OnPropertyChanged(nameof(this.IsTimeElapsedTitleModeSelected));
+                this.OnPropertyChanged(nameof(this.IsTimerTitleModeSelected));
+                this.OnPropertyChanged(nameof(this.IsTimeLeftPlusTimerTitleModeSelected));
+                this.OnPropertyChanged(nameof(this.IsTimeElapsedPlusTimerTitleModeSelected));
+                this.OnPropertyChanged(nameof(this.IsTimerTitlePlusTimeLeftModeSelected));
+                this.OnPropertyChanged(nameof(this.IsTimerTitlePlusTimeElapsedModeSelected));
+                this.PublishWindowTitleIfChanged();
+            }
+
+            if (previous.LockInterface != next.LockInterface)
+            {
+                this.OnPropertyChanged(nameof(this.LockInterface));
+                this.OnPropertyChanged(nameof(this.IsTimerModificationLocked));
+                this.OnPropertyChanged(nameof(this.CanModifyCustomThemes));
+                this.OnPropertyChanged(nameof(this.CanHideToNotificationArea));
+                this.OnPropertyChanged(nameof(this.StatusIconMenuState));
+            }
+
+            if (save)
+            {
+                if (!applicationChange) { this.QueueSettingsSave(previous, next); }
+                this.QueueActiveSessionSave();
+            }
+
+            this.RaiseSettingsCommandCanExecuteChanged();
         }
-
-        this.settings = next;
-        if (previous.AudioAlertsEnabled != next.AudioAlertsEnabled || previous.AudioAlertSoundId != next.AudioAlertSoundId
-            || previous.LoopSound != next.LoopSound)
-        {
-            _ = this.StopActiveAudioAsync();
-        }
-
-        if (!previous.RecentTimerInputs.SequenceEqual(next.RecentTimerInputs, StringComparer.Ordinal))
-        {
-            this.OnPropertyChanged(nameof(this.RecentInputMenuItems));
-            this.RaiseCommandCanExecuteChanged(this.ClearRecentInputsCommand);
-        }
-
-        if (previous.NotificationsEnabled != next.NotificationsEnabled)
-        {
-            this.OnPropertyChanged(nameof(this.NotificationsEnabled));
-        }
-
-        if (previous.AudioAlertsEnabled != next.AudioAlertsEnabled)
-        {
-            this.OnPropertyChanged(nameof(this.AudioAlertsEnabled));
-            this.OnPropertyChanged(nameof(this.IsNoSoundSelected));
-            this.OnPropertyChanged(nameof(this.IsLoudBeepSoundSelected));
-            this.OnPropertyChanged(nameof(this.IsNormalBeepSoundSelected));
-            this.OnPropertyChanged(nameof(this.IsQuietBeepSoundSelected));
-            this.OnPropertyChanged(nameof(this.CanPreviewAudioAlertSound));
-            this.RaiseCommandCanExecuteChanged(this.PreviewAudioAlertSoundCommand);
-        }
-
-        if (!StringComparer.Ordinal.Equals(previous.AudioAlertSoundId, next.AudioAlertSoundId))
-        {
-            this.OnPropertyChanged(nameof(this.AudioAlertSoundId));
-            this.OnPropertyChanged(nameof(this.IsNoSoundSelected));
-            this.OnPropertyChanged(nameof(this.IsLoudBeepSoundSelected));
-            this.OnPropertyChanged(nameof(this.IsNormalBeepSoundSelected));
-            this.OnPropertyChanged(nameof(this.IsQuietBeepSoundSelected));
-            this.OnPropertyChanged(nameof(this.CanPreviewAudioAlertSound));
-            this.RaiseCommandCanExecuteChanged(this.PreviewAudioAlertSoundCommand);
-        }
-
-        if (previous.AlwaysOnTop != next.AlwaysOnTop)
-        {
-            this.OnPropertyChanged(nameof(this.AlwaysOnTop));
-        }
-
-        if (previous.ShowProgressInTaskbar != next.ShowProgressInTaskbar)
-        {
-            this.OnPropertyChanged(nameof(this.ShowProgressInTaskbar));
-            this.OnPropertyChanged(nameof(this.DesktopProgressRequest));
-        }
-
-        if (previous.ShowInNotificationArea != next.ShowInNotificationArea)
-        {
-            this.OnPropertyChanged(nameof(this.ShowInNotificationArea));
-            this.OnPropertyChanged(nameof(this.CanHideToNotificationArea));
-            this.OnPropertyChanged(nameof(this.StatusIconMenuState));
-        }
-
-        if (previous.PopUpWhenExpired != next.PopUpWhenExpired)
-        {
-            this.OnPropertyChanged(nameof(this.PopUpWhenExpired));
-        }
-
-        if (previous.PromptOnExit != next.PromptOnExit)
-        {
-            this.OnPropertyChanged(nameof(this.PromptOnExit));
-            this.OnPropertyChanged(nameof(this.ShouldPromptOnExit));
-        }
-
-        PublishSettingsChange(previous.ReverseProgressBar, next.ReverseProgressBar, nameof(this.ReverseProgressBar));
-        PublishSettingsChange(previous.ShowTimeElapsed, next.ShowTimeElapsed, nameof(this.ShowTimeElapsed));
-        PublishSettingsChange(previous.LoopTimer, next.LoopTimer, nameof(this.LoopTimer));
-        PublishSettingsChange(previous.LoopSound, next.LoopSound, nameof(this.LoopSound));
-        PublishSettingsChange(previous.CloseWhenExpired, next.CloseWhenExpired, nameof(this.CloseWhenExpired));
-        PublishSettingsChange(previous.DoNotKeepComputerAwake, next.DoNotKeepComputerAwake, nameof(this.DoNotKeepComputerAwake));
-        PublishSettingsChange(previous.ShutDownWhenExpired, next.ShutDownWhenExpired, nameof(this.ShutDownWhenExpired));
-        PublishSettingsChange(previous.RestoreActiveSessionOnStartup, next.RestoreActiveSessionOnStartup, nameof(this.RestoreActiveSessionOnStartup));
-        PublishSettingsChange(previous.OpenSavedTimersOnStartup, next.OpenSavedTimersOnStartup, nameof(this.OpenSavedTimersOnStartup));
-
-        if (previous.ThemePreference != next.ThemePreference)
-        {
-            this.OnPropertyChanged(nameof(this.ThemePreference));
-            this.OnPropertyChanged(nameof(this.CustomThemeId));
-            this.OnPropertyChanged(nameof(this.IsSystemThemeSelected));
-            this.OnPropertyChanged(nameof(this.IsLightThemeSelected));
-            this.OnPropertyChanged(nameof(this.IsDarkThemeSelected));
-            this.OnPropertyChanged(nameof(this.IsCustomThemeSelected));
-            this.OnPropertyChanged(nameof(this.CurrentCustomTheme));
-            this.OnPropertyChanged(nameof(this.CanExportCustomTheme));
-            this.OnPropertyChanged(nameof(this.CustomThemeMenuItems));
-        }
-
-        if (!StringComparer.Ordinal.Equals(previous.CustomThemeId, next.CustomThemeId))
-        {
-            this.OnPropertyChanged(nameof(this.CustomThemeId));
-            this.OnPropertyChanged(nameof(this.CurrentCustomTheme));
-            this.OnPropertyChanged(nameof(this.CanExportCustomTheme));
-            this.OnPropertyChanged(nameof(this.CustomThemeMenuItems));
-        }
-
-        if (previous.WindowTitleMode != next.WindowTitleMode)
-        {
-            this.OnPropertyChanged(nameof(this.WindowTitleMode));
-            this.OnPropertyChanged(nameof(this.IsApplicationNameTitleModeSelected));
-            this.OnPropertyChanged(nameof(this.IsTimeLeftTitleModeSelected));
-            this.OnPropertyChanged(nameof(this.IsTimeElapsedTitleModeSelected));
-            this.OnPropertyChanged(nameof(this.IsTimerTitleModeSelected));
-            this.OnPropertyChanged(nameof(this.IsTimeLeftPlusTimerTitleModeSelected));
-            this.OnPropertyChanged(nameof(this.IsTimeElapsedPlusTimerTitleModeSelected));
-            this.OnPropertyChanged(nameof(this.IsTimerTitlePlusTimeLeftModeSelected));
-            this.OnPropertyChanged(nameof(this.IsTimerTitlePlusTimeElapsedModeSelected));
-            this.PublishWindowTitleIfChanged();
-        }
-
-        if (previous.LockInterface != next.LockInterface)
-        {
-            this.OnPropertyChanged(nameof(this.LockInterface));
-            this.OnPropertyChanged(nameof(this.IsTimerModificationLocked));
-            this.OnPropertyChanged(nameof(this.CanModifyCustomThemes));
-            this.OnPropertyChanged(nameof(this.CanHideToNotificationArea));
-            this.OnPropertyChanged(nameof(this.StatusIconMenuState));
-        }
-
-        if (save)
-        {
-            this.QueueSettingsSave(previous, next);
-            this.QueueActiveSessionSave();
-        }
-
-        this.RaiseSettingsCommandCanExecuteChanged();
     }
 
     private void ReplaceCustomThemes(CustomThemesDocument next, bool save)
@@ -1826,99 +1789,6 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable, I
         this.OnPropertyChanged(nameof(this.StatusIconMenuState));
     }
 
-    private bool ApplySessionTransition(CountdownTransition transition)
-    {
-        CountdownEffects effects = transition.Effects;
-        if (effects.First == CountdownEffect.Expired || effects.Second == CountdownEffect.Expired
-            || effects.Third == CountdownEffect.Expired || effects.Fourth == CountdownEffect.Expired)
-        {
-            this.PendingExpiryEffects = this.HandleEngineExpiredAsync();
-        }
-
-        return transition.Succeeded;
-    }
-
-    private async Task HandleEngineExpiredAsync()
-    {
-        long revision = this.session.Revision;
-        ExpiryDecision decision = ExpiryDecision.FromOptions(
-            TimerDefaults.FromSettings(this.settings),
-            ApplicationPreferences.FromSettings(this.settings),
-            this.session.Countdown.SupportsRestart);
-        this.ReplaceViewState(this.viewState with
-        {
-            PresentationMode = TimerPresentationMode.Status,
-            InputBeforeEdit = null,
-            HasValidationError = false
-        });
-        this.RefreshDisplay(TimerViewState.TimerCompleteStatusText, hasValidationError: false);
-        this.QueueActiveSessionSave();
-
-        this.ClearLockInterfaceAfterCompletion();
-
-        PublishSafely(this.ExpiryVisualFeedbackRequested);
-
-        if (decision.RequestAttention)
-        {
-            PublishSafely(this.WindowAttentionRequested);
-        }
-
-        ExpiryCompletion completion = await this.sessionEffects.CompleteAsync(this.CreateExpiryRequest(revision), decision).ConfigureAwait(false);
-        // Application effect tracking ends before a close callback can await removal.
-        if (completion.Action is not (ExpiryAction.Restart or ExpiryAction.Close))
-        {
-            return;
-        }
-        await this.uiDispatcher.InvokeAsync(() =>
-        {
-            if (this.isDisposed || this.automaticTicksSuspended || !this.session.IsCurrent(completion.Revision))
-            {
-                return;
-            }
-
-            if (completion.Action == ExpiryAction.Restart)
-            {
-                this.RestartLoopingTimer(completion.Revision);
-            }
-            else if (completion.Action == ExpiryAction.Close)
-            {
-                PublishSafely(this.CloseRequested);
-            }
-        }).ConfigureAwait(false);
-    }
-
-    private async Task HandleRestoredExpiredAsync()
-    {
-        long revision = this.session.Revision;
-        this.ReplaceViewState(this.viewState with
-        {
-            PresentationMode = TimerPresentationMode.Status,
-            InputBeforeEdit = null,
-            HasValidationError = false
-        });
-        this.RefreshDisplay(TimerViewState.TimerCompleteStatusText, hasValidationError: false);
-        this.ClearLockInterfaceAfterCompletion();
-        this.QueueActiveSessionSave();
-
-        PublishSafely(this.ExpiryVisualFeedbackRequested);
-
-        if (this.settings.PopUpWhenExpired)
-        {
-            PublishSafely(this.WindowAttentionRequested);
-        }
-
-        await this.sessionEffects.CompleteAsync(this.CreateExpiryRequest(revision),
-            new ExpiryDecision(false, false, false), restored: true).ConfigureAwait(false);
-    }
-
-    private void ClearLockInterfaceAfterCompletion()
-    {
-        if (this.settings.LockInterface)
-        {
-            this.ReplaceSettings(this.settings with { LockInterface = false }, save: true);
-        }
-    }
-
     private void ShowValidationError()
     {
         this.RefreshDisplay(ApplicationStrings.StatusInvalidTimer, hasValidationError: true);
@@ -1979,14 +1849,6 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable, I
         }
     }
 
-    private ExpiryEffectRequest CreateExpiryRequest(long revision) => new(revision,
-        this.settings.NotificationsEnabled,
-        WindowTitleFormatter.Format(WindowTitleMode.TimerTitle, ApplicationStrings.ApplicationTitle, this.TimerTitle, string.Empty, string.Empty),
-        ApplicationStrings.StatusTimerComplete, this.settings.AudioAlertsEnabled && !this.IsNoSoundSelected,
-        this.settings.AudioAlertSoundId, this.settings.LoopSound, this.settings.ShutDownWhenExpired);
-
-    private Task StopActiveAudioAsync() => this.sessionEffects.StopAudioAsync();
-
     private async Task StopAudioPreviewAsync()
     {
         CancellationTokenSource? cancellation = this.audioPreviewCancellation;
@@ -2012,31 +1874,6 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable, I
                 "Audio preview cancellation failed.", exception);
         }
     }
-
-    private void RestartLoopingTimer(long expectedRevision)
-    {
-        if (!this.RunSessionOperation(() => this.session.IsCurrent(expectedRevision)
-            ? this.session.Restart(this.wallClockNow())
-            : CountdownTransition.Invalid(this.session.Countdown)))
-        {
-            return;
-        }
-
-        this.ReplaceViewState(this.viewState with
-        {
-            PresentationMode = TimerPresentationMode.Status,
-            InputBeforeEdit = null,
-            HasValidationError = false
-        });
-        this.RefreshDisplay(TimerViewState.RunningStatusText, hasValidationError: false);
-        _ = this.AcquireInhibitionAsync();
-        this.QueueActiveSessionSave();
-    }
-
-    private Task AcquireInhibitionAsync() => this.sessionEffects.AcquireInhibitionAsync(
-        !this.settings.DoNotKeepComputerAwake, ApplicationStrings.SessionInhibitionReason);
-
-    private Task ReleaseInhibitionAsync() => this.sessionEffects.ReleaseInhibitionAsync();
 
     private void QueueSettingsSave(LinuxAppSettings previousSettings, LinuxAppSettings requestedSettings)
     {

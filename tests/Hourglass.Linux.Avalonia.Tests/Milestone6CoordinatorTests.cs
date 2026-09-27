@@ -7,9 +7,10 @@ using Xunit;
 public sealed class Milestone6CoordinatorTests
 {
     [Fact]
-    public void NewTimerCommandPublishesCoordinatorRequest()
+    public async Task NewTimerCommandPublishesCoordinatorRequest()
     {
-        var viewModel = new MainWindowViewModel(new CountdownEngine(new TestMonotonicClock()), () => DateTime.Now);
+        var viewModel = new MainWindowViewModel(new TestMonotonicClock(), () => DateTime.Now);
+        await viewModel.PendingCommands;
         int requestCount = 0;
         viewModel.NewTimerRequested += (_, _) => requestCount++;
 

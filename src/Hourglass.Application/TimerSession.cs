@@ -1,6 +1,7 @@
 namespace Hourglass.Application;
 
 using Hourglass.Serialization;
+using Hourglass.Settings;
 using Hourglass.Timing;
 
 /// <summary>
@@ -14,6 +15,50 @@ internal sealed class TimerSession : IDisposable
     private CountdownEffects pendingEffects = CountdownEffects.None;
     private bool disposed;
     private long revision;
+    private long commandRevision;
+    internal string TimerInput { get; private set; } = string.Empty;
+    internal string TimerTitle { get; private set; } = string.Empty;
+    internal TimerDefaults Options { get; private set; } = new();
+    internal ApplicationPreferences Preferences { get; private set; } = new();
+    internal long PublicationSequence { get; set; }
+    internal long CommandRevision => this.commandRevision;
+    internal void InvalidateLifecycle() => Interlocked.Increment(ref this.revision);
+
+    internal TimerSession(IMonotonicClock clock) : this(new CountdownEngine(clock)) { }
+
+    internal void CommitMetadata(string input, string title, TimerDefaults options, ApplicationPreferences preferences)
+    {
+        if (this.TimerInput == input && this.TimerTitle == title && this.Options == options && this.Preferences == preferences)
+        {
+            return;
+        }
+        this.TimerInput = input;
+        this.TimerTitle = title;
+        this.Options = options;
+        this.Preferences = preferences;
+        this.commandRevision++;
+    }
+
+    internal TimerSessionSnapshot Snapshot(string id)
+    {
+        bool locked = this.Options.LockInterface && this.Countdown.State is TimerState.Running or TimerState.Paused;
+        SessionActions actions = SessionActions.Rename;
+        if (locked) { actions |= SessionActions.Unlock; }
+        else
+        {
+            actions |= SessionActions.Update | SessionActions.Configure;
+            actions |= this.Countdown.State switch
+            {
+                TimerState.Stopped => SessionActions.Start | SessionActions.Dismiss,
+                TimerState.Expired => SessionActions.Start | SessionActions.Stop | SessionActions.Dismiss,
+                TimerState.Running => SessionActions.Pause | SessionActions.Stop,
+                TimerState.Paused => SessionActions.Resume | SessionActions.Stop,
+                _ => SessionActions.None
+            };
+            if (this.Countdown.SupportsRestart) { actions |= SessionActions.Restart; }
+        }
+        return new(id, this.commandRevision, this.TimerInput, this.TimerTitle, this.Countdown, this.Options, actions, this.Preferences, this.PublicationSequence);
+    }
 
     public TimerSession(CountdownEngine engine)
     {
@@ -52,6 +97,7 @@ internal sealed class TimerSession : IDisposable
         this.engine.Restore(timerInfo);
         Volatile.Write(ref this.countdown, this.engine.Snapshot);
         Interlocked.Increment(ref this.revision);
+        this.commandRevision++;
     }
 
     public void Dispose()
@@ -87,6 +133,7 @@ internal sealed class TimerSession : IDisposable
             || HasLifecycleEffect(this.pendingEffects.Third) || HasLifecycleEffect(this.pendingEffects.Fourth))
         {
             Interlocked.Increment(ref this.revision);
+            this.commandRevision++;
         }
 
         return new CountdownTransition(this.engine.Snapshot, this.pendingEffects, succeeded);

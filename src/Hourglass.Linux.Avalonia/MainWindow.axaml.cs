@@ -84,7 +84,7 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
     {
         var settingsStore = new JsonFileSettingsStore(new XdgSettingsPathService(), services.DiagnosticSink);
         return new MainWindowViewModel(
-            new CountdownEngine(new SystemMonotonicClock()),
+            new SystemMonotonicClock(),
             () => DateTime.Now,
             new NotifySendNotificationService(services.DiagnosticSink),
             new SystemdSessionInhibitor(services.DiagnosticSink),

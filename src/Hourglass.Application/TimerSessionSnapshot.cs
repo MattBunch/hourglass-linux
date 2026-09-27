@@ -11,7 +11,14 @@ public sealed record TimerSessionSnapshot(
     string TimerTitle,
     CountdownState Countdown,
     TimerDefaults Options,
-    SessionActions AllowedActions);
+    SessionActions AllowedActions,
+    ApplicationPreferences Preferences,
+    long PublicationSequence = 0)
+{
+    public TimerSessionSnapshot(string sessionId, long revision, string timerInput, string timerTitle,
+        CountdownState countdown, TimerDefaults options, SessionActions allowedActions)
+        : this(sessionId, revision, timerInput, timerTitle, countdown, options, allowedActions, new()) { }
+}
 
 [Flags]
 public enum SessionActions
@@ -24,5 +31,7 @@ public enum SessionActions
     Restart = 16,
     Update = 32,
     Dismiss = 64,
-    Unlock = 128
+    Unlock = 128,
+    Rename = 256,
+    Configure = 512
 }

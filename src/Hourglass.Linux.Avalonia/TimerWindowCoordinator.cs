@@ -104,7 +104,8 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
         this.lifetime = lifetime ?? throw new ArgumentNullException(nameof(lifetime));
         this.settingsStore = settingsStore ?? throw new ArgumentNullException(nameof(settingsStore));
         this.diagnosticSink = diagnosticSink ?? NoOpDiagnosticSink.Instance;
-        this.runtime = new HourglassRuntime(this.diagnosticSink);
+        this.runtime = new HourglassRuntime(this.diagnosticSink, services: new SessionRuntimeServices(notificationService, audioAlertService, sessionInhibitor, systemPowerService,
+            ApplicationStrings.ApplicationTitle, ApplicationStrings.StatusTimerComplete, ApplicationStrings.SessionInhibitionReason));
         this.startupDiagnostics = startupDiagnostics ?? StartupDiagnostics.Disabled;
         this.appSettingsStore = new CoordinatedAppSettingsStore(this.settingsStore);
         this.notificationService = notificationService ?? throw new ArgumentNullException(nameof(notificationService));
@@ -227,7 +228,7 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
         SingleInstanceLaunchRequest? launchRequest = null)
     {
         var viewModel = new MainWindowViewModel(
-            new CountdownEngine(new SystemMonotonicClock()),
+            new SystemMonotonicClock(),
             () => DateTime.Now,
             this.notificationService,
             this.sessionInhibitor,
@@ -297,6 +298,7 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
             return;
         }
 
+        await registration.ViewModel.PendingCommands;
         if (session != null && !registration.ViewModel.RestoreActiveSession(session))
         {
             registration.Window.Close();
@@ -316,6 +318,7 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
                 launchRequest.TimerTitle);
         }
 
+        await registration.ViewModel.PendingCommands;
         _ = this.QueueSessionSave();
         this.ApplyDesktopProgress();
         this.ApplyStatusIconState();
