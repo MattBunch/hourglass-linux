@@ -38,7 +38,15 @@ jobs:
         run: dotnet build Hourglass.Linux.sln --configuration Release --no-restore -warnaserror
 
       - name: Test
-        run: dotnet test Hourglass.Linux.sln --configuration Release --no-build --verbosity normal
+        run: dotnet test Hourglass.Linux.sln --configuration Release --no-build --verbosity normal --logger trx --results-directory TestResults
+
+      - name: Upload test results
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: test-results
+          path: TestResults/*.trx
+          if-no-files-found: ignore
 
       - name: Verify formatting
         run: dotnet format Hourglass.Linux.sln --verify-no-changes --no-restore --verbosity minimal

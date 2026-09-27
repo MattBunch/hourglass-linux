@@ -4048,6 +4048,33 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
+    public async Task PersistenceWaitIncludesSavesQueuedByHeldSnapshotDelivery()
+    {
+        var clock = new ManualMonotonicClock();
+        var store = new RecordingSettingsStore();
+        var dispatcher = new HeldUiDispatcher();
+        await using var viewModel = await CreateViewModelAsync(clock, settingsStore: store, uiDispatcher: dispatcher);
+        viewModel.TimerInput = "2 seconds";
+        viewModel.StartCommand.Execute(null);
+        await viewModel.PendingSettingsSave;
+        dispatcher.Hold();
+        try
+        {
+            clock.Advance(TimeSpan.FromSeconds(1));
+            Task tick = viewModel.TickRuntimeAsync();
+            await dispatcher.Entered.Task;
+            Task persisted = viewModel.PendingSettingsSave;
+            Assert.False(persisted.IsCompleted);
+            dispatcher.Release();
+            await tick;
+            await persisted;
+            Assert.NotNull(store.SavedActiveSession);
+            Assert.Equal(TimeSpan.FromSeconds(1).Ticks, store.SavedActiveSession.TimeLeftTicks);
+        }
+        finally { dispatcher.Release(); }
+    }
+
+    [Fact]
     public async Task RestoredExpiredSessionQueuesSessionSaveBeforeSlowNotificationCompletes()
     {
         DateTime start = new(2026, 7, 2, 8, 0, 0);
@@ -4079,16 +4106,23 @@ public sealed class MainWindowViewModelTests
             notificationService: notificationService,
             settingsStore: settingsStore);
 
-        await viewModel.LoadSettingsAsync();
-        await viewModel.PendingSettingsSave;
-
-        Assert.Equal(TimerState.Expired, viewModel.State);
-        Assert.NotNull(settingsStore.SavedActiveSession);
-        Assert.Equal(TimerState.Expired, settingsStore.SavedActiveSession.State);
-        Assert.Equal(TimeSpan.Zero.Ticks, settingsStore.SavedActiveSession.TimeLeftTicks);
-        Assert.Equal(1, notificationService.CallCount);
-
-        notificationCompletion.SetResult();
+        try
+        {
+            await viewModel.LoadSettingsAsync();
+            await viewModel.PendingSettingsSave;
+            await notificationService.Entered.Task;
+            Assert.False(notificationCompletion.Task.IsCompleted);
+            Assert.Equal(TimerState.Expired, viewModel.State);
+            Assert.NotNull(settingsStore.SavedActiveSession);
+            Assert.Equal(TimerState.Expired, settingsStore.SavedActiveSession.State);
+            Assert.Equal(TimeSpan.Zero.Ticks, settingsStore.SavedActiveSession.TimeLeftTicks);
+            Assert.Equal(1, notificationService.CallCount);
+        }
+        finally
+        {
+            notificationCompletion.TrySetResult();
+            await viewModel.DisposeAsync();
+        }
     }
 
     [Fact]
@@ -5092,6 +5126,30 @@ public sealed class MainWindowViewModelTests
         return viewModel;
     }
 
+    private sealed class HeldUiDispatcher : IUiDispatcher
+    {
+        private TaskCompletionSource? released;
+        public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public void Hold() => this.released = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public void Release() => this.released?.TrySetResult();
+        public bool CheckAccess() => true;
+        public void Post(Action action) => action();
+        public async Task InvokeAsync(Action action, CancellationToken cancellationToken = default)
+        {
+            if (this.released != null)
+            {
+                this.Entered.TrySetResult();
+                await this.released.Task.WaitAsync(cancellationToken);
+            }
+            action();
+        }
+        public async Task<T> InvokeAsync<T>(Func<T> action, CancellationToken cancellationToken = default)
+        {
+            await this.InvokeAsync(() => { }, cancellationToken);
+            return action();
+        }
+    }
+
     private sealed class RecordingUiDispatcher : IUiDispatcher
     {
         public int PostCount { get; private set; }
@@ -5147,6 +5205,7 @@ public sealed class MainWindowViewModelTests
 
     private sealed class RecordingNotificationService : INotificationService
     {
+        public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public int CallCount { get; private set; }
 
         public string? Title { get; private set; }
@@ -5162,6 +5221,7 @@ public sealed class MainWindowViewModelTests
             this.CallCount++;
             this.Title = title;
             this.Body = body;
+            this.Entered.TrySetResult();
 
             if (this.ThrowOnNotify)
             {

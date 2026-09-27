@@ -616,6 +616,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged, IDispo
         {
             Task commands = this.PendingCommands;
             await commands.ConfigureAwait(false);
+            await this.DrainNotificationsAsync().ConfigureAwait(false);
             await Task.WhenAll(this.pendingSettingsSave, this.pendingCustomThemesSave, this.pendingSavedTimersSave, this.pendingActiveSessionSave).ConfigureAwait(false);
             if (ReferenceEquals(commands, this.PendingCommands)) { return; }
         }

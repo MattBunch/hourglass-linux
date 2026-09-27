@@ -55,7 +55,9 @@ public sealed class SessionEffectsTests
         await first.Entered.Task;
         TaskCompletionSource<IAsyncDisposable?> oldResult = first.Acquired;
         first.Acquired = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        first.Entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
         Task current = effects.AcquireInhibitionAsync(true, "timer");
+        await first.Entered.Task;
         Lease newest = new();
         first.Acquired.SetResult(newest);
         await current;
@@ -250,7 +252,7 @@ public sealed class SessionEffectsTests
     }
     private sealed class Services : INotificationService, IAudioAlertService, ISessionInhibitor, ISystemPowerService
     {
-        public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource Entered { get; set; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource<IAsyncDisposable?> Acquired { get; set; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource? Notification { get; init; }
         public bool ObserveNotificationCancellation { get; init; }
@@ -271,8 +273,10 @@ public sealed class SessionEffectsTests
         {
             this.Acquisitions++;
             this.Token = token;
+            Task<IAsyncDisposable?> result = this.Failure == "audio"
+                ? Task.FromException<IAsyncDisposable?>(new InvalidOperationException("audio failed")) : this.Acquired.Task;
             this.Entered.TrySetResult();
-            return this.Failure == "audio" ? Task.FromException<IAsyncDisposable?>(new InvalidOperationException("audio failed")) : this.Acquired.Task;
+            return result;
         }
     }
 }
