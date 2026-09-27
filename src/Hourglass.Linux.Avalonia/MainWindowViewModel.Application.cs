@@ -15,8 +15,10 @@ public sealed partial class MainWindowViewModel
     });
     private async Task InitializeSessionAsync()
     {
-        ApplicationResult<TimerSessionSnapshot> created = await this.client.CreateSessionAsync(new(this.SessionId,
-            TimerViewState.DefaultTimerInput, string.Empty, TimerDefaults.FromSettings(this.settings), ApplicationPreferences.FromSettings(this.settings))).ConfigureAwait(false);
+        ApplicationResult<TimerSessionSnapshot> created = this.attachExistingSession
+            ? await this.client.GetSessionAsync(this.SessionId).ConfigureAwait(false)
+            : await this.client.CreateSessionAsync(new(this.SessionId,
+                TimerViewState.DefaultTimerInput, string.Empty, TimerDefaults.FromSettings(this.settings), ApplicationPreferences.FromSettings(this.settings))).ConfigureAwait(false);
         if (created is not ApplicationResult<TimerSessionSnapshot>.Success success) { throw new InvalidOperationException(nameof(InitializeSessionAsync)); }
         ApplicationResult<SessionSubscription> subscribed = await this.client.SubscribeAsync(this.SessionId, notification => this.DispatchAsync(() => this.ApplyNotification(notification))).ConfigureAwait(false);
         if (subscribed is not ApplicationResult<SessionSubscription>.Success subscriptionResult) { throw new InvalidOperationException(nameof(InitializeSessionAsync)); }
@@ -76,13 +78,14 @@ public sealed partial class MainWindowViewModel
     private void SubmitMetadataUpdate(string? title = null, TimerDefaults? options = null, ApplicationPreferences? preferences = null, LinuxAppSettings? previousSettings = null, LinuxAppSettings? requestedSettings = null)
     {
         long revision = this.sessionSnapshot.Revision;
+        long? saveRevision = previousSettings != null && requestedSettings != null ? ++this.settingsSaveRevision : null;
         this.QueueOperation(async () =>
         {
             long expected = this.ResolveAcknowledgedRevision(revision);
             if (await this.ExecuteAndApplyAsync(new SessionCommand.Update(this.SessionId, expected, TimerTitle: title, Options: options, Preferences: preferences)).ConfigureAwait(false)
                 && previousSettings != null && requestedSettings != null)
             {
-                await this.DispatchAsync(() => this.QueueSettingsSave(previousSettings, requestedSettings)).ConfigureAwait(false);
+                await this.DispatchAsync(() => this.QueueSettingsSave(previousSettings, requestedSettings, saveRevision)).ConfigureAwait(false);
             }
         });
     }
@@ -116,7 +119,7 @@ public sealed partial class MainWindowViewModel
         ApplicationResult<TimerSessionSnapshot> latest = await this.client.GetSessionAsync(this.SessionId).ConfigureAwait(false);
         await this.DispatchAsync(() =>
         {
-            if (latest is ApplicationResult<TimerSessionSnapshot>.Success current) { this.ApplySnapshot(current.Value); }
+            if (latest is ApplicationResult<TimerSessionSnapshot>.Success current) { this.ApplySnapshot(current.Value, force: true); }
             this.ShowValidationError();
             if (result is ApplicationResult<TimerSessionSnapshot>.Failure failure)
             {
@@ -158,9 +161,9 @@ public sealed partial class MainWindowViewModel
         this.QueueActiveSessionSave();
     }
 
-    private void ApplySnapshot(TimerSessionSnapshot snapshot)
+    private void ApplySnapshot(TimerSessionSnapshot snapshot, bool force = false)
     {
-        if (snapshot.PublicationSequence < this.sessionSnapshot.PublicationSequence || this.isDisposed) { return; }
+        if (snapshot.PublicationSequence < this.sessionSnapshot.PublicationSequence || this.isDisposed || (!force && snapshot == this.sessionSnapshot)) { return; }
         CountdownState previous = this.sessionSnapshot.Countdown;
         TimerDefaults previousOptions = this.sessionSnapshot.Options;
         ApplicationPreferences previousPreferences = this.sessionSnapshot.Preferences;

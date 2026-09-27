@@ -47,7 +47,7 @@ public sealed class Milestone7CoordinatorTests
     {
         string coordinator = File.ReadAllText(FindRepositoryFile("src/Hourglass.Linux.Avalonia/TimerWindowCoordinator.cs"));
         int loadWindowStart = coordinator.IndexOf("private async Task LoadWindowAsync", StringComparison.Ordinal);
-        int loadActiveSessionsStart = coordinator.IndexOf("private async Task<ActiveTimerSessionsDocument> LoadActiveSessionsAsync", StringComparison.Ordinal);
+        int loadActiveSessionsStart = coordinator.IndexOf("private void ViewModelNewTimerRequested", StringComparison.Ordinal);
 
         Assert.True(loadWindowStart >= 0);
         Assert.True(loadActiveSessionsStart > loadWindowStart);

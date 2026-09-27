@@ -3,9 +3,9 @@
 using Hourglass.Platform;
 using Hourglass.Settings;
 
-namespace Hourglass.Linux.Avalonia;
+namespace Hourglass.Application;
 
-internal interface IAppSettingsStore
+public interface IAppSettingsStore
 {
     Task<LinuxAppSettings> LoadAsync(CancellationToken cancellationToken = default);
 
@@ -15,39 +15,7 @@ internal interface IAppSettingsStore
         CancellationToken cancellationToken = default);
 }
 
-internal sealed class DirectAppSettingsStore : IAppSettingsStore
-{
-    private const string SettingsKey = "app";
-
-    private readonly ISettingsStore settingsStore;
-
-    public DirectAppSettingsStore(ISettingsStore settingsStore)
-    {
-        this.settingsStore = settingsStore ?? throw new ArgumentNullException(nameof(settingsStore));
-    }
-
-    public async Task<LinuxAppSettings> LoadAsync(CancellationToken cancellationToken = default)
-    {
-        return await this.settingsStore.LoadAsync<LinuxAppSettings>(SettingsKey, cancellationToken)
-            ?? LinuxAppSettings.Default;
-    }
-
-    public async Task<LinuxAppSettings> SaveChangeAsync(
-        LinuxAppSettings previous,
-        LinuxAppSettings requested,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(previous);
-        ArgumentNullException.ThrowIfNull(requested);
-
-        LinuxAppSettings latest = await this.LoadAsync(cancellationToken);
-        LinuxAppSettings merged = LinuxSettingsMerger.MergeSettingsChange(previous, requested, latest);
-        await this.settingsStore.SaveAsync(SettingsKey, merged, cancellationToken);
-        return merged;
-    }
-}
-
-internal sealed class CoordinatedAppSettingsStore : IAppSettingsStore
+public sealed class CoordinatedAppSettingsStore : IAppSettingsStore
 {
     private const string SettingsKey = "app";
 
@@ -105,7 +73,7 @@ internal sealed class CoordinatedAppSettingsStore : IAppSettingsStore
     }
 }
 
-internal interface ISavedTimersStore
+public interface ISavedTimersStore
 {
     Task<SavedTimersDocument> LoadAsync(CancellationToken cancellationToken = default);
 
@@ -115,36 +83,7 @@ internal interface ISavedTimersStore
         CancellationToken cancellationToken = default);
 }
 
-internal sealed class DirectSavedTimersStore : ISavedTimersStore
-{
-    private const string SavedTimersKey = "saved-timers";
-
-    private readonly ISettingsStore settingsStore;
-
-    public DirectSavedTimersStore(ISettingsStore settingsStore)
-    {
-        this.settingsStore = settingsStore ?? throw new ArgumentNullException(nameof(settingsStore));
-    }
-
-    public async Task<SavedTimersDocument> LoadAsync(CancellationToken cancellationToken = default)
-    {
-        return await this.settingsStore.LoadAsync<SavedTimersDocument>(SavedTimersKey, cancellationToken).ConfigureAwait(false)
-            ?? SavedTimersDocument.Empty;
-    }
-
-    public Task SaveAsync(
-        SavedTimersDocument previous,
-        SavedTimersDocument requested,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(previous);
-        ArgumentNullException.ThrowIfNull(requested);
-
-        return this.settingsStore.SaveAsync(SavedTimersKey, requested, cancellationToken);
-    }
-}
-
-internal sealed class CoordinatedSavedTimersStore : ISavedTimersStore
+public sealed class CoordinatedSavedTimersStore : ISavedTimersStore
 {
     private const string SavedTimersKey = "saved-timers";
 

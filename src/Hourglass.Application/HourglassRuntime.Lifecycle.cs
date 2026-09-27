@@ -16,7 +16,7 @@ public sealed partial class HourglassRuntime
         ArgumentNullException.ThrowIfNull(publish);
         return this.QueryAsync(() =>
         {
-            if (!this.sessions.TryGetValue(sessionId, out Registration? registration))
+            if (!this.sessions.TryGetValue(sessionId, out SessionRegistration? registration))
             {
                 return (ApplicationResult<SessionSubscription>)new ApplicationResult<SessionSubscription>.Failure(new(ApplicationErrorCode.NotFound, "Unknown session."));
             }
@@ -34,7 +34,7 @@ public sealed partial class HourglassRuntime
         ArgumentNullException.ThrowIfNull(preferences);
         return this.QueryAsync(() =>
         {
-            if (!this.sessions.TryGetValue(sessionId, out Registration? registration)) { return Failure(ApplicationErrorCode.NotFound, "Unknown session."); }
+            if (!this.sessions.TryGetValue(sessionId, out SessionRegistration? registration)) { return Failure(ApplicationErrorCode.NotFound, "Unknown session."); }
             TimerSession session = registration.Session;
             if (session.Countdown.State != TimerState.Stopped) { return Failure(ApplicationErrorCode.InvalidTransition, "Restoration requires an unstarted session."); }
             LinuxAppSettings settings = restored.Options.ApplyTo(LinuxAppSettings.Default);
@@ -58,21 +58,28 @@ public sealed partial class HourglassRuntime
     /// <summary>Drains currently committed work without preventing new commands from being processed.</summary>
     public async Task WaitForSessionEffectsAsync(string sessionId, CancellationToken cancellationToken = default)
     {
-        Task work = await this.InvokeAsync(() => this.sessions.TryGetValue(sessionId, out Registration? registration)
+        Task work = await this.InvokeAsync(() => this.sessions.TryGetValue(sessionId, out SessionRegistration? registration)
             ? Task.WhenAll(registration.LifecycleWork, registration.Effects?.Pending ?? Task.CompletedTask)
             : Task.WhenAll(this.retiredEffects), cancellationToken).ConfigureAwait(false);
         await work.WaitAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    private void Publish(Registration registration, CountdownEffects effects, bool removed = false, bool restoredExpiry = false)
+    private void Publish(SessionRegistration registration, CountdownEffects effects, bool removed = false, bool restoredExpiry = false)
     {
+        if (removed) { this.presentations.Remove(registration.Id); }
+        if (removed || registration.PersistenceRevision != registration.Session.CommandRevision)
+        {
+            registration.PersistenceRevision = registration.Session.CommandRevision;
+            this.QueuePersistence();
+            this.QueueWakeAlarm();
+        }
         registration.Session.PublicationSequence = ++registration.Sequence;
         SessionNotification notification = new(registration.Session.Snapshot(registration.Id), registration.Sequence, effects, removed, restoredExpiry);
         registration.Subscriptions.RemoveAll(item => item.IsDisposed);
         foreach (SessionSubscription subscription in registration.Subscriptions) { subscription.Publish(notification); if (removed) { subscription.Complete(); } }
     }
 
-    private void ProcessMetadataChange(Registration registration, TimerSessionSnapshot before)
+    private void ProcessMetadataChange(SessionRegistration registration, TimerSessionSnapshot before)
     {
         TimerSession session = registration.Session;
         if (before.Options.LoopTimer != session.Options.LoopTimer || before.Options.CloseWhenExpired != session.Options.CloseWhenExpired
@@ -95,7 +102,7 @@ public sealed partial class HourglassRuntime
     private static bool HasEffect(CountdownEffects effects, CountdownEffect effect) =>
         effects.First == effect || effects.Second == effect || effects.Third == effect || effects.Fourth == effect;
 
-    private void ProcessTransition(Registration registration, CountdownTransition transition)
+    private void ProcessTransition(SessionRegistration registration, CountdownTransition transition)
     {
         if (!registration.Authoritative || registration.Effects == null) { return; }
         TimerSession session = registration.Session;
@@ -116,7 +123,7 @@ public sealed partial class HourglassRuntime
         }
     }
 
-    private Task CompleteExpiryAsync(Registration registration, bool restored)
+    private Task CompleteExpiryAsync(SessionRegistration registration, bool restored)
     {
         TimerSession session = registration.Session;
         long revision = session.Revision;

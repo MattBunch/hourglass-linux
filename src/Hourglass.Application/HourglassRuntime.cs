@@ -6,7 +6,7 @@ using Hourglass.Timing;
 
 /// <summary>
 /// Serializes short session mutations. Platform effects and frontend dispatch happen after the queue releases.
-/// Registration is an internal migration bridge until the public client owns all session metadata.
+/// SessionRegistration is an internal migration bridge until the public client owns all session metadata.
 /// </summary>
 public sealed partial class HourglassRuntime : IHourglassClient, IDisposable, IAsyncDisposable
 {
@@ -18,7 +18,7 @@ public sealed partial class HourglassRuntime : IHourglassClient, IDisposable, IA
         SingleReader = true,
         FullMode = BoundedChannelFullMode.Wait
     });
-    private readonly Dictionary<string, Registration> sessions = new(StringComparer.Ordinal);
+    private readonly TimerSessionManager sessions = new();
     private readonly CancellationTokenSource schedulerCancellation = new();
     private readonly object lifetimeGate = new();
     private readonly IDiagnosticSink diagnostics;
@@ -37,14 +37,18 @@ public sealed partial class HourglassRuntime : IHourglassClient, IDisposable, IA
     private bool stopping;
     private int executingThreadId;
 
-    public HourglassRuntime(IDiagnosticSink? diagnostics = null, TimeProvider? timeProvider = null, IMonotonicClock? clock = null, Func<DateTime>? wallClockNow = null, SessionRuntimeServices? services = null)
+    public HourglassRuntime(IDiagnosticSink? diagnostics = null, TimeProvider? timeProvider = null, IMonotonicClock? clock = null, Func<DateTime>? wallClockNow = null, SessionRuntimeServices? services = null, ISettingsStore? settingsStore = null)
     {
         this.diagnostics = diagnostics ?? NoOpDiagnosticSink.Instance;
         this.timeProvider = timeProvider ?? TimeProvider.System;
-        this.services = services ?? SessionRuntimeServices.Unsupported;
+        SessionRuntimeServices supplied = services ?? SessionRuntimeServices.Unsupported;
+        this.sharedInhibitor = supplied.Inhibitor as CoordinatedSessionInhibitor ?? new CoordinatedSessionInhibitor(supplied.Inhibitor);
+        this.services = supplied with { Inhibitor = this.sharedInhibitor };
+        this.Data = new ApplicationData(settingsStore ?? new MemorySettingsStore(), this.diagnostics);
         this.clock = clock ?? new SystemMonotonicClock();
         this.wallClockNow = wallClockNow ?? (() => DateTime.Now);
         this.worker = Task.Run(this.ProcessCommandsAsync);
+        this.Data.SettingsChanged += this.OnSettingsChanged;
     }
 
     internal TimerSession Register(string id, CountdownEngine engine, Action<SessionTick> publish)
@@ -60,7 +64,7 @@ public sealed partial class HourglassRuntime : IHourglassClient, IDisposable, IA
             }
 
             TimerSession session = new(engine);
-            this.sessions.Add(id, new Registration(session, publish));
+            this.sessions.Add(id, new SessionRegistration(session, publish));
             return session;
         });
     }
@@ -68,7 +72,7 @@ public sealed partial class HourglassRuntime : IHourglassClient, IDisposable, IA
     internal SessionEffects AttachEffects(string id, INotificationService notifications, IAudioAlertService audio,
         ISessionInhibitor inhibitor, ISystemPowerService power) => this.Invoke(() =>
     {
-        Registration registration = this.sessions[id];
+        SessionRegistration registration = this.sessions[id];
         SessionEffects effects = new(this, registration.Session, notifications, audio, inhibitor, power, this.diagnostics);
         this.sessions[id] = registration with { Effects = effects };
         return effects;
@@ -83,7 +87,7 @@ public sealed partial class HourglassRuntime : IHourglassClient, IDisposable, IA
         {
             cleanup = this.Invoke(() =>
             {
-                if (!this.sessions.Remove(id, out Registration? registration))
+                if (!this.sessions.Remove(id, out SessionRegistration? registration))
                 {
                     return Task.CompletedTask;
                 }
@@ -136,7 +140,7 @@ public sealed partial class HourglassRuntime : IHourglassClient, IDisposable, IA
 
     public void SuspendTicks(string id) => this.Invoke(() =>
     {
-        if (this.sessions.TryGetValue(id, out Registration? registration))
+        if (this.sessions.TryGetValue(id, out SessionRegistration? registration))
         {
             this.sessions[id] = registration with { TickEnabled = false };
         }
@@ -166,7 +170,7 @@ public sealed partial class HourglassRuntime : IHourglassClient, IDisposable, IA
                 try
                 {
                     T result = command();
-                    foreach (Registration registration in this.sessions.Values)
+                    foreach (SessionRegistration registration in this.sessions.Values)
                     {
                         registration.Effects?.SynchronizeRevision();
                     }
@@ -202,10 +206,10 @@ public sealed partial class HourglassRuntime : IHourglassClient, IDisposable, IA
     // Tests and recording advance injected clocks and call this seam without real delays.
     public async Task TickAsync(CancellationToken cancellationToken = default)
     {
-        (Registration Registration, SessionTick Tick)[] updates = await this.InvokeAsync(() =>
+        (SessionRegistration SessionRegistration, SessionTick Tick)[] updates = await this.InvokeAsync(() =>
         {
-            List<(Registration, SessionTick)> updates = new(this.sessions.Count);
-            foreach (Registration registration in this.sessions.Values)
+            List<(SessionRegistration, SessionTick)> updates = new(this.sessions.Count);
+            foreach (SessionRegistration registration in this.sessions.Values)
             {
                 if (!registration.TickEnabled)
                 {
@@ -224,7 +228,7 @@ public sealed partial class HourglassRuntime : IHourglassClient, IDisposable, IA
             return updates.ToArray();
         }, cancellationToken).ConfigureAwait(false);
 
-        foreach ((Registration registration, SessionTick tick) in updates)
+        foreach ((SessionRegistration registration, SessionTick tick) in updates)
         {
             if (!registration.Session.IsCurrent(tick.Revision))
             {
@@ -305,7 +309,7 @@ public sealed partial class HourglassRuntime : IHourglassClient, IDisposable, IA
             this.commands.Writer.TryComplete();
             await this.worker.ConfigureAwait(false);
             // The worker has stopped; no ownership decision can now overlap cleanup.
-            foreach (Registration registration in this.sessions.Values)
+            foreach (SessionRegistration registration in this.sessions.Values)
             {
                 foreach (SessionSubscription subscription in registration.Subscriptions) { subscription.Dispose(); }
                 registration.Session.Dispose();
@@ -316,19 +320,19 @@ public sealed partial class HourglassRuntime : IHourglassClient, IDisposable, IA
             }
 
             this.sessions.Clear();
-            this.EffectsCompletion = Task.WhenAll(this.retiredEffects);
+            this.EffectsCompletion = Task.WhenAll(this.DisposeSharedInhibitorAsync(Task.WhenAll(this.retiredEffects)), this.DrainDataAsync(), this.DisposeWakeAlarmsAsync());
             await this.DrainAsync(this.EffectsCompletion, "shutdown").ConfigureAwait(false);
             this.schedulerCancellation.Dispose();
         }
     }
 
-    private sealed record Registration(TimerSession Session, Action<SessionTick> Publish, bool TickEnabled = true, SessionEffects? Effects = null, string Id = "", bool Authoritative = false)
+    private async Task DisposeSharedInhibitorAsync(Task effects)
     {
-        public List<SessionSubscription> Subscriptions { get; } = [];
-        public long Sequence { get; set; }
-        public long CompletionGeneration { get; set; }
-        public Task LifecycleWork { get; set; } = Task.CompletedTask;
+        await effects.ConfigureAwait(false);
+        await this.sharedInhibitor.DisposeAsync().ConfigureAwait(false);
     }
+
+
 }
 
 internal sealed record SessionTick(CountdownTransition Transition, long Revision);

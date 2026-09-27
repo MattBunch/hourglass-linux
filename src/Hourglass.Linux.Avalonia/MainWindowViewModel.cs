@@ -17,7 +17,6 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged, IDispo
     private const string ActiveSessionKey = "active-session";
     private const string CustomThemesKey = "custom-themes";
 
-    private readonly IAppSettingsStore appSettingsStore;
     private readonly IAudioAlertService audioAlertService;
     private readonly IHourglassClient client;
     private TimerSessionSnapshot sessionSnapshot = new(string.Empty, 0, TimerViewState.DefaultTimerInput, string.Empty, CountdownState.Stopped, new(), SessionActions.Start);
@@ -28,14 +27,14 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged, IDispo
     private readonly Dictionary<long, long> acknowledgedRevisions = [];
     private readonly HourglassRuntime runtime;
     private readonly bool ownsRuntime;
+    private readonly bool attachExistingSession;
+    private WindowGeometrySnapshot? sessionGeometry;
     private bool isDisposed;
     private Task? disposal;
     private readonly object disposalGate = new();
     private Task pendingAudioPreview = Task.CompletedTask;
     private bool automaticTicksSuspended;
     private readonly IDiagnosticSink diagnosticSink;
-    private readonly ISavedTimersStore savedTimersStore;
-    private readonly ISettingsStore settingsStore;
     private readonly bool persistActiveSessionDirectly;
     private readonly bool restoreActiveSessionOnLoad;
     private readonly bool statusIconCanRecoverHiddenWindow;
@@ -48,6 +47,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged, IDispo
     private Task pendingCustomThemesSave = Task.CompletedTask;
     private Task pendingSavedTimersSave = Task.CompletedTask;
     private Task pendingSettingsSave = Task.CompletedTask;
+    private long settingsSaveRevision;
     private string publishedWindowTitle = ApplicationStrings.ApplicationTitle;
     private CustomThemesDocument customThemes = CustomThemesDocument.Empty;
     private SavedTimersDocument savedTimers = SavedTimersDocument.Empty;
@@ -62,7 +62,8 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged, IDispo
             UnsupportedSessionInhibitor.Instance,
             NoOpSettingsStore.Instance,
             UnsupportedAudioAlertService.Instance,
-            UnsupportedSystemPowerService.Instance)
+            UnsupportedSystemPowerService.Instance,
+            uiDispatcher: null)
     {
     }
 
@@ -74,7 +75,8 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged, IDispo
             UnsupportedSessionInhibitor.Instance,
             NoOpSettingsStore.Instance,
             UnsupportedAudioAlertService.Instance,
-            UnsupportedSystemPowerService.Instance)
+            UnsupportedSystemPowerService.Instance,
+            uiDispatcher: null)
     {
     }
 
@@ -89,7 +91,8 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged, IDispo
             UnsupportedSessionInhibitor.Instance,
             NoOpSettingsStore.Instance,
             UnsupportedAudioAlertService.Instance,
-            UnsupportedSystemPowerService.Instance)
+            UnsupportedSystemPowerService.Instance,
+            uiDispatcher: null)
     {
     }
 
@@ -105,7 +108,8 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged, IDispo
             UnsupportedSessionInhibitor.Instance,
             settingsStore,
             UnsupportedAudioAlertService.Instance,
-            UnsupportedSystemPowerService.Instance)
+            UnsupportedSystemPowerService.Instance,
+            uiDispatcher: null)
     {
     }
 
@@ -122,7 +126,8 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged, IDispo
             sessionInhibitor,
             settingsStore,
             UnsupportedAudioAlertService.Instance,
-            UnsupportedSystemPowerService.Instance)
+            UnsupportedSystemPowerService.Instance,
+            uiDispatcher: null)
     {
     }
 
@@ -145,15 +150,14 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged, IDispo
             notificationService,
             sessionInhibitor,
             settingsStore,
-            new DirectAppSettingsStore(settingsStore),
-            new DirectSavedTimersStore(settingsStore),
             audioAlertService,
             systemPowerService,
             statusIconSupported,
             statusIconCanRecoverHiddenWindow,
             sessionId,
             persistActiveSessionDirectly,
-            restoreActiveSessionOnLoad)
+            restoreActiveSessionOnLoad,
+            uiDispatcher: null)
     {
     }
 
@@ -163,8 +167,6 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged, IDispo
         INotificationService notificationService,
         ISessionInhibitor sessionInhibitor,
         ISettingsStore settingsStore,
-        IAppSettingsStore appSettingsStore,
-        ISavedTimersStore savedTimersStore,
         IAudioAlertService audioAlertService,
         ISystemPowerService systemPowerService,
         bool statusIconSupported = false,
@@ -180,9 +182,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged, IDispo
         this.wallClockNow = wallClockNow ?? throw new ArgumentNullException(nameof(wallClockNow));
         ArgumentNullException.ThrowIfNull(notificationService);
         ArgumentNullException.ThrowIfNull(sessionInhibitor);
-        this.settingsStore = settingsStore ?? throw new ArgumentNullException(nameof(settingsStore));
-        this.appSettingsStore = appSettingsStore ?? throw new ArgumentNullException(nameof(appSettingsStore));
-        this.savedTimersStore = savedTimersStore ?? throw new ArgumentNullException(nameof(savedTimersStore));
+        ArgumentNullException.ThrowIfNull(settingsStore);
         this.audioAlertService = audioAlertService ?? throw new ArgumentNullException(nameof(audioAlertService));
         this.systemPowerService = systemPowerService ?? throw new ArgumentNullException(nameof(systemPowerService));
         this.uiDispatcher = uiDispatcher ?? ImmediateUiDispatcher.Instance;
@@ -193,9 +193,10 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged, IDispo
         this.persistActiveSessionDirectly = persistActiveSessionDirectly;
         this.restoreActiveSessionOnLoad = restoreActiveSessionOnLoad;
         this.ownsRuntime = runtime == null;
+        this.attachExistingSession = runtime != null && sessionId != null;
         this.runtime = runtime ?? new HourglassRuntime(this.diagnosticSink, clock: clock, wallClockNow: wallClockNow,
             services: new SessionRuntimeServices(notificationService, audioAlertService, sessionInhibitor, systemPowerService,
-                ApplicationStrings.ApplicationTitle, ApplicationStrings.StatusTimerComplete, ApplicationStrings.SessionInhibitionReason));
+                ApplicationStrings.ApplicationTitle, ApplicationStrings.StatusTimerComplete, ApplicationStrings.SessionInhibitionReason), settingsStore: settingsStore);
         this.client = this.runtime;
 
         this.StartCommand = new RelayCommand(
@@ -268,7 +269,8 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged, IDispo
             sessionInhibitor,
             settingsStore,
             audioAlertService,
-            UnsupportedSystemPowerService.Instance)
+            UnsupportedSystemPowerService.Instance,
+            uiDispatcher: null)
     {
     }
 
@@ -624,10 +626,19 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged, IDispo
 
     public async Task LoadSettingsAsync(CancellationToken cancellationToken = default)
     {
-        LinuxAppSettings loadedSettings = await this.LoadAppSettingsAsync(cancellationToken);
-        SavedTimersDocument loadedSavedTimers = await this.LoadSavedTimersAsync(cancellationToken);
-        CustomThemesDocument loadedCustomThemes = await this.LoadDocumentAsync(CustomThemesKey, CustomThemesDocument.Empty, cancellationToken);
+        await this.PendingCommands;
+        ApplicationResult<ApplicationDataSnapshot> loadedResult = await this.client.GetApplicationDataAsync(cancellationToken);
+        if (loadedResult is not ApplicationResult<ApplicationDataSnapshot>.Success loadedData) { throw new InvalidOperationException(nameof(LoadSettingsAsync)); }
+        ApplicationDataSnapshot loaded = loadedData.Value;
+        LinuxAppSettings loadedSettings = loaded.Settings;
+        SavedTimersDocument loadedSavedTimers = loaded.SavedTimers;
+        CustomThemesDocument loadedCustomThemes = loaded.CustomThemes;
 
+        if (this.attachExistingSession)
+        {
+            await this.PendingCommands.ConfigureAwait(false);
+            loadedSettings = new LinuxSettingsSnapshot(loadedSettings.RecentTimerInputs, this.sessionSnapshot.Preferences, this.sessionSnapshot.Options).ToSettings();
+        }
         this.ReplaceCustomThemes(loadedCustomThemes, save: false);
         this.ReplaceSettings(NormalizeThemeSelection(loadedSettings, loadedCustomThemes), save: false);
         this.ReplaceSavedTimers(loadedSavedTimers, save: false);
@@ -651,89 +662,15 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged, IDispo
         }).ConfigureAwait(false);
     }
 
-    private async Task<T> LoadDocumentAsync<T>(string key, T fallback, CancellationToken cancellationToken)
-    {
-        try
-        {
-            return await this.settingsStore.LoadAsync<T>(key, cancellationToken)
-                ?? fallback;
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (Exception exception)
-        {
-            this.RecordDataRecovery("load", key, "Document load failed; using fallback.", exception);
-            return fallback;
-        }
-    }
-
-    private async Task<LinuxAppSettings> LoadAppSettingsAsync(CancellationToken cancellationToken)
-    {
-        try
-        {
-            return await this.appSettingsStore.LoadAsync(cancellationToken).ConfigureAwait(true);
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (Exception exception)
-        {
-            this.RecordDataRecovery("load", "app", "Application settings load failed; using defaults.", exception);
-            return LinuxAppSettings.Default;
-        }
-    }
-
-    private async Task<SavedTimersDocument> LoadSavedTimersAsync(CancellationToken cancellationToken)
-    {
-        try
-        {
-            return await this.savedTimersStore.LoadAsync(cancellationToken).ConfigureAwait(true);
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (Exception exception)
-        {
-            this.RecordDataRecovery("load", "saved-timers", "Saved timers load failed; using an empty document.", exception);
-            return SavedTimersDocument.Empty;
-        }
-    }
-
     private async Task<bool> TryRestoreActiveSessionAsync(CancellationToken cancellationToken)
     {
-        ActiveTimerSessionDocument? session;
-
-        try
-        {
-            session = await this.settingsStore.LoadAsync<ActiveTimerSessionDocument>(ActiveSessionKey, cancellationToken);
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (Exception exception)
-        {
-            this.RecordDataRecovery("load", ActiveSessionKey, "Active session load failed; using no active session.", exception);
-            session = null;
-        }
-
-        ActiveTimerSessionSnapshot? snapshot = session == null
-            ? null
-            : ActiveTimerSessionSnapshot.FromDocument(session, this.wallClockNow(), TimeSpan.Zero);
-        if (snapshot == null)
-        {
-            return false;
-        }
-
+        ActiveTimerSessionSnapshot? snapshot = await this.runtime.LoadLegacyRestorationAsync(cancellationToken);
+        if (snapshot == null) { return false; }
         this.RestoreActiveSessionSnapshot(snapshot);
         return true;
     }
 
-    private void RestoreActiveSessionSnapshot(ActiveTimerSessionSnapshot snapshot)
+    private void RestoreActiveSessionSnapshot(ActiveTimerSessionSnapshot snapshot, bool restoredExpiry = false)
     {
         if (snapshot.HasOptions)
         {
@@ -742,7 +679,9 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged, IDispo
         ApplicationPreferences preferences = ApplicationPreferences.FromSettings(this.settings);
         this.QueueOperation(async () =>
         {
-            ApplicationResult<TimerSessionSnapshot> result = await this.runtime.RestoreSessionAsync(this.SessionId, snapshot, preferences).ConfigureAwait(false);
+            ApplicationResult<TimerSessionSnapshot> result = this.attachExistingSession
+                ? await this.client.GetSessionAsync(this.SessionId).ConfigureAwait(false)
+                : await this.runtime.RestoreSessionAsync(this.SessionId, snapshot, preferences).ConfigureAwait(false);
             await this.ApplyResultAsync(result).ConfigureAwait(false);
             await this.DispatchAsync(() =>
             {
@@ -753,6 +692,11 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged, IDispo
                 this.editRevision = editing ? this.sessionSnapshot.Revision : null;
                 this.ReplaceViewState(this.viewState with { TimerInput = input, TimerTitle = snapshot.TimerTitle, PresentationMode = presentation, InputBeforeEdit = editing ? snapshot.TimerStartInput : null, HasValidationError = false });
                 this.RefreshDisplay(hasValidationError: false);
+                if (this.attachExistingSession && restoredExpiry)
+                {
+                    PublishSafely(this.ExpiryVisualFeedbackRequested);
+                    if (this.sessionSnapshot.Preferences.PopUpWhenExpired) { PublishSafely(this.WindowAttentionRequested); }
+                }
             }).ConfigureAwait(false);
         });
     }
@@ -825,7 +769,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged, IDispo
             .ToDocument();
     }
 
-    internal bool RestoreActiveSession(ActiveTimerSessionDocument session)
+    internal bool RestoreActiveSession(ActiveTimerSessionDocument session, bool restoredExpiry = false)
     {
         ArgumentNullException.ThrowIfNull(session);
 
@@ -838,7 +782,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged, IDispo
             return false;
         }
 
-        this.RestoreActiveSessionSnapshot(snapshot);
+        this.RestoreActiveSessionSnapshot(snapshot, restoredExpiry);
         return true;
     }
 
@@ -926,12 +870,17 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged, IDispo
                 ? new SessionCommand.Update(this.SessionId, this.ResolveAcknowledgedRevision(revision), input, title)
                 : new SessionCommand.Start(this.SessionId, input, title, TimerDefaults.FromSettings(this.settings));
             if (!await this.ExecuteAndApplyAsync(command).ConfigureAwait(false)) { return; }
+            ApplicationResult<LinuxAppSettings> recentSettings = await this.client.GetSettingsAsync().ConfigureAwait(false);
             await this.DispatchAsync(() =>
             {
                 this.editRevision = null;
                 this.ReplaceViewState(this.viewState with { PresentationMode = TimerPresentationMode.Status, InputBeforeEdit = null, TimerInput = input });
                 this.RefreshDisplay(hasValidationError: false);
-                this.ReplaceSettings(this.settings.AddRecentTimerInput(input), save: true);
+                if (recentSettings is ApplicationResult<LinuxAppSettings>.Success saved)
+                {
+                    this.ReplaceSettings(new LinuxSettingsSnapshot(saved.Value.RecentTimerInputs,
+                        ApplicationPreferences.FromSettings(this.settings), TimerDefaults.FromSettings(this.settings)).ToSettings(), save: false);
+                }
                 this.QueueActiveSessionSave();
             }).ConfigureAwait(false);
         });
@@ -1875,12 +1824,13 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged, IDispo
         }
     }
 
-    private void QueueSettingsSave(LinuxAppSettings previousSettings, LinuxAppSettings requestedSettings)
+    private void QueueSettingsSave(LinuxAppSettings previousSettings, LinuxAppSettings requestedSettings, long? saveRevision = null)
     {
         this.pendingSettingsSave = this.SaveSettingsAfterAsync(
             this.pendingSettingsSave,
             previousSettings,
-            requestedSettings);
+            requestedSettings,
+            saveRevision ?? ++this.settingsSaveRevision);
     }
 
     private void QueueSavedTimersSave(SavedTimersDocument previousSavedTimers, SavedTimersDocument requestedSavedTimers)
@@ -1899,23 +1849,39 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged, IDispo
             requestedCustomThemes);
     }
 
+    internal void UpdateSessionGeometry(WindowGeometrySnapshot? geometry)
+    {
+        this.sessionGeometry = geometry;
+        this.QueueActiveSessionSave();
+    }
+
     private void QueueActiveSessionSave()
     {
-        ActiveTimerSessionDocument session = this.CreateActiveSessionDocument();
-
-        if (!this.persistActiveSessionDirectly)
+        SessionPresentation presentation = new(this.TimerInput, ToActiveTimerPresentationMode(this.viewState.PresentationMode), this.sessionGeometry);
+        Task previous = this.pendingActiveSessionSave;
+        this.pendingActiveSessionSave = SaveAsync();
+        PublishSafely(this.ActiveSessionChanged);
+        async Task SaveAsync()
         {
-            PublishSafely(this.ActiveSessionChanged);
-            return;
+            try
+            {
+                await previous.ConfigureAwait(false);
+                await this.PendingCommands.ConfigureAwait(false);
+                await this.client.UpdatePresentationAsync(this.SessionId, presentation).ConfigureAwait(false);
+                if (this.persistActiveSessionDirectly)
+                {
+                    await this.runtime.SaveLegacySessionAsync(this.SessionId).ConfigureAwait(false);
+                }
+            }
+            catch (Exception exception) { this.RecordDataRecovery("save", ActiveSessionKey, "Active session save failed.", exception); }
         }
-
-        this.pendingActiveSessionSave = this.SaveDocumentAfterAsync(this.pendingActiveSessionSave, ActiveSessionKey, session);
     }
 
     private async Task SaveSettingsAfterAsync(
         Task previousSave,
         LinuxAppSettings previousSettings,
-        LinuxAppSettings requestedSettings)
+        LinuxAppSettings requestedSettings,
+        long saveRevision)
     {
         try
         {
@@ -1928,37 +1894,19 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged, IDispo
 
         try
         {
-            LinuxAppSettings mergedSettings = await this.appSettingsStore
-                .SaveChangeAsync(previousSettings, requestedSettings)
-                .ConfigureAwait(false);
-            await this.uiDispatcher
-                .InvokeAsync(() => this.ReplaceSettings(mergedSettings, save: false))
+            ApplicationResult<LinuxAppSettings> result = await this.client.ChangeSettingsAsync(previousSettings, requestedSettings).ConfigureAwait(false);
+            if (result is not ApplicationResult<LinuxAppSettings>.Success saved)
+            {
+                this.RecordDataRecovery("save", "app", "Settings save failed.", new IOException(nameof(SaveSettingsAfterAsync)));
+                return;
+            }
+            LinuxAppSettings mergedSettings = saved.Value;
+            await this.DispatchAsync(() => { if (saveRevision == this.settingsSaveRevision) { this.ReplaceSettings(mergedSettings, save: false); } })
                 .ConfigureAwait(false);
         }
         catch (Exception exception)
         {
             this.RecordDataRecovery("save", "app", "Settings save failed.", exception);
-        }
-    }
-
-    private async Task SaveDocumentAfterAsync<T>(Task previousSave, string key, T document)
-    {
-        try
-        {
-            await previousSave.ConfigureAwait(false);
-        }
-        catch (Exception exception)
-        {
-            this.RecordDataRecovery("save", key, "Previous document save failed before a queued save.", exception);
-        }
-
-        try
-        {
-            await this.settingsStore.SaveAsync(key, document).ConfigureAwait(false);
-        }
-        catch (Exception exception)
-        {
-            this.RecordDataRecovery("save", key, "Document save failed.", exception);
         }
     }
 
@@ -1978,7 +1926,8 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged, IDispo
 
         try
         {
-            await this.savedTimersStore.SaveAsync(previousSavedTimers, requestedSavedTimers).ConfigureAwait(false);
+            ApplicationResult<bool> result = await this.client.SaveSavedTimersChangeAsync(previousSavedTimers, requestedSavedTimers).ConfigureAwait(false);
+            if (result is ApplicationResult<bool>.Failure failed) { this.RecordDataRecovery("save", "saved-timers", failed.Error.Message, new IOException(failed.Error.Message)); }
         }
         catch (Exception exception)
         {
@@ -1986,109 +1935,19 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged, IDispo
         }
     }
 
-    private async Task SaveCustomThemesAfterAsync(
-        Task previousSave,
-        CustomThemesDocument previousCustomThemes,
-        CustomThemesDocument requestedCustomThemes)
+    private async Task SaveCustomThemesAfterAsync(Task previousSave, CustomThemesDocument previous, CustomThemesDocument requested)
     {
+        try { await previousSave.ConfigureAwait(false); } catch (Exception) { }
         try
         {
-            await previousSave.ConfigureAwait(false);
+            ApplicationResult<bool> result = await this.client.ChangeThemesAsync(previous, requested).ConfigureAwait(false);
+            if (result is ApplicationResult<bool>.Failure failed) { this.RecordDataRecovery("save", CustomThemesKey, failed.Error.Message, new IOException(failed.Error.Message)); }
         }
-        catch (Exception exception)
-        {
-            this.RecordDataRecovery("save", CustomThemesKey, "Previous custom themes save failed before a queued save.", exception);
-        }
-
-        CustomThemesDocument latestCustomThemes = await this.LoadLatestCustomThemesForSaveAsync(previousCustomThemes).ConfigureAwait(false);
-        CustomThemesDocument mergedCustomThemes = MergeCustomThemesChange(
-            previousCustomThemes,
-            requestedCustomThemes,
-            latestCustomThemes);
-
-        try
-        {
-            await this.settingsStore.SaveAsync(CustomThemesKey, mergedCustomThemes).ConfigureAwait(false);
-        }
-        catch (Exception exception)
-        {
-            this.RecordDataRecovery("save", CustomThemesKey, "Custom themes save failed.", exception);
-        }
+        catch (Exception exception) { this.RecordDataRecovery("save", CustomThemesKey, "Custom themes save failed.", exception); }
     }
 
-    private async Task<CustomThemesDocument> LoadLatestCustomThemesForSaveAsync(CustomThemesDocument fallback)
-    {
-        try
-        {
-            return await this.settingsStore.LoadAsync<CustomThemesDocument>(CustomThemesKey).ConfigureAwait(false)
-                ?? fallback;
-        }
-        catch (Exception exception)
-        {
-            this.RecordDataRecovery("load", CustomThemesKey, "Latest custom themes load failed before save; using fallback.", exception);
-            return fallback;
-        }
-    }
-
-    private static CustomThemesDocument MergeCustomThemesChange(
-        CustomThemesDocument previous,
-        CustomThemesDocument requested,
-        CustomThemesDocument latest)
-    {
-        CustomThemeDefinition[] previousThemes = previous.Themes;
-        CustomThemeDefinition[] requestedThemes = requested.Themes;
-        CustomThemeDefinition[] latestThemes = latest.Themes;
-
-        var previousIds = previousThemes
-            .Select(theme => theme.Id)
-            .ToHashSet(StringComparer.Ordinal);
-        var previousById = previousThemes
-            .ToDictionary(theme => theme.Id, StringComparer.Ordinal);
-        var requestedById = requestedThemes
-            .ToDictionary(theme => theme.Id, StringComparer.Ordinal);
-        var latestIds = latestThemes
-            .Select(theme => theme.Id)
-            .ToHashSet(StringComparer.Ordinal);
-
-        IEnumerable<CustomThemeDefinition> mergedLatest = latestThemes
-            .Select(theme => SelectMergedCustomTheme(theme, previousById, requestedById))
-            .OfType<CustomThemeDefinition>();
-
-        IEnumerable<CustomThemeDefinition> requestedAdditions = requestedThemes
-            .Where(theme => !latestIds.Contains(theme.Id) && !previousIds.Contains(theme.Id));
-
-        return new CustomThemesDocument(themes: requestedAdditions.Concat(mergedLatest).ToArray());
-    }
-
-    private static CustomThemeDefinition? SelectMergedCustomTheme(
-        CustomThemeDefinition latestTheme,
-        Dictionary<string, CustomThemeDefinition> previousById,
-        Dictionary<string, CustomThemeDefinition> requestedById)
-    {
-        if (requestedById.TryGetValue(latestTheme.Id, out CustomThemeDefinition? requestedTheme))
-        {
-            return previousById.TryGetValue(latestTheme.Id, out CustomThemeDefinition? previousTheme)
-                && requestedTheme == previousTheme
-                    ? latestTheme
-                    : requestedTheme;
-        }
-
-        return previousById.ContainsKey(latestTheme.Id)
-                    ? null
-                    : latestTheme;
-    }
-
-    private static LinuxAppSettings NormalizeThemeSelection(LinuxAppSettings settings, CustomThemesDocument customThemes)
-    {
-        if (settings.ThemePreference != LinuxThemePreference.Custom)
-        {
-            return settings with { CustomThemeId = null };
-        }
-
-        return customThemes.Find(settings.CustomThemeId) == null
-            ? settings with { ThemePreference = LinuxThemePreference.System, CustomThemeId = null }
-            : settings;
-    }
+    private static LinuxAppSettings NormalizeThemeSelection(LinuxAppSettings settings, CustomThemesDocument customThemes) =>
+        HourglassRuntime.NormalizeThemeSelection(settings, customThemes);
 
     private static string? FormatOptionalTimerTime(TimeSpan? time)
     {

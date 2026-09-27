@@ -22,28 +22,41 @@ public sealed partial class HourglassRuntime
             TimerSession session = new(this.clock);
             session.CommitMetadata(request.TimerInput, request.TimerTitle, request.Options, request.Preferences);
             SessionEffects effects = new(this, session, this.services.Notifications, this.services.Audio, this.services.Inhibitor, this.services.Power, this.diagnostics);
-            this.sessions.Add(request.SessionId, new Registration(session, _ => { }, Effects: effects, Id: request.SessionId, Authoritative: true));
+            this.sessions.Add(request.SessionId, new SessionRegistration(session, _ => { }, Effects: effects, Id: request.SessionId, Authoritative: true));
+            this.QueuePersistence();
+            this.QueueWakeAlarm();
             return Success(session.Snapshot(request.SessionId));
         }, cancellationToken);
     }
 
     public Task<ApplicationResult<TimerSessionSnapshot>> GetSessionAsync(string sessionId, CancellationToken cancellationToken = default) => this.QueryAsync(
-        () => this.sessions.TryGetValue(sessionId, out Registration? registration) ? Success(registration.Session.Snapshot(sessionId))
+        () => this.sessions.TryGetValue(sessionId, out SessionRegistration? registration) ? Success(registration.Session.Snapshot(sessionId))
             : Failure(ApplicationErrorCode.NotFound, "Unknown session."), cancellationToken);
 
     public Task<ApplicationResult<ImmutableArray<TimerSessionSnapshot>>> ListSessionsAsync(CancellationToken cancellationToken = default) => this.QueryAsync(
         () => (ApplicationResult<ImmutableArray<TimerSessionSnapshot>>)new ApplicationResult<ImmutableArray<TimerSessionSnapshot>>.Success(
             this.sessions.Select(pair => pair.Value.Session.Snapshot(pair.Key)).ToImmutableArray()), cancellationToken);
 
-    public Task<ApplicationResult<TimerSessionSnapshot>> ExecuteAsync(SessionCommand command, CancellationToken cancellationToken = default)
+    public async Task<ApplicationResult<TimerSessionSnapshot>> ExecuteAsync(SessionCommand command, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(command);
-        return this.QueryAsync(() => this.Execute(command), cancellationToken);
+        Task recentWork = Task.CompletedTask;
+        ApplicationResult<TimerSessionSnapshot> result = await this.QueryAsync(() =>
+        {
+            ApplicationResult<TimerSessionSnapshot> accepted = this.Execute(command);
+            if (accepted is ApplicationResult<TimerSessionSnapshot>.Success success && command is SessionCommand.Start or SessionCommand.Update { TimerInput: not null })
+            {
+                recentWork = this.pendingRecentSave = this.RememberInputAfterAsync(this.pendingRecentSave, success.Value.TimerInput);
+            }
+            return accepted;
+        }, cancellationToken).ConfigureAwait(false);
+        await recentWork.ConfigureAwait(false);
+        return result;
     }
 
     private ApplicationResult<TimerSessionSnapshot> Execute(SessionCommand command)
     {
-        if (!this.sessions.TryGetValue(command.SessionId, out Registration? registration))
+        if (!this.sessions.TryGetValue(command.SessionId, out SessionRegistration? registration))
         {
             return Failure(ApplicationErrorCode.NotFound, "Unknown session.");
         }

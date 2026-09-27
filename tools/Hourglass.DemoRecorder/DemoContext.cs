@@ -57,8 +57,6 @@ public sealed class DemoContext : IAsyncDisposable
             services.NotificationService,
             services.SessionInhibitor,
             services.SettingsStore,
-            new DirectAppSettingsStore(services.SettingsStore),
-            new DirectSavedTimersStore(services.SettingsStore),
             services.SoundService,
             services.SystemPowerService,
             statusIconSupported: false,

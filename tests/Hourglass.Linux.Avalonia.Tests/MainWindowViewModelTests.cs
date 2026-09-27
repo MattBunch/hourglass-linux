@@ -1,3 +1,4 @@
+using Hourglass.Application;
 namespace Hourglass.Linux.Avalonia.Tests;
 
 using System.Globalization;
@@ -3132,16 +3133,16 @@ public sealed class MainWindowViewModelTests
         {
             LoadedSettings = LinuxAppSettings.Default
         };
-        var appSettingsStore = new CoordinatedAppSettingsStore(settingsStore);
+        await using var sharedRuntime = new HourglassRuntime(clock: new ManualMonotonicClock(), wallClockNow: () => new DateTime(2026, 6, 8, 10, 0, 0), settingsStore: settingsStore);
         var firstWindow = await CreateViewModelAsync(
             new ManualMonotonicClock(),
             settingsStore: settingsStore,
-            appSettingsStore: appSettingsStore);
+            runtime: sharedRuntime);
         var secondDispatcher = new RecordingUiDispatcher();
         var secondWindow = await CreateViewModelAsync(
             new ManualMonotonicClock(),
             settingsStore: settingsStore,
-            appSettingsStore: appSettingsStore,
+            runtime: sharedRuntime,
             uiDispatcher: secondDispatcher);
         bool notificationsChangedOnDispatcher = false;
 
@@ -3635,14 +3636,15 @@ public sealed class MainWindowViewModelTests
 
         settingsStore.Complete(new LinuxAppSettings(["15 minutes"], notificationsEnabled: true));
 
+        await scheduler.WaitForWorkAsync();
         Assert.False(loadTask.IsCompleted);
         Assert.True(scheduler.PendingCount > 0);
         Assert.Equal("5 minutes", viewModel.TimerInput);
 
         while (!loadTask.IsCompleted)
         {
-            Assert.True(scheduler.PendingCount > 0);
-            scheduler.RunNext();
+            await Task.WhenAny(loadTask, scheduler.WaitForWorkAsync());
+            if (!loadTask.IsCompleted) { scheduler.RunNext(); }
         }
 
         await loadTask;
@@ -3801,15 +3803,15 @@ public sealed class MainWindowViewModelTests
     public async Task CoordinatedSavedTimerSavesPreserveAdditionsFromOtherWindows()
     {
         var settingsStore = new RecordingSettingsStore();
-        var savedTimersStore = new CoordinatedSavedTimersStore(settingsStore);
+        await using var sharedRuntime = new HourglassRuntime(clock: new ManualMonotonicClock(), wallClockNow: () => new DateTime(2026, 6, 8, 10, 0, 0), settingsStore: settingsStore);
         var firstWindow = await CreateViewModelAsync(
             new ManualMonotonicClock(),
             settingsStore: settingsStore,
-            savedTimersStore: savedTimersStore);
+            runtime: sharedRuntime);
         var secondWindow = await CreateViewModelAsync(
             new ManualMonotonicClock(),
             settingsStore: settingsStore,
-            savedTimersStore: savedTimersStore);
+            runtime: sharedRuntime);
         await firstWindow.LoadSettingsAsync();
         await secondWindow.LoadSettingsAsync();
 
@@ -3839,15 +3841,15 @@ public sealed class MainWindowViewModelTests
         {
             LoadedSavedTimers = new SavedTimersDocument(timers: [originalTimer])
         };
-        var savedTimersStore = new CoordinatedSavedTimersStore(settingsStore);
+        await using var sharedRuntime = new HourglassRuntime(clock: new ManualMonotonicClock(), wallClockNow: () => new DateTime(2026, 6, 8, 10, 0, 0), settingsStore: settingsStore);
         var firstWindow = await CreateViewModelAsync(
             new ManualMonotonicClock(),
             settingsStore: settingsStore,
-            savedTimersStore: savedTimersStore);
+            runtime: sharedRuntime);
         var secondWindow = await CreateViewModelAsync(
             new ManualMonotonicClock(),
             settingsStore: settingsStore,
-            savedTimersStore: savedTimersStore);
+            runtime: sharedRuntime);
         await firstWindow.LoadSettingsAsync();
         await secondWindow.LoadSettingsAsync();
 
@@ -3874,15 +3876,15 @@ public sealed class MainWindowViewModelTests
         {
             LoadedSavedTimers = new SavedTimersDocument(timers: [originalTimer])
         };
-        var savedTimersStore = new CoordinatedSavedTimersStore(settingsStore);
+        await using var sharedRuntime = new HourglassRuntime(clock: new ManualMonotonicClock(), wallClockNow: () => new DateTime(2026, 6, 8, 10, 0, 0), settingsStore: settingsStore);
         var firstWindow = await CreateViewModelAsync(
             new ManualMonotonicClock(),
             settingsStore: settingsStore,
-            savedTimersStore: savedTimersStore);
+            runtime: sharedRuntime);
         var secondWindow = await CreateViewModelAsync(
             new ManualMonotonicClock(),
             settingsStore: settingsStore,
-            savedTimersStore: savedTimersStore);
+            runtime: sharedRuntime);
         await firstWindow.LoadSettingsAsync();
         await secondWindow.LoadSettingsAsync();
 
@@ -5065,8 +5067,6 @@ public sealed class MainWindowViewModelTests
         INotificationService? notificationService = null,
         ISessionInhibitor? sessionInhibitor = null,
         ISettingsStore? settingsStore = null,
-        IAppSettingsStore? appSettingsStore = null,
-        ISavedTimersStore? savedTimersStore = null,
         IAudioAlertService? audioAlertService = null,
         ISystemPowerService? systemPowerService = null,
         bool statusIconSupported = false,
@@ -5082,8 +5082,6 @@ public sealed class MainWindowViewModelTests
             notificationService ?? new RecordingNotificationService(),
             sessionInhibitor ?? new RecordingSessionInhibitor(),
             resolvedSettingsStore,
-            appSettingsStore ?? new DirectAppSettingsStore(resolvedSettingsStore),
-            savedTimersStore ?? new DirectSavedTimersStore(resolvedSettingsStore),
             audioAlertService ?? new RecordingAudioAlertService(),
             systemPowerService ?? new RecordingSystemPowerService(),
             statusIconSupported,
@@ -5370,6 +5368,9 @@ public sealed class MainWindowViewModelTests
                 case "active-session":
                     this.SavedActiveSession = Assert.IsType<ActiveTimerSessionDocument>(value);
                     break;
+                case "active-sessions":
+                    Assert.IsType<ActiveTimerSessionsDocument>(value);
+                    break;
                 default:
                     throw new InvalidOperationException($"Unexpected key: {key}");
             }
@@ -5405,28 +5406,26 @@ public sealed class MainWindowViewModelTests
 
     private sealed class QueuedTaskScheduler : TaskScheduler
     {
+        private readonly object gate = new();
         private readonly Queue<Task> tasks = [];
-
-        public int PendingCount => this.tasks.Count;
-
-        protected override IEnumerable<Task>? GetScheduledTasks()
-        {
-            return this.tasks.ToArray();
-        }
-
+        private TaskCompletionSource workAvailable = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public int PendingCount { get { lock (this.gate) { return this.tasks.Count; } } }
+        public Task WaitForWorkAsync() { lock (this.gate) { return this.tasks.Count > 0 ? Task.CompletedTask : this.workAvailable.Task; } }
+        protected override IEnumerable<Task>? GetScheduledTasks() { lock (this.gate) { return this.tasks.ToArray(); } }
         protected override void QueueTask(Task task)
         {
-            this.tasks.Enqueue(task);
+            lock (this.gate) { this.tasks.Enqueue(task); this.workAvailable.TrySetResult(); }
         }
-
-        protected override bool TryExecuteTaskInline(Task task, bool taskWasPreviouslyQueued)
-        {
-            return false;
-        }
-
+        protected override bool TryExecuteTaskInline(Task task, bool taskWasPreviouslyQueued) => false;
         public void RunNext()
         {
-            this.TryExecuteTask(this.tasks.Dequeue());
+            Task task;
+            lock (this.gate)
+            {
+                task = this.tasks.Dequeue();
+                if (this.tasks.Count == 0) { this.workAvailable = new(TaskCreationOptions.RunContinuationsAsynchronously); }
+            }
+            this.TryExecuteTask(task);
         }
     }
 

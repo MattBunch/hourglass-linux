@@ -1,8 +1,8 @@
 using Hourglass.Platform;
 
-namespace Hourglass.Linux.Avalonia;
+namespace Hourglass.Application;
 
-internal sealed class CoordinatedSessionInhibitor(ISessionInhibitor inner) : ISessionInhibitor, IAsyncDisposable
+public sealed class CoordinatedSessionInhibitor(ISessionInhibitor inner) : ISessionInhibitor, IAsyncDisposable
 {
     private readonly CancellationTokenSource lifetimeCancellation = new();
     private readonly SemaphoreSlim gate = new(1, 1);

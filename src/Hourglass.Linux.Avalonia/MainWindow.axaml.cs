@@ -89,8 +89,6 @@ public sealed partial class MainWindow : Window, IWindowAttentionTarget, IFullSc
             new NotifySendNotificationService(services.DiagnosticSink),
             new SystemdSessionInhibitor(services.DiagnosticSink),
             settingsStore,
-            new DirectAppSettingsStore(settingsStore),
-            new DirectSavedTimersStore(settingsStore),
             new LinuxAudioAlertService(SoundAssetsDirectory, services.DiagnosticSink),
             UnsupportedSystemPowerService.Instance,
             services.StatusIconService.IsSupported,
