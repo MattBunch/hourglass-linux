@@ -112,19 +112,9 @@ public sealed partial class HourglassRuntime
             }
             start = parsed.Value;
         }
-        SessionActions required = command switch
+        if (ValidateLifecycle(before, command) is ApplicationError lifecycleError)
         {
-            SessionCommand.Start => SessionActions.Start,
-            SessionCommand.Pause => SessionActions.Pause,
-            SessionCommand.Resume => SessionActions.Resume,
-            SessionCommand.Stop => SessionActions.Stop,
-            SessionCommand.Restart => SessionActions.Restart,
-            SessionCommand.Dismiss => SessionActions.Dismiss,
-            _ => SessionActions.None
-        };
-        if (required != SessionActions.None && !before.AllowedActions.HasFlag(required))
-        {
-            return Failure(ApplicationErrorCode.InvalidTransition, "The command is unavailable in this timer state.");
+            return new ApplicationResult<TimerSessionSnapshot>.Failure(lifecycleError);
         }
 
         CountdownTransition? transition = null;
@@ -167,6 +157,29 @@ public sealed partial class HourglassRuntime
         {
             return new ApplicationResult<T>.Failure(new(ApplicationErrorCode.RuntimeUnavailable, "The runtime has stopped."));
         }
+    }
+
+    private static ApplicationError? ValidateLifecycle(TimerSessionSnapshot before, SessionCommand command)
+    {
+        SessionActions required = command switch
+        {
+            SessionCommand.Start => SessionActions.Start,
+            SessionCommand.Pause => SessionActions.Pause,
+            SessionCommand.Resume => SessionActions.Resume,
+            SessionCommand.Stop => SessionActions.Stop,
+            SessionCommand.Restart => SessionActions.Restart,
+            SessionCommand.Dismiss => SessionActions.Dismiss,
+            _ => SessionActions.None
+        };
+        if (required != SessionActions.None && before.AllowedActions.HasFlag(SessionActions.Unlock))
+        {
+            return new(ApplicationErrorCode.Locked, "Unlock the session before changing its timer or options.");
+        }
+        if (required != SessionActions.None && !before.AllowedActions.HasFlag(required))
+        {
+            return new(ApplicationErrorCode.InvalidTransition, "The command is unavailable in this timer state.");
+        }
+        return null;
     }
 
     private static ApplicationResult<TimerSessionSnapshot> Success(TimerSessionSnapshot snapshot) => new ApplicationResult<TimerSessionSnapshot>.Success(snapshot);

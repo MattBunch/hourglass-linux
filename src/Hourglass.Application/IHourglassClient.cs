@@ -6,6 +6,10 @@ using Hourglass.Settings;
 /// <summary>Local and remote clients expose the same session commands and immutable query results.</summary>
 public interface IHourglassClient
 {
+    Task<ApplicationResult<ForegroundOutcome>> RunForegroundAsync(CreateSessionRequest request, CancellationToken cancellationToken = default);
+
+    Task<ApplicationResult<System.Collections.Immutable.ImmutableArray<TimerSessionSnapshot>>> ExecuteAllAsync(SessionBatchCommand command, CancellationToken cancellationToken = default);
+
     Task<ApplicationResult<TimerSessionSnapshot>> CreateSessionAsync(CreateSessionRequest request, CancellationToken cancellationToken = default);
 
     Task<ApplicationResult<SessionSubscription>> SubscribeAsync(string sessionId, Func<SessionNotification, Task> publish, CancellationToken cancellationToken = default);
