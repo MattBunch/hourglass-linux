@@ -50,6 +50,8 @@ public sealed class NotifySendNotificationServiceTests
         Assert.NotNull(capturedStartInfo);
         Assert.Equal("notify-send", capturedStartInfo.FileName);
         Assert.False(capturedStartInfo.UseShellExecute);
+        Assert.True(capturedStartInfo.RedirectStandardError);
+        Assert.True(capturedStartInfo.RedirectStandardOutput);
         Assert.Equal(
             ["--app-name=Hourglass", "Hourglass", "Timer complete"],
             capturedStartInfo.ArgumentList);

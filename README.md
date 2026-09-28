@@ -24,6 +24,8 @@ dotnet test Hourglass.Linux.sln --configuration Release --no-build --verbosity n
 
 The legacy Windows solution remains available as `Hourglass.sln`, but Linux port work should use `Hourglass.Linux.sln`.
 
+The development [scriptable CLI](docs/cli.md) builds as `hourglass` and runs foreground timers through the shared application runtime.
+
 ## Run Locally
 
 Run the Avalonia Linux app from a graphical Linux desktop session:

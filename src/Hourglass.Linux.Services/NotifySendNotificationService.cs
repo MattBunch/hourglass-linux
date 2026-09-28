@@ -69,7 +69,9 @@ public sealed class NotifySendNotificationService : INotificationService
         var startInfo = new ProcessStartInfo
         {
             FileName = executableName,
-            UseShellExecute = false
+            UseShellExecute = false,
+            RedirectStandardError = true,
+            RedirectStandardOutput = true
         };
 
         startInfo.ArgumentList.Add(AppNameArgument);
@@ -92,7 +94,11 @@ public sealed class NotifySendNotificationService : INotificationService
             return -1;
         }
 
-        return await WaitForOwnedProcessAsync(process, cancellationToken).ConfigureAwait(false);
+        Task<string> stderr = process.StandardError.ReadToEndAsync();
+        Task<string> stdout = process.StandardOutput.ReadToEndAsync();
+        int exitCode = await WaitForOwnedProcessAsync(process, cancellationToken).ConfigureAwait(false);
+        await Task.WhenAll(stderr, stdout).ConfigureAwait(false);
+        return exitCode;
     }
 
     internal static async Task<int> WaitForOwnedProcessAsync(Process process, CancellationToken cancellationToken)

@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>hourglass</AssemblyName>
+    <RootNamespace>Hourglass.Cli</RootNamespace>
+    <Version>0.2.0</Version>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="System.CommandLine" Version="2.0.0" />
+    <ProjectReference Include="../Hourglass.Application/Hourglass.Application.csproj" />
+    <ProjectReference Include="../Hourglass.Linux.Services/Hourglass.Linux.Services.csproj" />
+    <Content Include="../Hourglass.Linux.Avalonia/Assets/Sounds/*.wav" Link="Assets/Sounds/%(Filename)%(Extension)">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+  </ItemGroup>
+</Project>

@@ -113,7 +113,9 @@ public sealed class LinuxAudioAlertService : IAudioAlertService
         var startInfo = new ProcessStartInfo
         {
             FileName = executableName,
-            UseShellExecute = false
+            UseShellExecute = false,
+            RedirectStandardError = true,
+            RedirectStandardOutput = true
         };
 
         foreach (string argument in stableArguments)
@@ -263,9 +265,12 @@ public sealed class LinuxAudioAlertService : IAudioAlertService
             return -1;
         }
 
+        Task<string> stderr = process.StandardError.ReadToEndAsync();
+        Task<string> stdout = process.StandardOutput.ReadToEndAsync();
         try
         {
             await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+            await Task.WhenAll(stderr, stdout).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
