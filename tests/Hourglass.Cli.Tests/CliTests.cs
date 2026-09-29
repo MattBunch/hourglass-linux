@@ -29,6 +29,74 @@ public sealed class CliTests
         Assert.Equal(1, launches);
     }
 
+    [Fact]
+    public async Task GuiLauncherUsesInjectedProcessWithoutOpeningRuntime()
+    {
+        Factory factory = new(null);
+        using StringWriter output = new();
+        using StringWriter error = new();
+        CliApplication cli = new(factory, output, error, launchGui: _ => Task.FromResult(0));
+        Assert.Equal(0, await cli.RunAsync(["gui", "--json"]));
+        Assert.Equal(0, factory.Opens);
+        using JsonDocument result = JsonDocument.Parse(output.ToString());
+        Assert.True(result.RootElement.GetProperty("result").GetProperty("launched").GetBoolean());
+    }
+
+    [Fact]
+    public async Task CatalogConfigAndUpdateUseSharedRuntime()
+    {
+        await using HourglassRuntime runtime = Runtime();
+        await runtime.PrepareForegroundRuntimeAsync();
+        using StringWriter output = new();
+        using StringWriter error = new();
+        CliApplication cli = new(new Factory(runtime), output, error);
+        Assert.Equal(0, await cli.RunAsync(["config", "set", "loop-timer", "true", "--json"]));
+        Assert.True(Assert.IsType<ApplicationResult<LinuxAppSettings>.Success>(await runtime.GetSettingsAsync()).Value.LoopTimer);
+        Assert.Equal(0, await cli.RunAsync(["saved", "add", "0 seconds", "--title", "Tea", "--name", "Break", "--set", "loop-timer=false", "--json"]));
+        var timers = Assert.IsType<ApplicationResult<System.Collections.Immutable.ImmutableArray<SavedTimerDefinition>>.Success>(await runtime.ListSavedTimersAsync()).Value;
+        Assert.False(Assert.Single(timers).Options.LoopTimer);
+        Assert.Equal(0, await cli.RunAsync(["saved", "list", "--json"]));
+        Assert.Equal(0, await cli.RunAsync(["saved", "run", "Break", "--json"]));
+        Assert.Equal(0, await cli.RunAsync(["saved", "run", "--all", "--json"]));
+        await runtime.CreateSessionAsync(new("edit", "25 minutes", "Focus", new(), new()));
+        Assert.Equal(0, await cli.RunAsync(["update", "edit", "--title", "Revised", "--set", "show-time-elapsed=true", "--json"]));
+        Assert.True(Assert.IsType<ApplicationResult<TimerSessionSnapshot>.Success>(await runtime.GetSessionAsync("edit")).Value.Options.ShowTimeElapsed);
+        Assert.Equal(0, await cli.RunAsync(["saved", "remove", "Break", "--json"]));
+        Assert.Empty(Assert.IsType<ApplicationResult<System.Collections.Immutable.ImmutableArray<SavedTimerDefinition>>.Success>(await runtime.ListSavedTimersAsync()).Value);
+        Assert.Equal(string.Empty, error.ToString());
+    }
+
+    [Fact]
+    public async Task DiagnosticsAndAboutDoNotOpenRuntimeAndInvalidOptionsDoNotMutate()
+    {
+        Factory factory = new(null);
+        using StringWriter output = new();
+        using StringWriter error = new();
+        CliApplication cli = new(factory, output, error);
+        Assert.Equal(0, await cli.RunAsync(["doctor", "--json"]));
+        Assert.Equal(0, await cli.RunAsync(["about", "--json"]));
+        Assert.Equal(0, factory.Opens);
+        await using HourglassRuntime runtime = Runtime();
+        CliApplication mutable = new(new Factory(runtime), output, error);
+        Assert.Equal(2, await mutable.RunAsync(["config", "set", "loop-timer", "not-a-boolean", "--json"]));
+        Assert.False(Assert.IsType<ApplicationResult<LinuxAppSettings>.Success>(await runtime.GetSettingsAsync()).Value.LoopTimer);
+    }
+
+    [Fact]
+    public async Task RepeatedOptionOverridesApplyToOneForegroundSession()
+    {
+        await using HourglassRuntime runtime = Runtime();
+        using StringWriter output = new();
+        using StringWriter error = new();
+        CliApplication cli = new(new Factory(runtime), output, error);
+        Assert.Equal(0, await cli.RunAsync(["start", "0 seconds", "--set", "notifications-enabled=false",
+            "--set", "show-time-elapsed=true", "--json"]));
+        using JsonDocument result = JsonDocument.Parse(output.ToString());
+        JsonElement session = result.RootElement.GetProperty("result").GetProperty("sessions")[0];
+        Assert.False(session.GetProperty("preferences").GetProperty("notificationsEnabled").GetBoolean());
+        Assert.True(session.GetProperty("options").GetProperty("showTimeElapsed").GetBoolean());
+    }
+
     [Theory]
     [InlineData("start", "0 seconds")]
     [InlineData("0 seconds")]
@@ -100,7 +168,6 @@ public sealed class CliTests
     [InlineData("start")]
     [InlineData("--unknown")]
     [InlineData("saved")]
-    [InlineData("gui")]
     public async Task UsageErrorsProduceStructuredStderrWithoutOpeningRuntime(string argument)
     {
         Factory factory = new(null);

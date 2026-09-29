@@ -8,10 +8,10 @@ using Hourglass.Linux.Services;
 using Hourglass.Settings;
 
 public sealed class CliApplication(IExclusiveRuntimeFactory runtimeFactory, TextWriter output, TextWriter error,
-    Func<CancellationToken, Task<int>>? launchTui = null)
+    Func<CancellationToken, Task<int>>? launchTui = null, Func<CancellationToken, Task<int>>? launchGui = null)
 {
     private static readonly ImmutableHashSet<string> ReservedCommands = ImmutableHashSet.Create(StringComparer.Ordinal,
-        "start", "list", "status", "pause", "resume", "stop", "restart", "dismiss", "version", "saved", "recent", "config", "update", "unlock", "gui", "tui", "doctor", "about");
+        "start", "list", "status", "pause", "resume", "stop", "restart", "dismiss", "version", "saved", "recent", "config", "update", "unlock", "gui", "tui", "doctor", "about", "sounds");
 
     public async Task<int> RunAsync(string[] arguments, CancellationToken cancellationToken = default)
     {
@@ -48,10 +48,12 @@ public sealed class CliApplication(IExclusiveRuntimeFactory runtimeFactory, Text
         Option<string?> title = new("--title", "-t");
         Option<bool> wait = new("--wait");
         Option<bool> detach = new("--detach");
+        Option<string[]> startSettings = new("--set");
         start.Arguments.Add(expression);
         start.Options.Add(title);
         start.Options.Add(wait);
         start.Options.Add(detach);
+        start.Options.Add(startSettings);
         start.SetAction(async (parse, token) =>
         {
             if (parse.GetValue(detach))
@@ -64,6 +66,9 @@ public sealed class CliApplication(IExclusiveRuntimeFactory runtimeFactory, Text
                 ApplicationResult<LinuxAppSettings> settings = await client.GetSettingsAsync(token).ConfigureAwait(false);
                 if (settings is ApplicationResult<LinuxAppSettings>.Failure failed) { return writer.Failure("start", failed.Error); }
                 LinuxAppSettings defaults = ((ApplicationResult<LinuxAppSettings>.Success)settings).Value;
+                ApplicationResult<LinuxAppSettings> applied = CliParity.ApplyOptions(defaults, parse.GetValue(startSettings) ?? []);
+                if (applied is ApplicationResult<LinuxAppSettings>.Failure invalid) { return writer.Failure("start", invalid.Error); }
+                defaults = ((ApplicationResult<LinuxAppSettings>.Success)applied).Value;
                 CreateSessionRequest request = new(Guid.NewGuid().ToString("N"), string.Join(' ', parse.GetValue(expression) ?? []).Trim(),
                     parse.GetValue(title) ?? string.Empty, TimerDefaults.FromSettings(defaults), ApplicationPreferences.FromSettings(defaults));
                 ApplicationResult<ForegroundOutcome> result = await client.RunForegroundAsync(request, token).ConfigureAwait(false);
@@ -124,6 +129,8 @@ public sealed class CliApplication(IExclusiveRuntimeFactory runtimeFactory, Text
             root.Subcommands.Add(command);
         }
 
+        CliParity.Register(root, () => writer, WithRuntimeAsync, launchGui);
+
         string[] normalized = Normalize(arguments);
         ParseResult parsed = root.Parse(normalized);
         commandName = parsed.CommandResult.Command == root ? "help" : parsed.CommandResult.Command.Name;
@@ -133,7 +140,7 @@ public sealed class CliApplication(IExclusiveRuntimeFactory runtimeFactory, Text
         {
             string name = token.Split('=', 2)[0];
             if (name is "--title" or "-t") { titleOptions++; }
-            if (name.StartsWith("-", StringComparison.Ordinal) && name is not ("--title" or "-t" or "--json" or "--plain" or "--wait" or "--detach" or "--help" or "-h" or "-?"))
+            if (name.StartsWith("-", StringComparison.Ordinal) && name is not ("--title" or "-t" or "--json" or "--plain" or "--wait" or "--detach" or "--help" or "-h" or "-?" or "--set" or "--name" or "--all" or "--input" or "--revision"))
             {
                 return writer.Failure(commandName, new(ApplicationErrorCode.Validation, $"Unrecognized option: {name}"));
             }
@@ -156,7 +163,13 @@ public sealed class CliApplication(IExclusiveRuntimeFactory runtimeFactory, Text
             ApplicationResult<ExclusiveRuntimeLease> connected = await runtimeFactory.OpenAsync(purpose, token).ConfigureAwait(false);
             if (connected is ApplicationResult<ExclusiveRuntimeLease>.Failure failed) { return writer.Failure(commandName, failed.Error); }
             await using ExclusiveRuntimeLease lease = ((ApplicationResult<ExclusiveRuntimeLease>.Success)connected).Value;
-            return await operation(lease.Client).ConfigureAwait(false);
+            int result = await operation(lease.Client).ConfigureAwait(false);
+            var diagnostics = await lease.Client.ListDiagnosticsAsync(CancellationToken.None).ConfigureAwait(false);
+            if (diagnostics is ApplicationResult<System.Collections.Immutable.ImmutableArray<ApplicationDiagnostic>>.Success received)
+            {
+                foreach (ApplicationDiagnostic item in received.Value) { writer.Diagnostic(item); }
+            }
+            return result;
         }
     }
 
@@ -167,7 +180,7 @@ public sealed class CliApplication(IExclusiveRuntimeFactory runtimeFactory, Text
             string value = arguments[index];
             if (value == "--") { yield break; }
             yield return value;
-            if (value is "--title" or "-t") { index++; }
+            if (value is "--title" or "-t" or "--set" or "--name" or "--input" or "--revision") { index++; }
         }
     }
 
@@ -179,8 +192,8 @@ public sealed class CliApplication(IExclusiveRuntimeFactory runtimeFactory, Text
             string value = arguments[index];
             if (value is "--help" or "-h" or "-?") { return arguments.ToArray(); }
             if (value == "--version") { return arguments.Select(argument => argument == "--version" ? "version" : argument).ToArray(); }
-            if (value is "--json" or "--plain" or "--wait" or "--detach") { continue; }
-            if (value is "--title" or "-t") { index++; continue; }
+            if (value is "--json" or "--plain" or "--wait" or "--detach" or "--all") { continue; }
+            if (value is "--title" or "-t" or "--set" or "--name" or "--input" or "--revision") { index++; continue; }
             if (ReservedCommands.Contains(value)) { return arguments.ToArray(); }
             return ["start", .. arguments];
         }

@@ -96,7 +96,7 @@ public sealed class ExclusiveRuntimeFactory : IExclusiveRuntimeFactory
 
     private static HourglassRuntime CreateRuntime()
     {
-        IDiagnosticSink diagnostics = NoOpDiagnosticSink.Instance;
+        IDiagnosticSink diagnostics = new DiagnosticJournal();
         var services = new SessionRuntimeServices(new NotifySendNotificationService(diagnostics),
             new LinuxAudioAlertService(Path.Combine(AppContext.BaseDirectory, "Assets", "Sounds"), diagnostics),
             new SystemdSessionInhibitor(diagnostics), UnsupportedSystemPowerService.Instance,

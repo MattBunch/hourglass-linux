@@ -4,15 +4,18 @@ using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using Hourglass.Application;
+using Hourglass.Settings;
 
 public enum CliOutputMode { Human, Plain, Json }
 
 public sealed record CliSession(string SessionId, long Revision, string State, string Input, string Title,
-    double? RemainingMilliseconds, double? ElapsedMilliseconds, double? TotalMilliseconds)
+    double? RemainingMilliseconds, double? ElapsedMilliseconds, double? TotalMilliseconds,
+    double ProgressPercent, TimerDefaults Options, ApplicationPreferences Preferences)
 {
     public static CliSession FromSnapshot(TimerSessionSnapshot session) => new(session.SessionId, session.Revision,
         session.Countdown.State.ToString().ToLowerInvariant(), session.TimerInput, session.TimerTitle,
-        session.Countdown.TimeLeft?.TotalMilliseconds, session.Countdown.TimeElapsed?.TotalMilliseconds, session.Countdown.TotalTime?.TotalMilliseconds);
+        session.Countdown.TimeLeft?.TotalMilliseconds, session.Countdown.TimeElapsed?.TotalMilliseconds, session.Countdown.TotalTime?.TotalMilliseconds,
+        TimerDisplay.GetProgressPercent(session.Countdown, session.Options.ReverseProgressBar), session.Options, session.Preferences);
 }
 
 internal sealed class CliOutput(TextWriter output, TextWriter error, CliOutputMode mode)
@@ -37,11 +40,12 @@ internal sealed class CliOutput(TextWriter output, TextWriter error, CliOutputMo
         }
         else if (mode == CliOutputMode.Plain)
         {
-            output.WriteLine("sessionId\tstate\ttitle\tinput\tremainingMilliseconds\telapsedMilliseconds\ttotalMilliseconds\trevision");
+            output.WriteLine("sessionId\tstate\ttitle\tinput\tremainingMilliseconds\telapsedMilliseconds\ttotalMilliseconds\tprogressPercent\trevision");
             foreach (CliSession session in values)
             {
                 output.WriteLine(string.Join('\t', Escape(session.SessionId), session.State, Escape(session.Title), Escape(session.Input),
-                    Number(session.RemainingMilliseconds), Number(session.ElapsedMilliseconds), Number(session.TotalMilliseconds), session.Revision.ToString(CultureInfo.InvariantCulture)));
+                    Number(session.RemainingMilliseconds), Number(session.ElapsedMilliseconds), Number(session.TotalMilliseconds),
+                    Number(session.ProgressPercent), session.Revision.ToString(CultureInfo.InvariantCulture)));
             }
         }
         else
@@ -59,6 +63,36 @@ internal sealed class CliOutput(TextWriter output, TextWriter error, CliOutputMo
     {
         output.WriteLine(mode == CliOutputMode.Json ? JsonSerializer.Serialize(new { schemaVersion = 1, command = "version", result = new { version } }, JsonOptions) : version);
         return 0;
+    }
+
+    public int Data(string command, object result, IEnumerable<string> lines)
+    {
+        if (mode == CliOutputMode.Json)
+        {
+            output.WriteLine(JsonSerializer.Serialize(new { schemaVersion = 1, command, result }, JsonOptions));
+        }
+        else
+        {
+            foreach (string line in lines) { output.WriteLine(line); }
+        }
+        return 0;
+    }
+
+    public void Diagnostic(ApplicationDiagnostic diagnostic)
+    {
+        error.WriteLine(mode == CliOutputMode.Json
+            ? JsonSerializer.Serialize(new
+            {
+                schemaVersion = 1,
+                diagnostic = new
+                {
+                    severity = diagnostic.Severity.ToString(),
+                    diagnostic.Category,
+                    diagnostic.Operation,
+                    diagnostic.Message
+                }
+            }, JsonOptions)
+            : $"{Escape(diagnostic.Category)}: {Escape(diagnostic.Message)}");
     }
 
     public static int ExitCode(ApplicationErrorCode code) => code switch
