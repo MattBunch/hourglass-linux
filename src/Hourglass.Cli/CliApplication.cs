@@ -2,10 +2,13 @@ namespace Hourglass.Cli;
 
 using System.CommandLine;
 using System.Collections.Immutable;
+using System.Diagnostics;
 using Hourglass.Application;
+using Hourglass.Linux.Services;
 using Hourglass.Settings;
 
-public sealed class CliApplication(ICliRuntimeFactory runtimeFactory, TextWriter output, TextWriter error)
+public sealed class CliApplication(IExclusiveRuntimeFactory runtimeFactory, TextWriter output, TextWriter error,
+    Func<CancellationToken, Task<int>>? launchTui = null)
 {
     private static readonly ImmutableHashSet<string> ReservedCommands = ImmutableHashSet.Create(StringComparer.Ordinal,
         "start", "list", "status", "pause", "resume", "stop", "restart", "dismiss", "version", "saved", "recent", "config", "update", "unlock", "gui", "tui", "doctor", "about");
@@ -25,6 +28,21 @@ public sealed class CliApplication(ICliRuntimeFactory runtimeFactory, TextWriter
         version.SetAction(_ => writer.Version(typeof(CliApplication).Assembly.GetName().Version?.ToString(3) ?? "0.2.0"));
         root.Subcommands.Add(version);
 
+        Command tui = new("tui", "Open the interactive terminal timer.");
+        tui.SetAction(async (parse, token) =>
+        {
+            if (parse.GetValue(json) || parse.GetValue(plain))
+            {
+                return writer.Failure("tui", new(ApplicationErrorCode.Validation, "The TUI requires an interactive terminal without output flags."));
+            }
+            try { return await (launchTui ?? LaunchTuiAsync)(token).ConfigureAwait(false); }
+            catch (System.ComponentModel.Win32Exception)
+            {
+                return writer.Failure("tui", new(ApplicationErrorCode.RuntimeUnavailable, "hourglass-tui executable was not found."));
+            }
+        });
+        root.Subcommands.Add(tui);
+
         Command start = new("start", "Run a timer in the foreground until completion or interruption.");
         Argument<string[]> expression = new("expression") { Arity = ArgumentArity.OneOrMore };
         Option<string?> title = new("--title", "-t");
@@ -41,7 +59,7 @@ public sealed class CliApplication(ICliRuntimeFactory runtimeFactory, TextWriter
                 return writer.Failure("start", new(parse.GetValue(wait) ? ApplicationErrorCode.Validation : ApplicationErrorCode.Unsupported,
                     parse.GetValue(wait) ? "--wait and --detach cannot be combined." : "Detached timers require the later shared host milestone."));
             }
-            return await WithRuntimeAsync(CliRuntimePurpose.Foreground, async client =>
+            return await WithRuntimeAsync(ExclusiveRuntimePurpose.Sessions, async client =>
             {
                 ApplicationResult<LinuxAppSettings> settings = await client.GetSettingsAsync(token).ConfigureAwait(false);
                 if (settings is ApplicationResult<LinuxAppSettings>.Failure failed) { return writer.Failure("start", failed.Error); }
@@ -60,7 +78,7 @@ public sealed class CliApplication(ICliRuntimeFactory runtimeFactory, TextWriter
         root.Subcommands.Add(start);
 
         Command list = new("list", "List live sessions; preserved recovery records are not live sessions.");
-        list.SetAction((_, token) => WithRuntimeAsync(CliRuntimePurpose.Query, async client =>
+        list.SetAction((_, token) => WithRuntimeAsync(ExclusiveRuntimePurpose.Query, async client =>
         {
             ApplicationResult<ImmutableArray<TimerSessionSnapshot>> result = await client.ListSessionsAsync(token).ConfigureAwait(false);
             return result is ApplicationResult<ImmutableArray<TimerSessionSnapshot>>.Success success
@@ -73,7 +91,7 @@ public sealed class CliApplication(ICliRuntimeFactory runtimeFactory, TextWriter
             Command command = new(name, $"{name} a live session by its exact ID.");
             Argument<string> id = new("id");
             command.Arguments.Add(id);
-            command.SetAction((parse, token) => WithRuntimeAsync(CliRuntimePurpose.Query, async client =>
+            command.SetAction((parse, token) => WithRuntimeAsync(ExclusiveRuntimePurpose.Query, async client =>
             {
                 string selected = parse.GetValue(id) ?? string.Empty;
                 if (selected == "all" && name is "pause" or "resume" or "stop")
@@ -133,11 +151,11 @@ public sealed class CliApplication(ICliRuntimeFactory runtimeFactory, TextWriter
         }
         catch (Exception exception) { return writer.Failure(commandName, new(ApplicationErrorCode.InternalFailure, exception.Message)); }
 
-        async Task<int> WithRuntimeAsync(CliRuntimePurpose purpose, Func<IHourglassClient, Task<int>> operation, CancellationToken token)
+        async Task<int> WithRuntimeAsync(ExclusiveRuntimePurpose purpose, Func<IHourglassClient, Task<int>> operation, CancellationToken token)
         {
-            ApplicationResult<CliRuntimeLease> connected = await runtimeFactory.OpenAsync(purpose, token).ConfigureAwait(false);
-            if (connected is ApplicationResult<CliRuntimeLease>.Failure failed) { return writer.Failure(commandName, failed.Error); }
-            await using CliRuntimeLease lease = ((ApplicationResult<CliRuntimeLease>.Success)connected).Value;
+            ApplicationResult<ExclusiveRuntimeLease> connected = await runtimeFactory.OpenAsync(purpose, token).ConfigureAwait(false);
+            if (connected is ApplicationResult<ExclusiveRuntimeLease>.Failure failed) { return writer.Failure(commandName, failed.Error); }
+            await using ExclusiveRuntimeLease lease = ((ApplicationResult<ExclusiveRuntimeLease>.Success)connected).Value;
             return await operation(lease.Client).ConfigureAwait(false);
         }
     }
@@ -167,5 +185,30 @@ public sealed class CliApplication(ICliRuntimeFactory runtimeFactory, TextWriter
             return ["start", .. arguments];
         }
         return ["start", .. arguments];
+    }
+
+    private static async Task<int> LaunchTuiAsync(CancellationToken cancellationToken)
+    {
+        string sibling = Path.Combine(AppContext.BaseDirectory, "hourglass-tui");
+        string configuration = new DirectoryInfo(AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar)).Parent?.Name ?? "Release";
+        string developmentBuild = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..",
+            "Hourglass.Tui", "bin", configuration, "net10.0", "hourglass-tui"));
+        ProcessStartInfo start = new()
+        {
+            FileName = File.Exists(sibling) ? sibling : File.Exists(developmentBuild) ? developmentBuild : "hourglass-tui",
+            UseShellExecute = false
+        };
+        using Process process = Process.Start(start) ?? throw new InvalidOperationException("The TUI could not be started.");
+        try
+        {
+            await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+            return process.ExitCode;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            if (!process.HasExited) { process.Kill(entireProcessTree: true); }
+            await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
+            throw;
+        }
     }
 }

@@ -21,7 +21,7 @@ public sealed partial class HourglassRuntime
             if (recovery)
             {
                 return (ApplicationResult<ApplicationDataSnapshot>)new ApplicationResult<ApplicationDataSnapshot>.Failure(
-                    new(ApplicationErrorCode.RuntimeUnavailable, "Preserved sessions require GUI recovery before this interim CLI runtime can start."));
+                    new(ApplicationErrorCode.RuntimeUnavailable, "Preserved sessions require GUI recovery before an exclusive terminal runtime can start."));
             }
             return new ApplicationResult<ApplicationDataSnapshot>.Success(await this.ReadApplicationDataCoreAsync(cancellationToken).ConfigureAwait(false));
         }, cancellationToken).ConfigureAwait(false);

@@ -8,5 +8,6 @@
 
     <ProjectReference Include="..\Hourglass.Core\Hourglass.Core.csproj" />
     <ProjectReference Include="..\Hourglass.Platform\Hourglass.Platform.csproj" />
+    <ProjectReference Include="..\Hourglass.Application\Hourglass.Application.csproj" />
   </ItemGroup>
 </Project>

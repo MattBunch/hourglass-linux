@@ -20,6 +20,7 @@ hourglass restart|dismiss <session-id>
 hourglass version
 hourglass --version
 hourglass --help
+hourglass tui
 ```
 
 `start` waits without animation until expiry or a stop/dismiss command in its

@@ -18,6 +18,8 @@ public interface IHourglassClient
 
     Task<ApplicationResult<TimerSessionSnapshot>> GetSessionAsync(string sessionId, CancellationToken cancellationToken = default);
 
+    Task<ApplicationResult<bool>> CloseSessionAsync(string sessionId, CancellationToken cancellationToken = default);
+
     Task<ApplicationResult<ImmutableArray<TimerSessionSnapshot>>> ListSessionsAsync(CancellationToken cancellationToken = default);
     Task<ApplicationResult<ApplicationDataSnapshot>> GetApplicationDataAsync(CancellationToken cancellationToken = default);
     Task<ApplicationResult<bool>> SaveSavedTimersChangeAsync(SavedTimersDocument previous, SavedTimersDocument requested, CancellationToken cancellationToken = default);

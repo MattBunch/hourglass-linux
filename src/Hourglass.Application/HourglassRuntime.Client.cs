@@ -33,6 +33,17 @@ public sealed partial class HourglassRuntime
         () => this.sessions.TryGetValue(sessionId, out SessionRegistration? registration) ? Success(registration.Session.Snapshot(sessionId))
             : Failure(ApplicationErrorCode.NotFound, "Unknown session."), cancellationToken);
 
+    public async Task<ApplicationResult<bool>> CloseSessionAsync(string sessionId, CancellationToken cancellationToken = default)
+    {
+        ApplicationResult<TimerSessionSnapshot> selected = await this.GetSessionAsync(sessionId, cancellationToken).ConfigureAwait(false);
+        if (selected is ApplicationResult<TimerSessionSnapshot>.Failure failure)
+        {
+            return new ApplicationResult<bool>.Failure(failure.Error);
+        }
+        await this.RemoveAsync(sessionId).ConfigureAwait(false);
+        return await this.FlushPersistenceAsync(cancellationToken).ConfigureAwait(false);
+    }
+
     public Task<ApplicationResult<ImmutableArray<TimerSessionSnapshot>>> ListSessionsAsync(CancellationToken cancellationToken = default) => this.QueryAsync(
         () => (ApplicationResult<ImmutableArray<TimerSessionSnapshot>>)new ApplicationResult<ImmutableArray<TimerSessionSnapshot>>.Success(
             this.sessions.Select(pair => pair.Value.Session.Snapshot(pair.Key)).ToImmutableArray()), cancellationToken);

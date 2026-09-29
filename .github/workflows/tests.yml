@@ -40,6 +40,9 @@ jobs:
       - name: Test
         run: dotnet test Hourglass.Linux.sln --configuration Release --no-build --verbosity normal --logger trx --results-directory TestResults --blame-hang-timeout 90s --blame-hang-dump-type none
 
+      - name: TUI terminal smoke
+        run: python3 tests/Hourglass.Tui.Tests/verify-terminal.py
+
       - name: Upload test results
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Text.Json;
 using System.Xml.Linq;
 using Hourglass.Application;
+using Hourglass.Linux.Services;
 using Hourglass.Platform;
 using Hourglass.Settings;
 using Hourglass.Timing;
@@ -12,6 +13,21 @@ using Xunit;
 public sealed class CliTests
 {
     private static readonly DateTime Now = new(2026, 9, 27, 12, 0, 0);
+
+    [Fact]
+    public async Task TuiLauncherPropagatesExitWithoutOpeningRuntime()
+    {
+        Factory factory = new(null);
+        int launches = 0;
+        using StringWriter output = new();
+        using StringWriter error = new();
+        CliApplication cli = new(factory, output, error, _ => { launches++; return Task.FromResult(7); });
+        Assert.Equal(7, await cli.RunAsync(["tui"]));
+        Assert.Equal(1, launches);
+        Assert.Equal(0, factory.Opens);
+        Assert.Equal(2, await cli.RunAsync(["tui", "--json"]));
+        Assert.Equal(1, launches);
+    }
 
     [Theory]
     [InlineData("start", "0 seconds")]
@@ -34,7 +50,7 @@ public sealed class CliTests
         JsonElement result = document.RootElement.GetProperty("result");
         Assert.Equal("expired", result.GetProperty("outcome").GetString());
         Assert.Equal("0 seconds", result.GetProperty("sessions")[0].GetProperty("input").GetString());
-        Assert.Equal(CliRuntimePurpose.Foreground, factory.Purpose);
+        Assert.Equal(ExclusiveRuntimePurpose.Sessions, factory.Purpose);
         Assert.Equal(1, factory.Disposals);
     }
 
@@ -237,8 +253,8 @@ public sealed class CliTests
     {
         Authority authority = new() { Acquired = false };
         int constructed = 0;
-        var factory = new LocalRuntimeFactory(() => authority, () => { constructed++; return Runtime(); });
-        var result = Assert.IsType<ApplicationResult<CliRuntimeLease>.Failure>(await factory.OpenAsync(CliRuntimePurpose.Foreground, CancellationToken.None));
+        var factory = new ExclusiveRuntimeFactory(() => authority, () => { constructed++; return Runtime(); });
+        var result = Assert.IsType<ApplicationResult<ExclusiveRuntimeLease>.Failure>(await factory.OpenAsync(ExclusiveRuntimePurpose.Sessions, CancellationToken.None));
         Assert.Equal(ApplicationErrorCode.RuntimeUnavailable, result.Error.Code);
         Assert.Equal(0, constructed);
         Assert.True(authority.Disposed);
@@ -254,10 +270,10 @@ public sealed class CliTests
         Authority authority = new();
         int constructed = 0;
         var paths = new Paths(directory);
-        var factory = new LocalRuntimeFactory(() => authority, () => { constructed++; return Runtime(); }, paths);
+        var factory = new ExclusiveRuntimeFactory(() => authority, () => { constructed++; return Runtime(); }, paths);
         try
         {
-            var failed = Assert.IsType<ApplicationResult<CliRuntimeLease>.Failure>(await factory.OpenAsync(CliRuntimePurpose.Foreground, CancellationToken.None));
+            var failed = Assert.IsType<ApplicationResult<ExclusiveRuntimeLease>.Failure>(await factory.OpenAsync(ExclusiveRuntimePurpose.Sessions, CancellationToken.None));
             Assert.Equal(ApplicationErrorCode.RuntimeUnavailable, failed.Error.Code);
             Assert.Equal(0, constructed);
             Assert.True(authority.Disposed);
@@ -270,8 +286,8 @@ public sealed class CliTests
     public async Task QueryLeaseHasNoSessionsAndDisposesRuntimeBeforeReleasingAuthority()
     {
         Authority authority = new();
-        var factory = new LocalRuntimeFactory(() => authority, Runtime);
-        CliRuntimeLease lease = Assert.IsType<ApplicationResult<CliRuntimeLease>.Success>(await factory.OpenAsync(CliRuntimePurpose.Query, CancellationToken.None)).Value;
+        var factory = new ExclusiveRuntimeFactory(() => authority, Runtime);
+        ExclusiveRuntimeLease lease = Assert.IsType<ApplicationResult<ExclusiveRuntimeLease>.Success>(await factory.OpenAsync(ExclusiveRuntimePurpose.Query, CancellationToken.None)).Value;
         Assert.Empty(Assert.IsType<ApplicationResult<System.Collections.Immutable.ImmutableArray<TimerSessionSnapshot>>.Success>(await lease.Client.ListSessionsAsync()).Value);
         Assert.False(authority.Disposed);
         await lease.DisposeAsync();
@@ -304,19 +320,19 @@ public sealed class CliTests
     private static HourglassRuntime Runtime() => new(clock: new Clock(), wallClockNow: () => Now);
     private sealed class Clock : IMonotonicClock { public TimeSpan Elapsed => TimeSpan.Zero; }
 
-    private sealed class Factory(HourglassRuntime? runtime) : ICliRuntimeFactory
+    private sealed class Factory(HourglassRuntime? runtime) : IExclusiveRuntimeFactory
     {
         public ApplicationError? Failure { get; init; }
         public int Opens { get; private set; }
         public int Disposals { get; private set; }
-        public CliRuntimePurpose Purpose { get; private set; }
-        public Task<ApplicationResult<CliRuntimeLease>> OpenAsync(CliRuntimePurpose purpose, CancellationToken cancellationToken)
+        public ExclusiveRuntimePurpose Purpose { get; private set; }
+        public Task<ApplicationResult<ExclusiveRuntimeLease>> OpenAsync(ExclusiveRuntimePurpose purpose, CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
             this.Opens++;
             this.Purpose = purpose;
-            ApplicationResult<CliRuntimeLease> result = this.Failure != null ? new ApplicationResult<CliRuntimeLease>.Failure(this.Failure)
-                : new ApplicationResult<CliRuntimeLease>.Success(new(runtime ?? throw new InvalidOperationException("Unexpected runtime acquisition."), () => { this.Disposals++; return ValueTask.CompletedTask; }));
+            ApplicationResult<ExclusiveRuntimeLease> result = this.Failure != null ? new ApplicationResult<ExclusiveRuntimeLease>.Failure(this.Failure)
+                : new ApplicationResult<ExclusiveRuntimeLease>.Success(new(runtime ?? throw new InvalidOperationException("Unexpected runtime acquisition."), () => { this.Disposals++; return ValueTask.CompletedTask; }));
             return Task.FromResult(result);
         }
     }

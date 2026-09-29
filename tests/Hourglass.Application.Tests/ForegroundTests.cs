@@ -13,6 +13,39 @@ public sealed class ForegroundTests
     private static readonly DateTime Now = new(2026, 9, 27, 12, 0, 0);
 
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ExplicitCloseRemovesOnlySelectedSessionAndPersists(bool locked)
+    {
+        Store store = new();
+        await using HourglassRuntime runtime = new(clock: new Clock(), wallClockNow: () => Now, settingsStore: store);
+        await runtime.PrepareForegroundRuntimeAsync();
+        await runtime.CreateSessionAsync(Request("owned", "25 minutes", new(LockInterface: locked)));
+        await runtime.CreateSessionAsync(Request("other", "5 minutes"));
+        await runtime.ExecuteAsync(new SessionCommand.Start("owned"));
+        Assert.IsType<ApplicationResult<bool>.Success>(await runtime.CloseSessionAsync("owned"));
+        Assert.Equal("other", Assert.Single(Assert.IsType<ApplicationResult<ImmutableArray<TimerSessionSnapshot>>.Success>(
+            await runtime.ListSessionsAsync()).Value).SessionId);
+        Assert.Equal("other", Assert.Single(Assert.IsType<ActiveTimerSessionsDocument>(store.Documents["active-sessions"]).Sessions).SessionId);
+        Assert.Equal(ApplicationErrorCode.NotFound, Assert.IsType<ApplicationResult<bool>.Failure>(await runtime.CloseSessionAsync("owned")).Error.Code);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ExplicitCloseHandlesPausedAndExpiredSessions(bool expired)
+    {
+        Store store = new();
+        await using HourglassRuntime runtime = new(clock: new Clock(), wallClockNow: () => Now, settingsStore: store);
+        await runtime.PrepareForegroundRuntimeAsync();
+        await runtime.CreateSessionAsync(Request("owned", expired ? "0 seconds" : "5 minutes"));
+        await runtime.ExecuteAsync(new SessionCommand.Start("owned"));
+        if (!expired) { await runtime.ExecuteAsync(new SessionCommand.Pause("owned")); }
+        Assert.IsType<ApplicationResult<bool>.Success>(await runtime.CloseSessionAsync("owned"));
+        Assert.Empty(Assert.IsType<ActiveTimerSessionsDocument>(store.Documents["active-sessions"]).Sessions);
+    }
+
+    [Theory]
     [InlineData("0 seconds", false)]
     [InlineData("0 seconds", true)]
     public async Task ImmediateExpiryReturnsSnapshotAndClearsCheckpoint(string input, bool close)

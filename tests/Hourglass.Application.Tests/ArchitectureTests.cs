@@ -41,7 +41,7 @@ public sealed class ArchitectureTests
         string root = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(FindProject()) ?? throw new DirectoryNotFoundException(), "../.."));
         string assemblyInfo = File.ReadAllText(Path.Combine(root, "src/Hourglass.Application/AssemblyInfo.cs"));
         Assert.DoesNotContain("hourglass-linux", assemblyInfo, StringComparison.Ordinal);
-        foreach (string directory in new[] { "src/Hourglass.Linux.Avalonia", "tools/Hourglass.DemoRecorder", "src/Hourglass.Cli" })
+        foreach (string directory in new[] { "src/Hourglass.Linux.Avalonia", "tools/Hourglass.DemoRecorder", "src/Hourglass.Cli", "src/Hourglass.Tui" })
         {
             foreach (string file in Directory.EnumerateFiles(Path.Combine(root, directory), "*.cs", SearchOption.AllDirectories)
                 .Where(file => !file.Contains("/obj/", StringComparison.Ordinal) && !file.Contains("/bin/", StringComparison.Ordinal)))
