@@ -8,6 +8,9 @@ public interface IHourglassClient
 {
     Task<ApplicationResult<ForegroundOutcome>> RunForegroundAsync(CreateSessionRequest request, CancellationToken cancellationToken = default);
 
+    Task<ApplicationResult<ImmutableArray<ForegroundOutcome>>> RunSavedForegroundAsync(SavedTimerSelection selection, CancellationToken cancellationToken = default);
+    Task<ApplicationResult<ImmutableArray<TimerSessionSnapshot>>> StartSavedSessionsAsync(SavedTimerSelection selection, CancellationToken cancellationToken = default);
+
     Task<ApplicationResult<System.Collections.Immutable.ImmutableArray<TimerSessionSnapshot>>> ExecuteAllAsync(SessionBatchCommand command, CancellationToken cancellationToken = default);
 
     Task<ApplicationResult<TimerSessionSnapshot>> CreateSessionAsync(CreateSessionRequest request, CancellationToken cancellationToken = default);
@@ -34,4 +37,7 @@ public interface IHourglassClient
     Task<ApplicationResult<bool>> ChangeThemesAsync(CustomThemesDocument previous, CustomThemesDocument requested, CancellationToken cancellationToken = default);
     Task<ApplicationResult<bool>> UpdatePresentationAsync(string sessionId, SessionPresentation presentation, CancellationToken cancellationToken = default);
     Task<ApplicationResult<bool>> FlushPersistenceAsync(CancellationToken cancellationToken = default);
+    Task<ApplicationResult<ImmutableArray<SoundAvailability>>> ListSoundsAsync(CancellationToken cancellationToken = default);
+    Task<ApplicationResult<bool>> PreviewSoundAsync(string soundId, CancellationToken cancellationToken = default);
+    Task<ApplicationResult<ImmutableArray<ApplicationDiagnostic>>> ListDiagnosticsAsync(CancellationToken cancellationToken = default);
 }

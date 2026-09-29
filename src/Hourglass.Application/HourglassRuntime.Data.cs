@@ -131,8 +131,87 @@ public sealed partial class HourglassRuntime
         string id = Guid.NewGuid().ToString("N");
         ApplicationResult<TimerSessionSnapshot> created = await this.CreateSessionAsync(new(id, saved.TimerInput, saved.TimerTitle,
             TimerDefaults.FromSettings(settings), ApplicationPreferences.FromSettings(settings)), cancellationToken).ConfigureAwait(false);
-        return created is ApplicationResult<TimerSessionSnapshot>.Success
-            ? await this.ExecuteAsync(new SessionCommand.Start(id), cancellationToken).ConfigureAwait(false) : created;
+        if (created is ApplicationResult<TimerSessionSnapshot>.Failure) { return created; }
+        try
+        {
+            ApplicationResult<TimerSessionSnapshot> started = await this.ExecuteAsync(new SessionCommand.Start(id), cancellationToken).ConfigureAwait(false);
+            if (started is ApplicationResult<TimerSessionSnapshot>.Failure) { await this.RemoveAsync(id).ConfigureAwait(false); }
+            return started;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            await this.RemoveAsync(id).ConfigureAwait(false);
+            throw;
+        }
+    }
+
+    public async Task<ApplicationResult<ImmutableArray<TimerSessionSnapshot>>> StartSavedSessionsAsync(
+        SavedTimerSelection selection, CancellationToken cancellationToken = default)
+    {
+        ApplicationResult<ImmutableArray<SavedTimerDefinition>> resolved = await this.ResolveSavedAsync(selection, cancellationToken).ConfigureAwait(false);
+        if (resolved is ApplicationResult<ImmutableArray<SavedTimerDefinition>>.Failure failed)
+        {
+            return new ApplicationResult<ImmutableArray<TimerSessionSnapshot>>.Failure(failed.Error);
+        }
+        ImmutableArray<SavedTimerDefinition> templates = ((ApplicationResult<ImmutableArray<SavedTimerDefinition>>.Success)resolved).Value;
+        var started = ImmutableArray.CreateBuilder<TimerSessionSnapshot>();
+        try
+        {
+            foreach (SavedTimerDefinition template in templates)
+            {
+                ApplicationResult<TimerSessionSnapshot> result = await this.CreateSavedSessionAsync(template, cancellationToken).ConfigureAwait(false);
+                if (result is ApplicationResult<TimerSessionSnapshot>.Failure error)
+                {
+                    await CleanupAsync().ConfigureAwait(false);
+                    return new ApplicationResult<ImmutableArray<TimerSessionSnapshot>>.Failure(error.Error);
+                }
+                started.Add(((ApplicationResult<TimerSessionSnapshot>.Success)result).Value);
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            await CleanupAsync().ConfigureAwait(false);
+            throw;
+        }
+        ApplicationResult<bool> durable;
+        try { durable = await this.FlushPersistenceAsync(cancellationToken).ConfigureAwait(false); }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            await CleanupAsync().ConfigureAwait(false);
+            throw;
+        }
+        if (durable is ApplicationResult<bool>.Failure storage)
+        {
+            await CleanupAsync().ConfigureAwait(false);
+            return new ApplicationResult<ImmutableArray<TimerSessionSnapshot>>.Failure(storage.Error);
+        }
+        return new ApplicationResult<ImmutableArray<TimerSessionSnapshot>>.Success(started.ToImmutable());
+
+        async Task CleanupAsync()
+        {
+            foreach (TimerSessionSnapshot session in started) { await this.RemoveAsync(session.SessionId).ConfigureAwait(false); }
+            await this.FlushPersistenceAsync(CancellationToken.None).ConfigureAwait(false);
+        }
+    }
+
+    private async Task<ApplicationResult<ImmutableArray<SavedTimerDefinition>>> ResolveSavedAsync(
+        SavedTimerSelection selection, CancellationToken cancellationToken)
+    {
+        ApplicationResult<ImmutableArray<SavedTimerDefinition>> listed = await this.ListSavedTimersAsync(cancellationToken).ConfigureAwait(false);
+        if (listed is ApplicationResult<ImmutableArray<SavedTimerDefinition>>.Failure failure) { return failure; }
+        ImmutableArray<SavedTimerDefinition> templates = ((ApplicationResult<ImmutableArray<SavedTimerDefinition>>.Success)listed).Value;
+        ApplicationResult<ImmutableArray<SavedTimerDefinition>> selected = SavedTimerSelector.Resolve(templates, selection);
+        if (selected is ApplicationResult<ImmutableArray<SavedTimerDefinition>>.Failure) { return selected; }
+        DateTime validationTime = this.wallClockNow();
+        foreach (SavedTimerDefinition template in ((ApplicationResult<ImmutableArray<SavedTimerDefinition>>.Success)selected).Value)
+        {
+            if (!template.IsValid || TimerInputValidation.Parse(template.TimerInput, validationTime) is ApplicationResult<TimerStart>.Failure)
+            {
+                return new ApplicationResult<ImmutableArray<SavedTimerDefinition>>.Failure(new(ApplicationErrorCode.Validation,
+                    $"Invalid saved timer: {template.Id}"));
+            }
+        }
+        return selected;
     }
 
     public Task<ApplicationResult<bool>> UpdatePresentationAsync(string sessionId, SessionPresentation presentation, CancellationToken cancellationToken = default) =>

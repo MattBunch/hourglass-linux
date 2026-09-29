@@ -10,6 +10,52 @@ public sealed record ForegroundOutcome(TimerSessionSnapshot Session, ForegroundC
 
 public sealed partial class HourglassRuntime
 {
+    public async Task<ApplicationResult<ImmutableArray<ForegroundOutcome>>> RunSavedForegroundAsync(
+        SavedTimerSelection selection, CancellationToken cancellationToken = default)
+    {
+        ApplicationResult<ImmutableArray<SavedTimerDefinition>> resolved = await this.ResolveSavedAsync(selection, cancellationToken).ConfigureAwait(false);
+        if (resolved is ApplicationResult<ImmutableArray<SavedTimerDefinition>>.Failure failed)
+        {
+            return new ApplicationResult<ImmutableArray<ForegroundOutcome>>.Failure(failed.Error);
+        }
+        ImmutableArray<SavedTimerDefinition> templates = ((ApplicationResult<ImmutableArray<SavedTimerDefinition>>.Success)resolved).Value;
+        ApplicationDataSnapshot data = await this.ReadApplicationDataAsync(cancellationToken).ConfigureAwait(false);
+        using CancellationTokenSource batch = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        Task<ApplicationResult<ForegroundOutcome>>[] operations = templates.Select(template =>
+        {
+            LinuxAppSettings settings = NormalizeThemeSelection(template.Options.ApplyTo(data.Settings), data.CustomThemes);
+            return this.RunForegroundAsync(new(Guid.NewGuid().ToString("N"), template.TimerInput, template.TimerTitle,
+                TimerDefaults.FromSettings(settings), ApplicationPreferences.FromSettings(settings)), batch.Token);
+        }).ToArray();
+        try
+        {
+            ForegroundOutcome?[] outcomes = new ForegroundOutcome?[operations.Length];
+            var pending = new Dictionary<Task<ApplicationResult<ForegroundOutcome>>, int>();
+            for (int index = 0; index < operations.Length; index++) { pending.Add(operations[index], index); }
+            while (pending.Count > 0)
+            {
+                Task<ApplicationResult<ForegroundOutcome>> operation = await Task.WhenAny(pending.Keys).WaitAsync(cancellationToken).ConfigureAwait(false);
+                int index = pending[operation];
+                pending.Remove(operation);
+                ApplicationResult<ForegroundOutcome> result = await operation.ConfigureAwait(false);
+                if (result is ApplicationResult<ForegroundOutcome>.Failure failure)
+                {
+                    batch.Cancel();
+                    try { await Task.WhenAll(operations).ConfigureAwait(false); } catch (OperationCanceledException) { }
+                    return new ApplicationResult<ImmutableArray<ForegroundOutcome>>.Failure(failure.Error);
+                }
+                outcomes[index] = ((ApplicationResult<ForegroundOutcome>.Success)result).Value;
+            }
+            return new ApplicationResult<ImmutableArray<ForegroundOutcome>>.Success(outcomes.Select(outcome => outcome
+                ?? throw new InvalidOperationException("A completed saved timer had no outcome.")).ToImmutableArray());
+        }
+        finally
+        {
+            batch.Cancel();
+            try { await Task.WhenAll(operations).ConfigureAwait(false); } catch (Exception) { }
+        }
+    }
+
     /// <summary>Called under exclusive authority before the interim local frontend starts any sessions.</summary>
     public async Task<ApplicationResult<ApplicationDataSnapshot>> PrepareForegroundRuntimeAsync(CancellationToken cancellationToken = default)
     {
