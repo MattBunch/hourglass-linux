@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Bounded PTY smoke test for the built Stage E TUI."""
+"""Bounded PTY smoke test for the built Hourglass TUI."""
 
 import fcntl
 import os
@@ -95,6 +95,13 @@ for text in (b"Focus", b"Break", b"Paused", b"Stopped"):
 editor = check([(1, b"n"), (1.5, b"qsren tea"), (2, b"\r"), (3, b"\x1b"),
                 (3.5, b"q")])
 assert b"Enter a valid current timer" in editor, editor[-800:].decode(errors="replace")
+parity = check([(1, b"n"), (1.5, b"5 minutes"), (2, b"\t"), (2.5, b"Focus"),
+                (3, b"\r"), (4, b"v"), (4.5, b"a"), (5, b"\r"),
+                (5.5, b"A"), (6.5, b","), (7, b"\x1b[B"), (7.5, b"\r"),
+                (8, b"\x1b"), (8.5, b"c"), (9, b"\r"), (9.5, b"\x1b"),
+                (10, b"o"), (10.5, b"\x1b"), (11, b"q"), (11.5, b"y")])
+for text in (b"Saved", b"Settings", b"Recent", b"Options"):
+    assert text in parity, (text, parity[-800:].decode(errors="replace"))
 check([], expected=130, terminate_at=1)
 check([], expected=1, fail=True)
-print("TUI PTY lifecycle, multiple sessions, resize, quit and terminal restoration passed.")
+print("TUI PTY lifecycle, catalog/settings menus, resize, quit and terminal restoration passed.")

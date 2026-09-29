@@ -5,7 +5,7 @@ using Hourglass.Application;
 using Hourglass.Settings;
 using Hourglass.Timing;
 
-public enum TuiMode { Dashboard, New, Edit, Conflict, Help, ConfirmQuit }
+public enum TuiMode { Dashboard, New, Edit, Save, Conflict, Help, ConfirmQuit, Saved, Recent, Settings, Options, ConfirmChange }
 
 public sealed record TuiDraft(string TimerInput, string TimerTitle, string? SessionId = null, long Revision = 0);
 
@@ -26,8 +26,22 @@ public sealed class TuiController(IHourglassClient client)
     private readonly HashSet<string> ownedIds = new(StringComparer.Ordinal);
     private TuiState state = new([], null, TuiMode.Dashboard, null, null);
     private int polling;
+    private ImmutableArray<SavedTimerDefinition> savedTimers = [];
+    private ImmutableArray<string> recentInputs = [];
+    private LinuxAppSettings settings = LinuxAppSettings.Default;
+    private int menuIndex;
+    private string? pendingChange;
+    private TuiMode returnMode = TuiMode.Dashboard;
+    private CancellationTokenSource? previewCancellation;
+    private Task previewTask = Task.CompletedTask;
+    private long observedDiagnosticSequence;
 
     public TuiState State => this.state;
+    public ImmutableArray<SavedTimerDefinition> SavedTimers => this.savedTimers;
+    public ImmutableArray<string> RecentInputs => this.recentInputs;
+    public LinuxAppSettings Settings => this.settings;
+    public int MenuIndex => this.menuIndex;
+    public string? PendingChange => this.pendingChange;
     public event Action<TuiState>? Changed;
 
     public async Task RefreshAsync(CancellationToken cancellationToken = default)
@@ -54,6 +68,13 @@ public sealed class TuiController(IHourglassClient client)
                 selected = sessions.IsEmpty ? null : sessions[Math.Clamp(previousIndex, 0, sessions.Length - 1)].SessionId;
             }
             this.Change(this.state with { Sessions = sessions, SelectedId = selected });
+            var diagnostics = await client.ListDiagnosticsAsync(cancellationToken).ConfigureAwait(false);
+            if (diagnostics is ApplicationResult<ImmutableArray<ApplicationDiagnostic>>.Success journal &&
+                !journal.Value.IsEmpty && journal.Value[^1].Sequence > this.observedDiagnosticSequence)
+            {
+                this.observedDiagnosticSequence = journal.Value[^1].Sequence;
+                this.Change(this.state with { Error = journal.Value[^1].Message });
+            }
         }
         finally { Volatile.Write(ref this.polling, 0); }
     }
@@ -70,7 +91,7 @@ public sealed class TuiController(IHourglassClient client)
         this.Change(this.state with { SelectedId = this.state.Sessions[next].SessionId, Error = null });
     }
 
-    public void OpenNew() => this.Change(this.state with { Mode = TuiMode.New, Draft = new(string.Empty, string.Empty), Error = null });
+    public void OpenNew(string input = "") => this.Change(this.state with { Mode = TuiMode.New, Draft = new(input, string.Empty), Error = null });
 
     public void OpenEdit()
     {
@@ -90,7 +111,12 @@ public sealed class TuiController(IHourglassClient client)
     }
 
     public void ShowHelp() => this.Change(this.state with { Mode = TuiMode.Help, Error = null });
-    public void Back() => this.Change(this.state with { Mode = TuiMode.Dashboard, Draft = null, Error = null });
+    public void Back()
+    {
+        this.previewCancellation?.Cancel();
+        this.pendingChange = null;
+        this.Change(this.state with { Mode = TuiMode.Dashboard, Draft = null, Error = null });
+    }
     public void ShowError(string message) => this.Change(this.state with { Error = message });
 
     public void ResolveConflict(bool reload)
@@ -202,6 +228,8 @@ public sealed class TuiController(IHourglassClient client)
 
     public async Task<bool> CloseOwnedAsync(CancellationToken cancellationToken = default)
     {
+        this.previewCancellation?.Cancel();
+        try { await this.previewTask.ConfigureAwait(false); } catch (OperationCanceledException) { }
         ApplicationError? firstFailure = null;
         foreach (string id in this.ownedIds.Order(StringComparer.Ordinal).ToArray())
         {
@@ -218,6 +246,209 @@ public sealed class TuiController(IHourglassClient client)
             return false;
         }
         return true;
+    }
+
+    public async Task OpenSavedAsync(CancellationToken cancellationToken = default)
+    {
+        var result = await client.ListSavedTimersAsync(cancellationToken).ConfigureAwait(false);
+        if (result is ApplicationResult<ImmutableArray<SavedTimerDefinition>>.Failure failed) { this.ShowError(failed.Error.Message); return; }
+        this.savedTimers = ((ApplicationResult<ImmutableArray<SavedTimerDefinition>>.Success)result).Value;
+        this.menuIndex = 0;
+        this.Change(this.state with { Mode = TuiMode.Saved, Error = null });
+    }
+
+    public async Task OpenRecentAsync(CancellationToken cancellationToken = default)
+    {
+        var result = await client.ListRecentInputsAsync(cancellationToken).ConfigureAwait(false);
+        if (result is ApplicationResult<ImmutableArray<string>>.Failure failed) { this.ShowError(failed.Error.Message); return; }
+        this.recentInputs = ((ApplicationResult<ImmutableArray<string>>.Success)result).Value;
+        this.menuIndex = 0;
+        this.Change(this.state with { Mode = TuiMode.Recent, Error = null });
+    }
+
+    public async Task OpenSettingsAsync(bool sessionOptions, CancellationToken cancellationToken = default)
+    {
+        if (sessionOptions && this.state.Selected == null) { this.ShowError("Select a session first."); return; }
+        if (!sessionOptions)
+        {
+            var result = await client.GetSettingsAsync(cancellationToken).ConfigureAwait(false);
+            if (result is ApplicationResult<LinuxAppSettings>.Failure failed) { this.ShowError(failed.Error.Message); return; }
+            this.settings = ((ApplicationResult<LinuxAppSettings>.Success)result).Value;
+        }
+        this.menuIndex = 0;
+        this.Change(this.state with { Mode = sessionOptions ? TuiMode.Options : TuiMode.Settings, Error = null });
+    }
+
+    public void SelectMenu(int direction)
+    {
+        int count = this.state.Mode switch
+        {
+            TuiMode.Saved => this.savedTimers.Length,
+            TuiMode.Recent => this.recentInputs.Length,
+            TuiMode.Settings or TuiMode.Options => SharedOptionRegistry.Keys.Length,
+            _ => 0
+        };
+        if (count == 0) { return; }
+        this.menuIndex = (this.menuIndex + direction + count) % count;
+        this.Change(this.state with { Error = null });
+    }
+
+    public void UseRecent()
+    {
+        if (this.state.Mode == TuiMode.Recent && this.menuIndex < this.recentInputs.Length)
+        {
+            this.OpenNew(this.recentInputs[this.menuIndex]);
+        }
+    }
+
+    public void OpenSaveDraft()
+    {
+        TimerSessionSnapshot? session = this.state.Selected;
+        this.Change(this.state with
+        {
+            Mode = TuiMode.Save,
+            Draft = new(session?.TimerInput ?? string.Empty, session?.TimerTitle ?? string.Empty),
+            Error = null
+        });
+    }
+
+    public async Task SaveDraftAsync(CancellationToken cancellationToken = default)
+    {
+        if (this.state.Draft is not TuiDraft draft) { return; }
+        var loaded = await client.GetSettingsAsync(cancellationToken).ConfigureAwait(false);
+        if (loaded is ApplicationResult<LinuxAppSettings>.Failure failed) { this.ShowError(failed.Error.Message); return; }
+        LinuxAppSettings settings = ((ApplicationResult<LinuxAppSettings>.Success)loaded).Value;
+        if (this.state.Selected is TimerSessionSnapshot selected && selected.TimerInput == draft.TimerInput)
+        {
+            settings = new LinuxSettingsSnapshot([], selected.Preferences, selected.Options).ToSettings();
+        }
+        SavedTimerDefinition template = SavedTimerDefinition.Create(draft.TimerInput, draft.TimerTitle, settings, draft.TimerTitle);
+        var changed = await client.ChangeSavedTimersAsync(new SavedTimerChange.Add(template), cancellationToken).ConfigureAwait(false);
+        if (changed is ApplicationResult<ImmutableArray<SavedTimerDefinition>>.Failure invalid) { this.ShowError(invalid.Error.Message); return; }
+        var durable = await client.FlushPersistenceAsync(cancellationToken).ConfigureAwait(false);
+        if (durable is ApplicationResult<bool>.Failure storage) { this.ShowError(storage.Error.Message); return; }
+        await this.OpenSavedAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task RunSavedAsync(bool all, CancellationToken cancellationToken = default)
+    {
+        if (!all && this.menuIndex >= this.savedTimers.Length) { this.ShowError("No saved timer selected."); return; }
+        SavedTimerSelection selection = all ? new SavedTimerSelection.All()
+            : new SavedTimerSelection.ByNameOrId(this.savedTimers[this.menuIndex].Id);
+        var started = await client.StartSavedSessionsAsync(selection, cancellationToken).ConfigureAwait(false);
+        if (started is ApplicationResult<ImmutableArray<TimerSessionSnapshot>>.Failure failed)
+        {
+            this.ShowError($"{failed.Error.Message} Refresh sessions before retrying.");
+            await this.RefreshAsync(cancellationToken).ConfigureAwait(false);
+            return;
+        }
+        foreach (TimerSessionSnapshot session in ((ApplicationResult<ImmutableArray<TimerSessionSnapshot>>.Success)started).Value)
+        {
+            this.ownedIds.Add(session.SessionId);
+        }
+        await this.RefreshAsync(cancellationToken).ConfigureAwait(false);
+        this.Change(this.state with { Mode = TuiMode.Dashboard, Error = null });
+    }
+
+    public void RequestChange(string change)
+    {
+        this.pendingChange = change;
+        this.returnMode = this.state.Mode;
+        this.Change(this.state with { Mode = TuiMode.ConfirmChange, Error = null });
+    }
+
+    public void CancelChange()
+    {
+        this.pendingChange = null;
+        this.Change(this.state with { Mode = this.returnMode, Error = null });
+    }
+
+    public async Task ConfirmChangeAsync(CancellationToken cancellationToken = default)
+    {
+        string? change = this.pendingChange;
+        this.pendingChange = null;
+        if (change == null) { this.Back(); return; }
+        if (change.StartsWith("saved:", StringComparison.Ordinal))
+        {
+            SavedTimerChange action = change == "saved:clear" ? new SavedTimerChange.Clear()
+                : new SavedTimerChange.Remove(change[6..]);
+            var result = await client.ChangeSavedTimersAsync(action, cancellationToken).ConfigureAwait(false);
+            if (result is ApplicationResult<ImmutableArray<SavedTimerDefinition>>.Failure failed) { this.ShowError(failed.Error.Message); return; }
+            var durable = await client.FlushPersistenceAsync(cancellationToken).ConfigureAwait(false);
+            if (durable is ApplicationResult<bool>.Failure storage) { this.ShowError(storage.Error.Message); return; }
+            await this.OpenSavedAsync(cancellationToken).ConfigureAwait(false);
+        }
+        else
+        {
+            var result = await client.ClearRecentInputsAsync(cancellationToken).ConfigureAwait(false);
+            if (result is ApplicationResult<ImmutableArray<string>>.Failure failed) { this.ShowError(failed.Error.Message); return; }
+            var durable = await client.FlushPersistenceAsync(cancellationToken).ConfigureAwait(false);
+            if (durable is ApplicationResult<bool>.Failure storage) { this.ShowError(storage.Error.Message); return; }
+            await this.OpenRecentAsync(cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    public async Task ToggleSettingAsync(CancellationToken cancellationToken = default)
+    {
+        if (this.state.Mode is not (TuiMode.Settings or TuiMode.Options)) { return; }
+        string key = SharedOptionRegistry.Keys[this.menuIndex];
+        bool sessionOptions = this.state.Mode == TuiMode.Options;
+        TimerSessionSnapshot? selected = this.state.Selected;
+        LinuxAppSettings current = sessionOptions && selected != null
+            ? new LinuxSettingsSnapshot([], selected.Preferences, selected.Options).ToSettings() : this.settings;
+        string previous = SharedOptionRegistry.Get(current, key) ?? string.Empty;
+        string next;
+        if (key == "audio-alert-sound-id")
+        {
+            AudioAlertSoundDefinition[] sounds = BuiltInAudioAlertSounds.All.ToArray();
+            int index = Array.FindIndex(sounds, sound => sound.Id == previous);
+            next = sounds[(index + 1) % sounds.Length].Id;
+        }
+        else { next = previous == "true" ? "false" : "true"; }
+        var applied = SharedOptionRegistry.Apply(current, [new(key, next)]);
+        if (applied is ApplicationResult<LinuxAppSettings>.Failure invalid) { this.ShowError(invalid.Error.Message); return; }
+        LinuxAppSettings updated = ((ApplicationResult<LinuxAppSettings>.Success)applied).Value;
+        if (sessionOptions && selected != null)
+        {
+            var result = await client.ExecuteAsync(new SessionCommand.Update(selected.SessionId, selected.Revision,
+                Options: TimerDefaults.FromSettings(updated), Preferences: ApplicationPreferences.FromSettings(updated)), cancellationToken).ConfigureAwait(false);
+            if (result is ApplicationResult<TimerSessionSnapshot>.Failure failed) { this.ShowError(failed.Error.Message); return; }
+            await this.RefreshAsync(cancellationToken).ConfigureAwait(false);
+        }
+        else
+        {
+            var result = await client.ChangeSettingsAsync(this.settings, updated, cancellationToken).ConfigureAwait(false);
+            if (result is ApplicationResult<LinuxAppSettings>.Failure failed) { this.ShowError(failed.Error.Message); return; }
+            this.settings = ((ApplicationResult<LinuxAppSettings>.Success)result).Value;
+        }
+        var durable = await client.FlushPersistenceAsync(cancellationToken).ConfigureAwait(false);
+        this.Change(this.state with { Error = durable is ApplicationResult<bool>.Failure storage ? storage.Error.Message : null });
+    }
+
+    public async Task PreviewSoundAsync(CancellationToken cancellationToken = default)
+    {
+        this.previewCancellation?.Cancel();
+        try { await this.previewTask.ConfigureAwait(false); } catch (OperationCanceledException) { }
+        LinuxAppSettings settings = this.state.Mode == TuiMode.Options && this.state.Selected is TimerSessionSnapshot selected
+            ? new LinuxSettingsSnapshot([], selected.Preferences, selected.Options).ToSettings() : this.settings;
+        this.previewCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        CancellationTokenSource preview = this.previewCancellation;
+        this.previewTask = PlayAsync();
+        await this.previewTask.ConfigureAwait(false);
+        async Task PlayAsync()
+        {
+            try
+            {
+                var result = await client.PreviewSoundAsync(settings.AudioAlertSoundId, preview.Token).ConfigureAwait(false);
+                if (result is ApplicationResult<bool>.Failure failed) { this.ShowError(failed.Error.Message); }
+            }
+            catch (OperationCanceledException) when (preview.IsCancellationRequested) { }
+            finally
+            {
+                if (ReferenceEquals(this.previewCancellation, preview)) { this.previewCancellation = null; }
+                preview.Dispose();
+            }
+        }
     }
 
     private void Change(TuiState updated)

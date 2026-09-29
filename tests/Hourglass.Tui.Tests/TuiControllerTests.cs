@@ -125,6 +125,60 @@ public sealed class TuiControllerTests
     }
 
     [Fact]
+    public async Task SavedRecentAndSettingsMenusUseSharedClient()
+    {
+        await using HourglassRuntime runtime = Runtime();
+        await runtime.PrepareForegroundRuntimeAsync();
+        await runtime.ChangeSavedTimersAsync(new SavedTimerChange.Add(new("saved", "5 minutes", "Break", "Rest")));
+        TuiController tui = new(runtime);
+        await tui.RefreshAsync();
+        await tui.OpenSavedAsync();
+        Assert.Equal(TuiMode.Saved, tui.State.Mode);
+        Assert.Equal("Rest", Assert.Single(tui.SavedTimers).DisplayName);
+        await tui.RunSavedAsync(false);
+        Assert.Equal(TuiMode.Dashboard, tui.State.Mode);
+        Assert.Equal(TimerState.Running, tui.State.Selected?.Countdown.State);
+        await tui.OpenSettingsAsync(false);
+        Assert.Equal(TuiMode.Settings, tui.State.Mode);
+        await tui.ToggleSettingAsync();
+        Assert.False(tui.Settings.NotificationsEnabled);
+        Assert.False(Assert.IsType<ApplicationResult<LinuxAppSettings>.Success>(await runtime.GetSettingsAsync()).Value.NotificationsEnabled);
+        tui.Back();
+        await tui.OpenRecentAsync();
+        Assert.Contains("5 minutes", tui.RecentInputs);
+        tui.UseRecent();
+        Assert.Equal(TuiMode.New, tui.State.Mode);
+        Assert.Equal("5 minutes", tui.State.Draft?.TimerInput);
+        Assert.True(await tui.CloseOwnedAsync());
+    }
+
+    [Fact]
+    public async Task SessionOptionsAndCatalogClearDoNotChangeGuiPreferences()
+    {
+        await using HourglassRuntime runtime = Runtime();
+        await runtime.PrepareForegroundRuntimeAsync();
+        await runtime.ChangeSettingsAsync(LinuxAppSettings.Default, LinuxAppSettings.Default with { AlwaysOnTop = true });
+        await runtime.CreateSessionAsync(new("external", "25 minutes", "Focus", new(), new()));
+        await runtime.ChangeSavedTimersAsync(new SavedTimerChange.Add(new("saved", "5 minutes")));
+        TuiController tui = new(runtime);
+        await tui.RefreshAsync();
+        await tui.OpenSettingsAsync(true);
+        await tui.ToggleSettingAsync();
+        Assert.False(Assert.IsType<ApplicationResult<TimerSessionSnapshot>.Success>(await runtime.GetSessionAsync("external")).Value.Preferences.NotificationsEnabled);
+        Assert.True(Assert.IsType<ApplicationResult<LinuxAppSettings>.Success>(await runtime.GetSettingsAsync()).Value.AlwaysOnTop);
+        tui.Back();
+        await tui.OpenSavedAsync();
+        tui.RequestChange("saved:clear");
+        Assert.Equal(TuiMode.ConfirmChange, tui.State.Mode);
+        tui.CancelChange();
+        Assert.Equal(TuiMode.Saved, tui.State.Mode);
+        tui.RequestChange("saved:clear");
+        await tui.ConfirmChangeAsync();
+        Assert.Empty(tui.SavedTimers);
+        Assert.Single(Assert.IsType<ApplicationResult<System.Collections.Immutable.ImmutableArray<TimerSessionSnapshot>>.Success>(await runtime.ListSessionsAsync()).Value);
+    }
+
+    [Fact]
     public void ResolvedTuiDependenciesDoNotContainAvalonia()
     {
         string root = FindRoot();
