@@ -1,8 +1,19 @@
 namespace Hourglass.Application;
 
 using Hourglass.Settings;
+using System.Text.Json.Serialization;
 
 /// <summary>Commands commit through the runtime queue. Revisions detect conflicting edits, not repaint ticks.</summary>
+[JsonPolymorphic(TypeDiscriminatorPropertyName = "command")]
+[JsonDerivedType(typeof(SessionCommand.Start), "start")]
+[JsonDerivedType(typeof(SessionCommand.Pause), "pause")]
+[JsonDerivedType(typeof(SessionCommand.Resume), "resume")]
+[JsonDerivedType(typeof(SessionCommand.Stop), "stop")]
+[JsonDerivedType(typeof(SessionCommand.Restart), "restart")]
+[JsonDerivedType(typeof(SessionCommand.Dismiss), "dismiss")]
+[JsonDerivedType(typeof(SessionCommand.Update), "update")]
+[JsonDerivedType(typeof(SessionCommand.Prepare), "prepare")]
+[JsonDerivedType(typeof(SessionCommand.Unlock), "unlock")]
 public abstract record SessionCommand(string SessionId)
 {
     public sealed record Start(string SessionId, string? TimerInput = null, string? TimerTitle = null, TimerDefaults? Options = null)

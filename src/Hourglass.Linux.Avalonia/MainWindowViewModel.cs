@@ -25,7 +25,9 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged, IDispo
     private long? editRevision;
     private bool projectingSnapshot;
     private readonly Dictionary<long, long> acknowledgedRevisions = [];
-    private readonly HourglassRuntime runtime;
+    private readonly HourglassRuntime? runtime;
+    private readonly bool removeSessionOnDispose;
+    private bool isDisconnected;
     private readonly bool ownsRuntime;
     private readonly bool attachExistingSession;
     private WindowGeometrySnapshot? sessionGeometry;
@@ -176,7 +178,9 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged, IDispo
         bool restoreActiveSessionOnLoad = true,
         IUiDispatcher? uiDispatcher = null,
         IDiagnosticSink? diagnosticSink = null,
-        HourglassRuntime? runtime = null)
+        HourglassRuntime? runtime = null,
+        IHourglassClient? client = null,
+        bool removeSessionOnDispose = true)
     {
         ArgumentNullException.ThrowIfNull(clock);
         this.wallClockNow = wallClockNow ?? throw new ArgumentNullException(nameof(wallClockNow));
@@ -192,48 +196,49 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged, IDispo
         this.SessionId = string.IsNullOrWhiteSpace(sessionId) ? Guid.NewGuid().ToString("N") : sessionId.Trim();
         this.persistActiveSessionDirectly = persistActiveSessionDirectly;
         this.restoreActiveSessionOnLoad = restoreActiveSessionOnLoad;
-        this.ownsRuntime = runtime == null;
-        this.attachExistingSession = runtime != null && sessionId != null;
-        this.runtime = runtime ?? new HourglassRuntime(this.diagnosticSink, clock: clock, wallClockNow: wallClockNow,
+        this.removeSessionOnDispose = removeSessionOnDispose;
+        this.ownsRuntime = runtime == null && client == null;
+        this.attachExistingSession = (runtime != null || client != null) && sessionId != null;
+        this.runtime = runtime ?? (client == null ? new HourglassRuntime(this.diagnosticSink, clock: clock, wallClockNow: wallClockNow,
             services: new SessionRuntimeServices(notificationService, audioAlertService, sessionInhibitor, systemPowerService,
-                ApplicationStrings.ApplicationTitle, ApplicationStrings.StatusTimerComplete, ApplicationStrings.SessionInhibitionReason), settingsStore: settingsStore);
-        this.client = this.runtime;
+                ApplicationStrings.ApplicationTitle, ApplicationStrings.StatusTimerComplete, ApplicationStrings.SessionInhibitionReason), settingsStore: settingsStore) : null);
+        this.client = client ?? this.runtime ?? throw new InvalidOperationException(nameof(MainWindowViewModel));
 
         this.StartCommand = new RelayCommand(
             this.Start,
-            () => this.pendingCommands == 0 && this.viewState.PresentationMode == TimerPresentationMode.Input);
+            () => !this.isDisconnected && this.pendingCommands == 0 && this.viewState.PresentationMode == TimerPresentationMode.Input);
         this.PauseResumeCommand = new RelayCommand(
             this.PauseOrResume,
-            () => this.pendingCommands == 0 && !this.IsTimerModificationLocked && (this.sessionSnapshot.Countdown.State is TimerState.Running or TimerState.Paused));
-        this.ResetCommand = new RelayCommand(this.Reset, () => this.pendingCommands == 0 && !this.IsTimerModificationLocked && this.sessionSnapshot.Countdown.State != TimerState.Stopped);
-        this.RestartCommand = new RelayCommand(this.Restart, () => this.pendingCommands == 0 && !this.IsTimerModificationLocked && this.viewState.IsRestartVisible);
+            () => !this.isDisconnected && this.pendingCommands == 0 && !this.IsTimerModificationLocked && (this.sessionSnapshot.Countdown.State is TimerState.Running or TimerState.Paused));
+        this.ResetCommand = new RelayCommand(this.Reset, () => !this.isDisconnected && this.pendingCommands == 0 && !this.IsTimerModificationLocked && this.sessionSnapshot.Countdown.State != TimerState.Stopped);
+        this.RestartCommand = new RelayCommand(this.Restart, () => !this.isDisconnected && this.pendingCommands == 0 && !this.IsTimerModificationLocked && this.viewState.IsRestartVisible);
         this.CancelEditCommand = new RelayCommand(
             this.CancelActiveTimerEdit,
-            () => this.pendingCommands == 0 && !this.IsTimerModificationLocked && this.viewState.IsCancelVisible);
-        this.ToggleNotificationsCommand = new RelayCommand(this.ToggleNotifications, () => this.pendingCommands == 0 && !this.IsTimerModificationLocked);
-        this.ToggleAudioAlertsCommand = new RelayCommand(this.ToggleAudioAlerts, () => this.pendingCommands == 0 && !this.IsTimerModificationLocked);
-        this.ToggleAlwaysOnTopCommand = new RelayCommand(this.ToggleAlwaysOnTop, () => this.pendingCommands == 0 && !this.IsTimerModificationLocked);
-        this.ToggleShowProgressInTaskbarCommand = new RelayCommand(this.ToggleShowProgressInTaskbar, () => this.pendingCommands == 0 && !this.IsTimerModificationLocked);
+            () => !this.isDisconnected && this.pendingCommands == 0 && !this.IsTimerModificationLocked && this.viewState.IsCancelVisible);
+        this.ToggleNotificationsCommand = new RelayCommand(this.ToggleNotifications, () => !this.isDisconnected && this.pendingCommands == 0 && !this.IsTimerModificationLocked);
+        this.ToggleAudioAlertsCommand = new RelayCommand(this.ToggleAudioAlerts, () => !this.isDisconnected && this.pendingCommands == 0 && !this.IsTimerModificationLocked);
+        this.ToggleAlwaysOnTopCommand = new RelayCommand(this.ToggleAlwaysOnTop, () => !this.isDisconnected && this.pendingCommands == 0 && !this.IsTimerModificationLocked);
+        this.ToggleShowProgressInTaskbarCommand = new RelayCommand(this.ToggleShowProgressInTaskbar, () => !this.isDisconnected && this.pendingCommands == 0 && !this.IsTimerModificationLocked);
         this.ToggleShowInNotificationAreaCommand = new RelayCommand(
             this.ToggleShowInNotificationArea,
-            () => this.pendingCommands == 0 && !this.IsTimerModificationLocked && this.IsStatusIconSupported);
+            () => !this.isDisconnected && this.pendingCommands == 0 && !this.IsTimerModificationLocked && this.IsStatusIconSupported);
         this.HideToNotificationAreaCommand = new RelayCommand(
             this.RequestHideToNotificationArea,
             () => this.CanHideToNotificationArea);
-        this.TogglePopUpWhenExpiredCommand = new RelayCommand(this.TogglePopUpWhenExpired, () => this.pendingCommands == 0 && !this.IsTimerModificationLocked);
-        this.TogglePromptOnExitCommand = new RelayCommand(this.TogglePromptOnExit, () => this.pendingCommands == 0 && !this.IsTimerModificationLocked);
-        this.ToggleReverseProgressBarCommand = new RelayCommand(this.ToggleReverseProgressBar, () => this.pendingCommands == 0 && !this.IsTimerModificationLocked);
-        this.ToggleShowTimeElapsedCommand = new RelayCommand(this.ToggleShowTimeElapsed, () => this.pendingCommands == 0 && !this.IsTimerModificationLocked);
-        this.ToggleLoopTimerCommand = new RelayCommand(this.ToggleLoopTimer, () => this.pendingCommands == 0 && !this.IsTimerModificationLocked);
-        this.ToggleLoopSoundCommand = new RelayCommand(this.ToggleLoopSound, () => this.pendingCommands == 0 && !this.IsTimerModificationLocked);
-        this.ToggleCloseWhenExpiredCommand = new RelayCommand(this.ToggleCloseWhenExpired, () => this.pendingCommands == 0 && !this.IsTimerModificationLocked);
-        this.ToggleLockInterfaceCommand = new RelayCommand(this.ToggleLockInterface, () => this.pendingCommands == 0);
-        this.ToggleDoNotKeepComputerAwakeCommand = new RelayCommand(this.ToggleDoNotKeepComputerAwake, () => this.pendingCommands == 0 && !this.IsTimerModificationLocked);
+        this.TogglePopUpWhenExpiredCommand = new RelayCommand(this.TogglePopUpWhenExpired, () => !this.isDisconnected && this.pendingCommands == 0 && !this.IsTimerModificationLocked);
+        this.TogglePromptOnExitCommand = new RelayCommand(this.TogglePromptOnExit, () => !this.isDisconnected && this.pendingCommands == 0 && !this.IsTimerModificationLocked);
+        this.ToggleReverseProgressBarCommand = new RelayCommand(this.ToggleReverseProgressBar, () => !this.isDisconnected && this.pendingCommands == 0 && !this.IsTimerModificationLocked);
+        this.ToggleShowTimeElapsedCommand = new RelayCommand(this.ToggleShowTimeElapsed, () => !this.isDisconnected && this.pendingCommands == 0 && !this.IsTimerModificationLocked);
+        this.ToggleLoopTimerCommand = new RelayCommand(this.ToggleLoopTimer, () => !this.isDisconnected && this.pendingCommands == 0 && !this.IsTimerModificationLocked);
+        this.ToggleLoopSoundCommand = new RelayCommand(this.ToggleLoopSound, () => !this.isDisconnected && this.pendingCommands == 0 && !this.IsTimerModificationLocked);
+        this.ToggleCloseWhenExpiredCommand = new RelayCommand(this.ToggleCloseWhenExpired, () => !this.isDisconnected && this.pendingCommands == 0 && !this.IsTimerModificationLocked);
+        this.ToggleLockInterfaceCommand = new RelayCommand(this.ToggleLockInterface, () => !this.isDisconnected && this.pendingCommands == 0);
+        this.ToggleDoNotKeepComputerAwakeCommand = new RelayCommand(this.ToggleDoNotKeepComputerAwake, () => !this.isDisconnected && this.pendingCommands == 0 && !this.IsTimerModificationLocked);
         this.ToggleShutDownWhenExpiredCommand = new RelayCommand(
             this.ToggleShutDownWhenExpired,
-            () => this.pendingCommands == 0 && !this.IsTimerModificationLocked && this.systemPowerService.IsShutdownSupported);
-        this.ToggleRestoreActiveSessionOnStartupCommand = new RelayCommand(this.ToggleRestoreActiveSessionOnStartup, () => this.pendingCommands == 0 && !this.IsTimerModificationLocked);
-        this.ToggleOpenSavedTimersOnStartupCommand = new RelayCommand(this.ToggleOpenSavedTimersOnStartup, () => this.pendingCommands == 0 && !this.IsTimerModificationLocked);
+            () => !this.isDisconnected && this.pendingCommands == 0 && !this.IsTimerModificationLocked && this.systemPowerService.IsShutdownSupported);
+        this.ToggleRestoreActiveSessionOnStartupCommand = new RelayCommand(this.ToggleRestoreActiveSessionOnStartup, () => !this.isDisconnected && this.pendingCommands == 0 && !this.IsTimerModificationLocked);
+        this.ToggleOpenSavedTimersOnStartupCommand = new RelayCommand(this.ToggleOpenSavedTimersOnStartup, () => !this.isDisconnected && this.pendingCommands == 0 && !this.IsTimerModificationLocked);
         this.SelectThemePreferenceCommand = new RelayCommand<string>(this.SelectThemePreference, value => this.pendingCommands == 0 && !string.IsNullOrWhiteSpace(value) && !this.IsTimerModificationLocked);
         this.SelectCustomThemeCommand = new RelayCommand<string>(this.SelectCustomTheme, id => this.pendingCommands == 0 && !string.IsNullOrWhiteSpace(id) && !this.IsTimerModificationLocked);
         this.DuplicateCustomThemeCommand = new RelayCommand<string>(this.DuplicateCustomTheme, id => this.pendingCommands == 0 && !string.IsNullOrWhiteSpace(id) && !this.IsTimerModificationLocked);
@@ -242,10 +247,10 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged, IDispo
         this.SelectAudioAlertSoundCommand = new RelayCommand<string>(this.SelectAudioAlertSound, value => this.CanSelectAudioAlertSound(value));
         this.PreviewAudioAlertSoundCommand = new RelayCommand(this.PreviewAudioAlertSound, () => this.CanPreviewAudioAlertSound);
         this.StopAudioAlertPreviewCommand = new RelayCommand(this.StopAudioAlertPreview, () => this.IsAudioPreviewActive);
-        this.NewTimerCommand = new RelayCommand(this.RequestNewTimer, () => this.pendingCommands == 0 && !this.IsTimerModificationLocked);
+        this.NewTimerCommand = new RelayCommand(this.RequestNewTimer, () => !this.isDisconnected && this.pendingCommands == 0 && !this.IsTimerModificationLocked);
         this.SelectRecentInputCommand = new RelayCommand<string>(this.SelectRecentInput, input => this.pendingCommands == 0 && !string.IsNullOrWhiteSpace(input) && !this.IsTimerModificationLocked);
         this.ClearRecentInputsCommand = new RelayCommand(this.ClearRecentInputs, () => this.RecentInputMenuItems.Length > 0 && !this.IsTimerModificationLocked);
-        this.SaveCurrentTimerCommand = new RelayCommand(this.SaveCurrentTimer, () => this.pendingCommands == 0 && !this.IsTimerModificationLocked && this.CanSaveCurrentTimer);
+        this.SaveCurrentTimerCommand = new RelayCommand(this.SaveCurrentTimer, () => !this.isDisconnected && this.pendingCommands == 0 && !this.IsTimerModificationLocked && this.CanSaveCurrentTimer);
         this.OpenSavedTimerCommand = new RelayCommand<string>(this.OpenSavedTimer, id => this.pendingCommands == 0 && !string.IsNullOrWhiteSpace(id) && !this.IsTimerModificationLocked);
         this.RemoveSavedTimerCommand = new RelayCommand<string>(this.RemoveSavedTimer, id => this.pendingCommands == 0 && !string.IsNullOrWhiteSpace(id) && !this.IsTimerModificationLocked);
         this.ClearSavedTimersCommand = new RelayCommand(this.ClearSavedTimers, () => this.SavedTimerMenuItems.Length > 0 && !this.IsTimerModificationLocked);
@@ -586,7 +591,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged, IDispo
     public bool CanSaveCurrentTimer =>
         TimerStart.FromString(this.TimerInput) is { IsValid: true };
 
-    public bool IsTimerModificationLocked =>
+    public bool IsTimerModificationLocked => this.isDisconnected ||
         this.settings.LockInterface && (this.sessionSnapshot.Countdown.State is TimerState.Running or TimerState.Paused);
 
     public bool CanModifyCustomThemes => !this.IsTimerModificationLocked;
@@ -655,7 +660,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged, IDispo
         await this.PendingCommands.ConfigureAwait(false);
         await this.DispatchAsync(() =>
         {
-            if (this.sessionSnapshot.Countdown.State == TimerState.Stopped)
+            if (!this.attachExistingSession && this.sessionSnapshot.Countdown.State == TimerState.Stopped)
             {
                 this.ReplaceViewState(this.viewState with { TimerInput = loadedSettings.GetInitialTimerInput(TimerViewState.DefaultTimerInput) });
                 this.RefreshDisplay(TimerViewState.ReadyStatusText);
@@ -665,7 +670,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged, IDispo
 
     private async Task<bool> TryRestoreActiveSessionAsync(CancellationToken cancellationToken)
     {
-        ActiveTimerSessionSnapshot? snapshot = await this.runtime.LoadLegacyRestorationAsync(cancellationToken);
+        ActiveTimerSessionSnapshot? snapshot = await (this.runtime ?? throw new InvalidOperationException(nameof(MainWindowViewModel))).LoadLegacyRestorationAsync(cancellationToken);
         if (snapshot == null) { return false; }
         this.RestoreActiveSessionSnapshot(snapshot);
         return true;
@@ -682,7 +687,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged, IDispo
         {
             ApplicationResult<TimerSessionSnapshot> result = this.attachExistingSession
                 ? await this.client.GetSessionAsync(this.SessionId).ConfigureAwait(false)
-                : await this.runtime.RestoreSessionAsync(this.SessionId, snapshot, preferences).ConfigureAwait(false);
+                : await (this.runtime ?? throw new InvalidOperationException(nameof(MainWindowViewModel))).RestoreSessionAsync(this.SessionId, snapshot, preferences).ConfigureAwait(false);
             await this.ApplyResultAsync(result).ConfigureAwait(false);
             await this.DispatchAsync(() =>
             {
@@ -747,11 +752,12 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged, IDispo
     {
         await this.PendingCommands.ConfigureAwait(false);
         this.subscription?.Dispose();
-        Task removal = this.runtime.RemoveAsync(this.SessionId);
+        Task removal = this.removeSessionOnDispose ? this.client.CloseSessionAsync(this.SessionId) : Task.CompletedTask;
         Task cancelPreview = this.StopAudioPreviewAsync();
-        await this.runtime.DrainAsync(Task.WhenAll(cancelPreview, this.pendingAudioPreview), "audio-preview").ConfigureAwait(false);
+        if (this.runtime != null) { await this.runtime.DrainAsync(Task.WhenAll(cancelPreview, this.pendingAudioPreview), "audio-preview").ConfigureAwait(false); }
+        else { await Task.WhenAll(cancelPreview, this.pendingAudioPreview).ConfigureAwait(false); }
         await removal.ConfigureAwait(false);
-        if (this.ownsRuntime)
+        if (this.ownsRuntime && this.runtime != null)
         {
             await this.runtime.DisposeAsync().ConfigureAwait(false);
         }
@@ -791,17 +797,17 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged, IDispo
     {
         await this.PendingCommands.ConfigureAwait(false);
         ObjectDisposedException.ThrowIf(this.isDisposed, this);
-        await this.runtime.TickAsync().ConfigureAwait(false);
+        if (this.runtime != null) { await this.runtime.TickAsync().ConfigureAwait(false); }
         await this.DrainNotificationsAsync().ConfigureAwait(false);
         await this.ApplyResultAsync(await this.client.GetSessionAsync(this.SessionId).ConfigureAwait(false)).ConfigureAwait(false);
     }
 
-    internal void StartRuntimeScheduler() => this.runtime.StartScheduler();
+    internal void StartRuntimeScheduler() { if (this.ownsRuntime) { this.runtime?.StartScheduler(); } }
     internal Task TickRuntimeAsync() => this.AdvanceAsync();
     internal void SuspendAutomaticTicks()
     {
         this.automaticTicksSuspended = true;
-        this.runtime.SuspendTicks(this.SessionId);
+        this.runtime?.SuspendTicks(this.SessionId);
     }
 
     internal bool TryEnterInputModeFromExpired()
@@ -1871,7 +1877,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged, IDispo
                 await this.client.UpdatePresentationAsync(this.SessionId, presentation).ConfigureAwait(false);
                 if (this.persistActiveSessionDirectly)
                 {
-                    await this.runtime.SaveLegacySessionAsync(this.SessionId).ConfigureAwait(false);
+                    await (this.runtime ?? throw new InvalidOperationException(nameof(MainWindowViewModel))).SaveLegacySessionAsync(this.SessionId).ConfigureAwait(false);
                 }
             }
             catch (Exception exception) { this.RecordDataRecovery("save", ActiveSessionKey, "Active session save failed.", exception); }

@@ -2,7 +2,11 @@ namespace Hourglass.Application;
 
 using System.Collections.Immutable;
 using Hourglass.Settings;
+using System.Text.Json.Serialization;
 
+[JsonPolymorphic(TypeDiscriminatorPropertyName = "kind")]
+[JsonDerivedType(typeof(SavedTimerSelection.ByNameOrId), "bynameorid")]
+[JsonDerivedType(typeof(SavedTimerSelection.All), "all")]
 public abstract record SavedTimerSelection
 {
     public sealed record ByNameOrId(string Value) : SavedTimerSelection;

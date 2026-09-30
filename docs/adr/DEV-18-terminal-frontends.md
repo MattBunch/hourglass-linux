@@ -29,3 +29,7 @@ Prove parser invocation/output/cancellation and terminal startup/shutdown, 4/5/1
 Results (2026-09-26): System.CommandLine 2.0.0 and Terminal.Gui 2.5.0 pass the reproducible parser and Linux PTY checks in tools/Hourglass.TerminalSpike. Checks cover 4/5/10 Hz updates, keys, resize, text-entry routing, normal/exception exits and independent terminal restoration assertions. Alt+Enter's legacy Escape+CR encoding arrives as Ctrl+Alt+M; normalize within the relevant TUI action context and preserve ordinary Enter. Attended emulator/SSH/accessibility coverage remains Not run. See the spike README for commands and limits.
 
 See [implementation plan](../DEV-18_IMPLEMENTATION_PLAN.md) and [research](../research/DEV-18-deep-research-report.md).
+
+## Stage G lifetime decision
+
+Until Stage H supplies the host, runtime ownership remains with the process that acquired the existing authority lock. Owner exit drains active responses and saves recovery state, then disconnects attached clients. Frontends do not transfer engines or replay uncertain commands. GUI presentation uses a separate registration lock/socket; an attached GUI closes only its own logical sessions.

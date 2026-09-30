@@ -185,7 +185,8 @@ public sealed class Milestone6CoordinatorTests
         Assert.Contains("Dispatcher.UIThread.Post(async () =>", window, StringComparison.Ordinal);
         Assert.Contains("this.closingWindows.Add(window);", coordinator, StringComparison.Ordinal);
         Assert.Contains("await this.QueueSessionSave().ConfigureAwait(false);", coordinator, StringComparison.Ordinal);
-        Assert.Contains("await this.runtime.RemoveAsync(registration.ViewModel.SessionId)", coordinator, StringComparison.Ordinal);
+        Assert.Contains("await this.Client.CloseSessionAsync(registration.ViewModel.SessionId)", coordinator, StringComparison.Ordinal);
+        Assert.Contains("if (!this.observedSessions.Contains(registration.ViewModel.SessionId))", coordinator, StringComparison.Ordinal);
     }
 
     [Fact]

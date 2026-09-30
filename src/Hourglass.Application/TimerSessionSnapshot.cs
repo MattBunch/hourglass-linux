@@ -4,6 +4,7 @@ using Hourglass.Settings;
 using Hourglass.Timing;
 
 /// <summary>An owned immutable value; publication never exposes an engine or a persistence DTO.</summary>
+[method: System.Text.Json.Serialization.JsonConstructor]
 public sealed record TimerSessionSnapshot(
     string SessionId,
     long Revision,

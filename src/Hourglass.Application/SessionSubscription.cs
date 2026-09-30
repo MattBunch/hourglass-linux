@@ -29,6 +29,8 @@ public sealed class SessionSubscription : IDisposable
         this.Completion = Task.Run(this.DeliverAsync);
     }
 
+    public ApplicationError? Failure { get; private set; }
+    internal void Fail(ApplicationError error) { this.Failure = error; this.Complete(); }
     public Task Completion { get; }
     public TimerSessionSnapshot InitialSnapshot { get; }
     public long InitialSequence { get; }

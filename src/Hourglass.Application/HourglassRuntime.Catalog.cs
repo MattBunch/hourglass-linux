@@ -2,6 +2,7 @@ namespace Hourglass.Application;
 
 using System.Collections.Immutable;
 using Hourglass.Settings;
+using System.Text.Json.Serialization;
 
 public sealed partial class HourglassRuntime
 {
@@ -100,6 +101,10 @@ public sealed partial class HourglassRuntime
     }
 }
 
+[JsonPolymorphic(TypeDiscriminatorPropertyName = "kind")]
+[JsonDerivedType(typeof(SavedTimerChange.Add), "add")]
+[JsonDerivedType(typeof(SavedTimerChange.Remove), "remove")]
+[JsonDerivedType(typeof(SavedTimerChange.Clear), "clear")]
 public abstract record SavedTimerChange
 {
     public sealed record Add(SavedTimerDefinition Timer) : SavedTimerChange;

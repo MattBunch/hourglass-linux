@@ -1,4 +1,4 @@
-# Hourglass TUI (DEV-18 Stage F)
+# Hourglass TUI (DEV-18 Stage G)
 
 Build the modern solution in Release, then run `src/Hourglass.Tui/bin/Release/net10.0/hourglass-tui`. `hourglass tui` launches the same interface from the CLI build. `--help` and `--version` work without a terminal.
 
@@ -32,9 +32,18 @@ to select a key, Enter to toggle/cycle its value, and `p` to preview the
 chosen sound. Session edits use the latest revision and report conflicts.
 Escape returns to the dashboard. Service errors remain visible in status.
 
-The TUI acquires the same per-user runtime authority as the GUI and CLI. If another runtime is active, it exits 4. Existing GUI recovery sessions are preserved and must be handled in the GUI before this interim TUI starts. On ordinary quit it closes only timers created by this TUI; running or paused timers follow the existing prompt-on-exit preference. SIGTERM/Ctrl+C closes owned timers and returns 130. A save failure returns 7 after terminal restoration. An unexpected exception returns 1 and leaves recovery checkpoints for the GUI.
+The TUI connects to an active GUI/terminal authority, or acquires the same
+per-user authority lock to own a local runtime. Observed sessions remain alive
+when this TUI quits. Ordinary quit closes only TUI-created timers, using the
+existing prompt-on-exit preference. Ctrl+C/SIGTERM closes owned timers and returns
+130. A save failure returns 7 after terminal restoration; an unexpected exception
+returns 1 and preserves recovery checkpoints.
 
-Cross-process control and detached timer ownership are Stage G/H. This binary
-is a development build; terminal release tarballs arrive in Stage I.
+Owner exit disconnects attached frontends. The TUI displays the disconnection,
+disables mutations, and permits quit; reopen it to reconnect. Connection errors
+return 5 and incompatible protocols return 6. With no authority, existing GUI
+recovery sessions still require the GUI before the TUI can become the owner.
+The on-demand host and detached lifetime arrive in Stage H. Terminal release
+tarballs arrive in Stage I.
 
 The bounded PTY smoke test is `python3 tests/Hourglass.Tui.Tests/verify-terminal.py` after a Release build. It checks keyboard workflows, resize, interruption, exception cleanup, and terminal mode restoration. Attended terminal emulators, SSH, screen readers, and physical desktop services require separate validation.

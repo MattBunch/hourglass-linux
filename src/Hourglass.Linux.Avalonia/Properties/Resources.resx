@@ -549,4 +549,7 @@
   <data name="StatusApplicationCommandFailed" xml:space="preserve">
     <value>The timer command could not be completed.</value>
   </data>
+  <data name="StatusRuntimeDisconnected" xml:space="preserve">
+    <value>Runtime disconnected. Reopen the GUI to reconnect.</value>
+  </data>
 </root>

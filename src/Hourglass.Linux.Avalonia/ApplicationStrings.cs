@@ -141,6 +141,7 @@ public static class ApplicationStrings
     public static string SessionInhibitionReason => GetString();
     public static string StatusSessionConflict => GetString();
     public static string StatusSessionLocked => GetString();
+    public static string StatusRuntimeDisconnected => GetString();
     public static string StatusRuntimeUnavailable => GetString();
     public static string StatusInvalidTransition => GetString();
     public static string StatusApplicationCommandFailed => GetString();

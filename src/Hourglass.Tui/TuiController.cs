@@ -44,15 +44,25 @@ public sealed class TuiController(IHourglassClient client)
     public string? PendingChange => this.pendingChange;
     public event Action<TuiState>? Changed;
 
+    private bool disconnected;
+    private bool CanMutate()
+    {
+        if (!this.disconnected) { return true; }
+        this.ShowError("Runtime disconnected. Reopen the TUI to reconnect.");
+        return false;
+    }
+
     public async Task RefreshAsync(CancellationToken cancellationToken = default)
     {
+        if (this.disconnected) { return; }
         if (Interlocked.Exchange(ref this.polling, 1) != 0) { return; }
         try
         {
             ApplicationResult<ImmutableArray<TimerSessionSnapshot>> result = await client.ListSessionsAsync(cancellationToken).ConfigureAwait(false);
             if (result is ApplicationResult<ImmutableArray<TimerSessionSnapshot>>.Failure failure)
             {
-                this.Change(this.state with { Error = failure.Error.Message });
+                if (failure.Error.Code is ApplicationErrorCode.TransportFailure or ApplicationErrorCode.RuntimeUnavailable) { this.disconnected = true; }
+                this.Change(this.state with { Error = this.disconnected ? "Runtime disconnected. Reopen the TUI to reconnect." : failure.Error.Message });
                 return;
             }
             ImmutableArray<TimerSessionSnapshot> sessions = ((ApplicationResult<ImmutableArray<TimerSessionSnapshot>>.Success)result).Value
@@ -132,6 +142,7 @@ public sealed class TuiController(IHourglassClient client)
 
     public async Task SubmitDraftAsync(CancellationToken cancellationToken = default)
     {
+        if (!this.CanMutate()) { return; }
         if (this.state.Busy || this.state.Draft is not TuiDraft draft) { return; }
         this.Change(this.state with { Busy = true, Error = null });
         try
@@ -189,6 +200,7 @@ public sealed class TuiController(IHourglassClient client)
 
     public async Task ActAsync(string action, CancellationToken cancellationToken = default)
     {
+        if (!this.CanMutate()) { return; }
         if (this.state.Busy || this.state.Selected is not TimerSessionSnapshot selected) { return; }
         SessionCommand? command = action switch
         {
@@ -217,6 +229,7 @@ public sealed class TuiController(IHourglassClient client)
 
     public async Task<bool> RequestQuitAsync(CancellationToken cancellationToken = default)
     {
+        if (this.disconnected) { return true; }
         if (this.state.Mode != TuiMode.ConfirmQuit && this.state.Sessions.Any(session => this.ownedIds.Contains(session.SessionId)
             && session.Preferences.PromptOnExit && session.Countdown.State is TimerState.Running or TimerState.Paused))
         {
@@ -228,6 +241,7 @@ public sealed class TuiController(IHourglassClient client)
 
     public async Task<bool> CloseOwnedAsync(CancellationToken cancellationToken = default)
     {
+        if (this.disconnected) { return true; }
         this.previewCancellation?.Cancel();
         try { await this.previewTask.ConfigureAwait(false); } catch (OperationCanceledException) { }
         ApplicationError? firstFailure = null;
@@ -314,6 +328,7 @@ public sealed class TuiController(IHourglassClient client)
 
     public async Task SaveDraftAsync(CancellationToken cancellationToken = default)
     {
+        if (!this.CanMutate()) { return; }
         if (this.state.Draft is not TuiDraft draft) { return; }
         var loaded = await client.GetSettingsAsync(cancellationToken).ConfigureAwait(false);
         if (loaded is ApplicationResult<LinuxAppSettings>.Failure failed) { this.ShowError(failed.Error.Message); return; }
@@ -332,6 +347,7 @@ public sealed class TuiController(IHourglassClient client)
 
     public async Task RunSavedAsync(bool all, CancellationToken cancellationToken = default)
     {
+        if (!this.CanMutate()) { return; }
         if (!all && this.menuIndex >= this.savedTimers.Length) { this.ShowError("No saved timer selected."); return; }
         SavedTimerSelection selection = all ? new SavedTimerSelection.All()
             : new SavedTimerSelection.ByNameOrId(this.savedTimers[this.menuIndex].Id);
@@ -365,6 +381,7 @@ public sealed class TuiController(IHourglassClient client)
 
     public async Task ConfirmChangeAsync(CancellationToken cancellationToken = default)
     {
+        if (!this.CanMutate()) { return; }
         string? change = this.pendingChange;
         this.pendingChange = null;
         if (change == null) { this.Back(); return; }
@@ -390,6 +407,7 @@ public sealed class TuiController(IHourglassClient client)
 
     public async Task ToggleSettingAsync(CancellationToken cancellationToken = default)
     {
+        if (!this.CanMutate()) { return; }
         if (this.state.Mode is not (TuiMode.Settings or TuiMode.Options)) { return; }
         string key = SharedOptionRegistry.Keys[this.menuIndex];
         bool sessionOptions = this.state.Mode == TuiMode.Options;
@@ -427,6 +445,7 @@ public sealed class TuiController(IHourglassClient client)
 
     public async Task PreviewSoundAsync(CancellationToken cancellationToken = default)
     {
+        if (!this.CanMutate()) { return; }
         this.previewCancellation?.Cancel();
         try { await this.previewTask.ConfigureAwait(false); } catch (OperationCanceledException) { }
         LinuxAppSettings settings = this.state.Mode == TuiMode.Options && this.state.Selected is TimerSessionSnapshot selected
@@ -453,6 +472,7 @@ public sealed class TuiController(IHourglassClient client)
 
     private void Change(TuiState updated)
     {
+        if (this.disconnected) { updated = updated with { Error = "Runtime disconnected. Reopen the TUI to reconnect." }; }
         this.state = updated;
         this.Changed?.Invoke(updated);
     }

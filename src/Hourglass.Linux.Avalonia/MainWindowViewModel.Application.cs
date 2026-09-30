@@ -23,7 +23,22 @@ public sealed partial class MainWindowViewModel
         ApplicationResult<SessionSubscription> subscribed = await this.client.SubscribeAsync(this.SessionId, notification => this.DispatchAsync(() => this.ApplyNotification(notification))).ConfigureAwait(false);
         if (subscribed is not ApplicationResult<SessionSubscription>.Success subscriptionResult) { throw new InvalidOperationException(nameof(InitializeSessionAsync)); }
         this.subscription = subscriptionResult.Value;
-        await this.DispatchAsync(() => { this.acknowledgedRevisions[0] = success.Value.Revision; this.ApplySnapshot(this.subscription.InitialSnapshot); }).ConfigureAwait(false);
+        _ = this.ObserveSubscriptionAsync(this.subscription);
+        await this.DispatchAsync(() => { this.acknowledgedRevisions[0] = success.Value.Revision; this.ApplySnapshot(this.subscription.InitialSnapshot); if (this.attachExistingSession) { this.ReplaceViewState(this.viewState with { TimerInput = success.Value.TimerInput, TimerTitle = success.Value.TimerTitle }); } }).ConfigureAwait(false);
+    }
+
+    private async Task ObserveSubscriptionAsync(SessionSubscription subscription)
+    {
+        await subscription.Completion.ConfigureAwait(false);
+        if (subscription.Failure != null && !this.isDisposed)
+        {
+            await this.DispatchAsync(() =>
+            {
+                this.isDisconnected = true;
+                this.ReplaceViewState(this.viewState with { StatusText = ApplicationStrings.StatusRuntimeDisconnected, IsInputEnabled = false, HasValidationError = true });
+                this.RefreshCommandAvailability();
+            }).ConfigureAwait(false);
+        }
     }
 
     private void QueueOperation(Func<Task> operation)
@@ -123,11 +138,13 @@ public sealed partial class MainWindowViewModel
             this.ShowValidationError();
             if (result is ApplicationResult<TimerSessionSnapshot>.Failure failure)
             {
+                if (failure.Error.Code is ApplicationErrorCode.TransportFailure or ApplicationErrorCode.RuntimeUnavailable) { this.isDisconnected = true; }
                 this.RefreshDisplay(failure.Error.Code switch
                 {
                     ApplicationErrorCode.Validation => ApplicationStrings.StatusInvalidTimer,
                     ApplicationErrorCode.Conflict => ApplicationStrings.StatusSessionConflict,
                     ApplicationErrorCode.Locked => ApplicationStrings.StatusSessionLocked,
+                    ApplicationErrorCode.TransportFailure => ApplicationStrings.StatusRuntimeDisconnected,
                     ApplicationErrorCode.RuntimeUnavailable => ApplicationStrings.StatusRuntimeUnavailable,
                     ApplicationErrorCode.InvalidTransition => ApplicationStrings.StatusInvalidTransition,
                     _ => ApplicationStrings.StatusApplicationCommandFailed
@@ -194,7 +211,7 @@ public sealed partial class MainWindowViewModel
     {
         await this.PendingCommands.ConfigureAwait(false);
         if (this.isDisposed) { await this.DisposeAsync().ConfigureAwait(false); if (this.subscription != null) { await this.subscription.Completion.ConfigureAwait(false); } return; }
-        await this.runtime.WaitForSessionEffectsAsync(this.SessionId).ConfigureAwait(false);
+        if (this.runtime != null) { await this.runtime.WaitForSessionEffectsAsync(this.SessionId).ConfigureAwait(false); }
         await this.DrainNotificationsAsync().ConfigureAwait(false);
         await this.PendingCommands.ConfigureAwait(false);
         if (this.isDisposed && this.subscription != null) { await this.subscription.Completion.ConfigureAwait(false); }

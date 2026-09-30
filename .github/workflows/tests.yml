@@ -40,6 +40,9 @@ jobs:
       - name: Test
         run: dotnet test Hourglass.Linux.sln --configuration Release --no-build --verbosity normal --logger trx --results-directory TestResults --blame-hang-timeout 90s --blame-hang-dump-type none
 
+      - name: CLI runtime control smoke
+        run: python3 tests/Hourglass.Cli.Tests/verify-control.py
+
       - name: TUI terminal smoke
         run: python3 tests/Hourglass.Tui.Tests/verify-terminal.py
 

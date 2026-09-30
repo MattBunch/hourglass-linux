@@ -1,4 +1,4 @@
-# Hourglass CLI (DEV-18 Stage F)
+# Hourglass CLI (DEV-18 Stage G)
 
 Build with `dotnet build Hourglass.Linux.sln -c Release`; the executable in
 `src/Hourglass.Cli/bin/Release/net10.0/` is `hourglass`. For a development run:
@@ -39,15 +39,17 @@ Ctrl+C and SIGTERM remove only the foreground command's session and return
 130. `--wait` is equivalent to the default. `--detach` is reserved and returns
 6; `--wait --detach` returns 2. Use `--` to end options before an expression.
 
-Stage F uses the same per-user authority lock as the GUI. It does not contact
-the GUI's legacy launch socket for session commands. When another runtime owns
-the lock, CLI queries and commands return 4. With no owner, `list` shows no
-*live* sessions and ID commands return 3; they do not reinterpret saved recovery
-records as running timers. If saved GUI sessions remain on disk, foreground
-start returns 4 and preserves those records. Restore or dismiss them in the GUI
-first. Cross-process control arrives in Stage G and detached ownership in H.
-This Stage F binary is an internal development artifact; terminal release
-tarballs arrive in Stage I.
+The CLI connects to an active GUI or terminal runtime using versioned local
+control. Commands from another shell operate on the same session IDs. With no
+owner, a foreground start owns a local runtime; queries remain short transactions
+and do not restore saved sessions. Preserved GUI recovery records still require
+the GUI before a terminal can become the owner.
+
+The owning process remains responsible for runtime lifetime during Stage G.
+Its exit disconnects attached clients; the command outcome can be uncertain if a
+response was lost. Mutations are never automatically replayed. Reopen the
+frontend to reconnect explicitly. The on-demand host and detached lifetime arrive
+in Stage H; terminal release tarballs arrive in Stage I.
 
 All information commands accept `--json` or `--plain`, including before the
 command. The flags are exclusive. Successful data goes to stdout. The CLI

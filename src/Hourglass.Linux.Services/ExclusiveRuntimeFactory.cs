@@ -22,12 +22,14 @@ public sealed class ExclusiveRuntimeFactory : IExclusiveRuntimeFactory
     private readonly Func<HourglassRuntime> createRuntime;
     private readonly ISettingsPathService settingsPaths;
     private readonly ISettingsStore settingsProbe;
+    private readonly string? controlPath;
 
-    public ExclusiveRuntimeFactory() : this(() => new LinuxFileLockSingleInstanceService(), CreateRuntime, new XdgSettingsPathService()) { }
+    public ExclusiveRuntimeFactory() : this(() => new LinuxFileLockSingleInstanceService(), CreateRuntime, new XdgSettingsPathService(), controlPath: RuntimeControlTransport.DefaultPath) { }
 
     public ExclusiveRuntimeFactory(Func<ISingleInstanceService> authority, Func<HourglassRuntime> createRuntime,
-        ISettingsPathService? settingsPaths = null, ISettingsStore? settingsProbe = null)
+        ISettingsPathService? settingsPaths = null, ISettingsStore? settingsProbe = null, string? controlPath = null)
     {
+        this.controlPath = controlPath;
         this.authority = authority ?? throw new ArgumentNullException(nameof(authority));
         this.createRuntime = createRuntime ?? throw new ArgumentNullException(nameof(createRuntime));
         this.settingsPaths = settingsPaths ?? new XdgSettingsPathService();
@@ -38,13 +40,15 @@ public sealed class ExclusiveRuntimeFactory : IExclusiveRuntimeFactory
     {
         ISingleInstanceService? ownership = null;
         HourglassRuntime? runtime = null;
+        RuntimeControlServer? control = null;
         try
         {
             ownership = this.authority();
             if (!await ownership.TryAcquireAsync(cancellationToken).ConfigureAwait(false))
             {
                 ownership.Dispose();
-                return Failed(ApplicationErrorCode.RuntimeUnavailable, "Another runtime is active. Cross-process control is not available yet.");
+                if (this.controlPath == null) { return Failed(ApplicationErrorCode.RuntimeUnavailable, "Another runtime is active."); }
+                return await this.ConnectAsync(cancellationToken).ConfigureAwait(false);
             }
             if (purpose == ExclusiveRuntimePurpose.Sessions && await this.HasUnparsedRecoveryDocumentAsync(cancellationToken).ConfigureAwait(false))
             {
@@ -62,23 +66,44 @@ public sealed class ExclusiveRuntimeFactory : IExclusiveRuntimeFactory
                     return new ApplicationResult<ExclusiveRuntimeLease>.Failure(failed.Error);
                 }
                 runtime.StartScheduler();
+                if (this.controlPath != null)
+                {
+                    control = new RuntimeControlServer(runtime, this.controlPath);
+                    control.Start();
+                    await ownership.StartRequestListenerAsync(GuiLaunchBridge.ForwardAsync, cancellationToken).ConfigureAwait(false);
+                }
             }
             HourglassRuntime ownedRuntime = runtime;
             ISingleInstanceService ownedAuthority = ownership;
+            RuntimeControlServer? ownedControl = control;
             return new ApplicationResult<ExclusiveRuntimeLease>.Success(new(runtime, async () =>
             {
-                try { await ownedRuntime.DisposeAsync().ConfigureAwait(false); }
+                try
+                {
+                    if (ownedControl != null) { await ownedControl.DisposeAsync().ConfigureAwait(false); }
+                    await ownedRuntime.FlushPersistenceAsync().ConfigureAwait(false);
+                    await ownedRuntime.DisposeAsync().ConfigureAwait(false);
+                }
                 finally { ownedAuthority.Dispose(); }
             }));
         }
         catch (Exception exception)
         {
+            if (control != null) { await control.DisposeAsync().ConfigureAwait(false); }
             if (runtime != null) { await runtime.DisposeAsync().ConfigureAwait(false); }
             ownership?.Dispose();
             if (exception is OperationCanceledException && cancellationToken.IsCancellationRequested) { throw; }
             return Failed(exception is IOException or UnauthorizedAccessException ? ApplicationErrorCode.PersistenceFailure
                 : ApplicationErrorCode.RuntimeUnavailable, exception.Message);
         }
+    }
+
+    private async Task<ApplicationResult<ExclusiveRuntimeLease>> ConnectAsync(CancellationToken cancellationToken)
+    {
+        ApplicationResult<RemoteHourglassClient> result = await RemoteHourglassClient.ConnectWhenReadyAsync(this.controlPath, cancellationToken).ConfigureAwait(false);
+        return result is ApplicationResult<RemoteHourglassClient>.Success connected
+            ? new ApplicationResult<ExclusiveRuntimeLease>.Success(new(connected.Value, connected.Value.DisposeAsync))
+            : new ApplicationResult<ExclusiveRuntimeLease>.Failure(((ApplicationResult<RemoteHourglassClient>.Failure)result).Error);
     }
 
     private async Task<bool> HasUnparsedRecoveryDocumentAsync(CancellationToken cancellationToken)

@@ -207,9 +207,9 @@ internal static class CliParity
         root.Subcommands.Add(sounds);
 
         Command doctor = new("doctor", "Inspect local terminal prerequisites.");
-        doctor.SetAction(_ =>
+        doctor.SetAction(async (_, token) =>
         {
-            IReadOnlyList<TerminalDiagnostic> checks = TerminalDiagnostics.Inspect();
+            IReadOnlyList<TerminalDiagnostic> checks = await TerminalDiagnostics.InspectAsync(token).ConfigureAwait(false);
             return output().Data("doctor", new { checks }, checks.Select(check =>
                 $"{CliOutput.Escape(check.Name)}\t{(check.Available ? "available" : "unavailable")}\t{CliOutput.Escape(check.Detail)}"));
         });

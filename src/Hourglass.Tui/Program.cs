@@ -39,7 +39,13 @@ public static class Program
             if (opened is ApplicationResult<ExclusiveRuntimeLease>.Failure unavailable)
             {
                 Console.Error.WriteLine(unavailable.Error.Message);
-                return unavailable.Error.Code == ApplicationErrorCode.PersistenceFailure ? 7 : 4;
+                return unavailable.Error.Code switch
+                {
+                    ApplicationErrorCode.PersistenceFailure => 7,
+                    ApplicationErrorCode.TransportFailure => 5,
+                    ApplicationErrorCode.Unsupported => 6,
+                    _ => 4
+                };
             }
             await using ExclusiveRuntimeLease lease = ((ApplicationResult<ExclusiveRuntimeLease>.Success)opened).Value;
             TuiController controller = new(lease.Client);

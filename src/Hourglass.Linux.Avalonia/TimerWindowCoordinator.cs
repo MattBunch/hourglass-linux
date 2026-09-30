@@ -23,7 +23,14 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
     private static readonly Uri StatusIconResourceUri = new("avares://hourglass-linux/Assets/hourglass.png");
 
     private readonly DesktopProgressController desktopProgressController;
-    private readonly HourglassRuntime runtime;
+    private readonly Func<HourglassRuntime> createRuntime;
+    private HourglassRuntime? runtime;
+    private IHourglassClient? client;
+    private RemoteHourglassClient? remote;
+    private ISingleInstanceService? authority;
+    private RuntimeControlServer? control;
+    private readonly HashSet<string> observedSessions = [];
+    private IHourglassClient Client => this.client ?? throw new InvalidOperationException(nameof(StartAsync));
     private readonly IClassicDesktopStyleApplicationLifetime lifetime;
     private readonly IAudioAlertService audioAlertService;
     private readonly IDiagnosticSink diagnosticSink;
@@ -97,14 +104,18 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
         this.lifetime = lifetime ?? throw new ArgumentNullException(nameof(lifetime));
         this.settingsStore = settingsStore ?? throw new ArgumentNullException(nameof(settingsStore));
         this.diagnosticSink = diagnosticSink ?? NoOpDiagnosticSink.Instance;
-        this.runtime = new HourglassRuntime(this.diagnosticSink, services: new SessionRuntimeServices(notificationService, audioAlertService, sessionInhibitor, systemPowerService,
-            ApplicationStrings.ApplicationTitle, ApplicationStrings.StatusTimerComplete, ApplicationStrings.SessionInhibitionReason), settingsStore: settingsStore);
+        this.createRuntime = () =>
+        {
+            HourglassRuntime owned = new(this.diagnosticSink, services: new SessionRuntimeServices(notificationService, audioAlertService, sessionInhibitor, systemPowerService,
+                ApplicationStrings.ApplicationTitle, ApplicationStrings.StatusTimerComplete, ApplicationStrings.SessionInhibitionReason), settingsStore: settingsStore);
+            owned.ConfigureWakeAlarms(wakeAlarmService ?? throw new ArgumentNullException(nameof(wakeAlarmService)));
+            return owned;
+        };
         this.startupDiagnostics = startupDiagnostics ?? StartupDiagnostics.Disabled;
         this.notificationService = notificationService ?? throw new ArgumentNullException(nameof(notificationService));
         this.audioAlertService = audioAlertService ?? throw new ArgumentNullException(nameof(audioAlertService));
         this.sessionInhibitor = sessionInhibitor ?? throw new ArgumentNullException(nameof(sessionInhibitor));
         this.systemPowerService = systemPowerService ?? throw new ArgumentNullException(nameof(systemPowerService));
-        this.runtime.ConfigureWakeAlarms(wakeAlarmService ?? throw new ArgumentNullException(nameof(wakeAlarmService)));
         this.desktopProgressController = new DesktopProgressController(
             desktopProgressService ?? throw new ArgumentNullException(nameof(desktopProgressService)),
             this.diagnosticSink);
@@ -120,6 +131,30 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
         CancellationToken cancellationToken = default)
     {
         this.startupDiagnostics.Record(StartupStage.CoordinatorStarting);
+        this.authority = new LinuxFileLockSingleInstanceService();
+        if (!await this.authority.TryAcquireAsync(cancellationToken).ConfigureAwait(true))
+        {
+            this.authority.Dispose(); this.authority = null;
+            ApplicationResult<RemoteHourglassClient> connection = await RemoteHourglassClient.ConnectWhenReadyAsync(cancellationToken: cancellationToken).ConfigureAwait(true);
+            if (connection is ApplicationResult<RemoteHourglassClient>.Failure failed) { throw new IOException(failed.Error.Message); }
+            this.remote = ((ApplicationResult<RemoteHourglassClient>.Success)connection).Value;
+            this.client = this.remote;
+            ApplicationResult<ApplicationDataSnapshot> data = await this.Client.GetApplicationDataAsync(cancellationToken).ConfigureAwait(true);
+            if (data is not ApplicationResult<ApplicationDataSnapshot>.Success loaded) { throw new IOException(ApplicationStrings.StatusRuntimeUnavailable); }
+            this.showInNotificationArea = loaded.Value.Settings.ShowInNotificationArea && this.statusIconService.IsSupported;
+            ApplicationResult<System.Collections.Immutable.ImmutableArray<TimerSessionSnapshot>> list = await this.Client.ListSessionsAsync(cancellationToken).ConfigureAwait(true);
+            if (list is not ApplicationResult<System.Collections.Immutable.ImmutableArray<TimerSessionSnapshot>>.Success sessions) { throw new IOException(ApplicationStrings.StatusRuntimeUnavailable); }
+            foreach (TimerSessionSnapshot session in sessions.Value)
+            {
+                this.observedSessions.Add(session.SessionId);
+                this.CreateWindow(session.SessionId);
+            }
+            if (initialRequest?.Kind == SingleInstanceLaunchRequestKind.StartTimer) { this.CreateWindow(launchRequest: initialRequest); }
+            else { this.ActivateMostRelevantWindow(); }
+            return;
+        }
+        this.runtime = this.createRuntime();
+        this.client = this.runtime;
         ApplicationResult<RuntimeStartupSnapshot> result = await this.runtime.InitializeSessionsAsync(
             initialRequest?.Kind == SingleInstanceLaunchRequestKind.StartTimer ? initialRequest.TimerInput : null,
             initialRequest?.TimerTitle, cancellationToken).ConfigureAwait(true);
@@ -127,6 +162,10 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
         {
             throw new InvalidOperationException(nameof(StartAsync));
         }
+        this.runtime.StartScheduler();
+        this.control = new RuntimeControlServer(this.runtime, diagnostics: this.diagnosticSink);
+        this.control.Start();
+        await this.authority.StartRequestListenerAsync((request, _) => SingleInstanceLaunchRequestDispatcher.Shared.DispatchAsync(request), cancellationToken).ConfigureAwait(true);
         this.startupDiagnostics.Record(StartupStage.SettingsLoaded);
         this.showInNotificationArea = started.Value.Data.Settings.ShowInNotificationArea && this.statusIconService.IsSupported;
         foreach (RestoredSession session in started.Value.Sessions)
@@ -155,13 +194,19 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
         this.statusIconService.ActionRequested -= this.StatusIconActionRequested;
         try
         {
+            await this.statusIconService.DisposeAsync().ConfigureAwait(false);
             await this.pendingSessionSave.ConfigureAwait(false);
             await this.desktopProgressController.ClearAsync().ConfigureAwait(false);
-            await this.statusIconService.DisposeAsync().ConfigureAwait(false);
         }
         finally
         {
-            await this.runtime.DisposeAsync().ConfigureAwait(false);
+            try
+            {
+                if (this.control != null) { await this.control.DisposeAsync().ConfigureAwait(false); }
+                if (this.remote != null) { await this.remote.DisposeAsync().ConfigureAwait(false); }
+                if (this.runtime != null) { await this.runtime.DisposeAsync().ConfigureAwait(false); }
+            }
+            finally { this.authority?.Dispose(); }
         }
     }
 
@@ -187,7 +232,9 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
             restoreActiveSessionOnLoad: false,
             uiDispatcher: AvaloniaUiDispatcher.Instance,
             diagnosticSink: this.diagnosticSink,
-            runtime: this.runtime);
+            runtime: this.runtime,
+            client: this.Client,
+            removeSessionOnDispose: sessionId == null || !this.observedSessions.Contains(sessionId));
         this.startupDiagnostics.Record(StartupStage.MainWindowConstructionStarting);
         var window = new MainWindow(
             viewModel,
@@ -515,7 +562,7 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
 
     private async Task FlushSessionSaveAsync()
     {
-        ApplicationResult<bool> result = await this.runtime.FlushPersistenceAsync().ConfigureAwait(false);
+        ApplicationResult<bool> result = await this.Client.FlushPersistenceAsync().ConfigureAwait(false);
         if (result is ApplicationResult<bool>.Failure failed)
         {
             this.RecordDataRecovery("save", "active-sessions", failed.Error.Message, new IOException(failed.Error.Message));
@@ -604,7 +651,10 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
         this.closingWindows.Add(window);
         WindowRegistration registration = this.windows.First(item => item.Window == window);
         await registration.ViewModel.PendingCommands.ConfigureAwait(false);
-        await this.runtime.RemoveAsync(registration.ViewModel.SessionId).ConfigureAwait(false);
+        if (!this.observedSessions.Contains(registration.ViewModel.SessionId))
+        {
+            await this.Client.CloseSessionAsync(registration.ViewModel.SessionId).ConfigureAwait(false);
+        }
         await this.QueueSessionSave().ConfigureAwait(false);
     }
 

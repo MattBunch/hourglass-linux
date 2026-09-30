@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Bounded PTY smoke test for the built Hourglass TUI."""
 
+import json
 import fcntl
 import os
 from pathlib import Path
@@ -20,7 +21,7 @@ DLL = ROOT / "src/Hourglass.Tui/bin/Release/net10.0/hourglass-tui.dll"
 CLI = ROOT / "src/Hourglass.Cli/bin/Release/net10.0/hourglass"
 
 
-def check(actions, size=(80, 24), expected=0, resize=None, fail=False, terminate_at=None, via_cli=False):
+def check(actions, size=(80, 24), expected=0, resize=None, fail=False, terminate_at=None, via_cli=False, environment=None):
     master, slave = pty.openpty()
     before = termios.tcgetattr(slave)
     fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", size[1], size[0], 0, 0))
@@ -28,6 +29,8 @@ def check(actions, size=(80, 24), expected=0, resize=None, fail=False, terminate
     with tempfile.TemporaryDirectory(prefix="hourglass-tui-") as directory:
         env = {**os.environ, "TERM": "xterm-256color", "XDG_CONFIG_HOME": directory,
                "XDG_RUNTIME_DIR": directory}
+        if environment:
+            env.update(environment)
         if fail:
             env["HOURGLASS_TUI_TEST_THROW"] = "1"
         command = [str(CLI), "tui"] if via_cli else ["dotnet", str(DLL)]
@@ -104,4 +107,34 @@ for text in (b"Saved", b"Settings", b"Recent", b"Options"):
     assert text in parity, (text, parity[-800:].decode(errors="replace"))
 check([], expected=130, terminate_at=1)
 check([], expected=1, fail=True)
-print("TUI PTY lifecycle, catalog/settings menus, resize, quit and terminal restoration passed.")
+# Observe a separate CLI authority, create/close TUI-owned sessions, and preserve the observed timer.
+with tempfile.TemporaryDirectory(prefix="hourglass-shared-pty-") as directory:
+    environment = {**os.environ, "XDG_CONFIG_HOME": directory, "XDG_RUNTIME_DIR": directory}
+    owner = subprocess.Popen([str(CLI), "start", "25m", "--title", "Observed", "--json",
+                              "--set", "notifications-enabled=false", "--set", "audio-alerts-enabled=false",
+                              "--set", "do-not-keep-computer-awake=true"],
+                             env=environment, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    try:
+        endpoint = Path(directory) / "hourglass-linux/hourglass-control.sock"
+        deadline = time.monotonic() + 10
+        while not endpoint.exists():
+            assert owner.poll() is None, owner.communicate()
+            assert time.monotonic() < deadline, "CLI authority did not become ready"
+            time.sleep(0.05)
+        def shared_sessions():
+            result = subprocess.run([str(CLI), "list", "--json"], env=environment,
+                                    capture_output=True, timeout=10)
+            assert result.returncode == 0, result.stderr
+            return json.loads(result.stdout)["result"]["sessions"]
+        observed_id = shared_sessions()[0]["sessionId"]
+        attached = check([(1, b"q")], environment=environment)
+        assert b"Observed" in attached, attached[-800:].decode(errors="replace")
+        assert [session["sessionId"] for session in shared_sessions()] == [observed_id]
+        check([(1, b"n"), (1.5, b"5 minutes"), (2, b"\t"), (2.5, b"TUI-owned"),
+               (3, b"\r"), (4, b"q"), (4.5, b"y")], environment=environment)
+        assert [session["sessionId"] for session in shared_sessions()] == [observed_id]
+    finally:
+        if owner.poll() is None:
+            owner.send_signal(signal.SIGTERM)
+        owner.communicate(timeout=10)
+print("TUI PTY workflows, shared authority attachment, owned-session cleanup and terminal restoration passed.")
