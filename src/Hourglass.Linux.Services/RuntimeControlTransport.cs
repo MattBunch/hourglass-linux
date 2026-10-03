@@ -8,7 +8,7 @@ using Hourglass.Application;
 
 internal static class RuntimeControlTransport
 {
-    internal const int Version = 1;
+    internal const int Version = 2;
     private const uint CredentialLength = 12;
     private const int SocketLevel = 1;
     private const int PeerCredentialsOption = 17;

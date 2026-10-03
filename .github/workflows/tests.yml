@@ -43,6 +43,15 @@ jobs:
       - name: CLI runtime control smoke
         run: python3 tests/Hourglass.Cli.Tests/verify-control.py
 
+      - name: Host lifetime smoke
+        run: python3 tests/Hourglass.Host.Tests/verify-host.py
+
+      - name: GUI lifetime smoke
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes xvfb libx11-6 libice6 libsm6 libfontconfig1
+          xvfb-run --auto-servernum python3 tests/Hourglass.Linux.Avalonia.Tests/verify-lifetime.py
+
       - name: TUI terminal smoke
         run: python3 tests/Hourglass.Tui.Tests/verify-terminal.py
 

@@ -192,10 +192,23 @@ public sealed class CliTests
         Assert.Equal(0, factory.Opens);
     }
 
+    [Fact]
+    public async Task DetachedStartReturnsDurableSessionImmediately()
+    {
+        await using HourglassRuntime runtime = new(clock: new Clock(), wallClockNow: () => Now);
+        await runtime.InitializeHostAsync();
+        using StringWriter output = new();
+        using StringWriter error = new();
+        Assert.Equal(0, await new CliApplication(new Factory(runtime), output, error).RunAsync(["start", "25m", "--detach", "--json"]));
+        using JsonDocument document = JsonDocument.Parse(output.ToString());
+        Assert.Equal("detached", document.RootElement.GetProperty("result").GetProperty("outcome").GetString());
+        Assert.Equal("detached", document.RootElement.GetProperty("result").GetProperty("sessions")[0].GetProperty("lifetime").GetString());
+        Assert.Equal(Hourglass.Settings.SessionLifetime.Detached, Assert.Single(Assert.IsType<ApplicationResult<System.Collections.Immutable.ImmutableArray<TimerSessionSnapshot>>.Success>(await runtime.ListSessionsAsync()).Value).Lifetime);
+    }
+
     [Theory]
-    [InlineData(false, 6)]
     [InlineData(true, 2)]
-    public async Task DetachedModeIsRejectedBeforeRuntime(bool wait, int expected)
+    public async Task WaitAndDetachConflictIsRejectedBeforeRuntime(bool wait, int expected)
     {
         Factory factory = new(null);
         using StringWriter output = new();

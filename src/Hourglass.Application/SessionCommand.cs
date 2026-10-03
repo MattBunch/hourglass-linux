@@ -38,4 +38,7 @@ public abstract record SessionCommand(string SessionId)
     public sealed record Unlock(string SessionId) : SessionCommand(SessionId);
 }
 
-public sealed record CreateSessionRequest(string SessionId, string TimerInput, string TimerTitle, TimerDefaults Options, ApplicationPreferences Preferences);
+public sealed record CreateSessionRequest(string SessionId, string TimerInput, string TimerTitle, TimerDefaults Options, ApplicationPreferences Preferences, SessionLifetime Lifetime = SessionLifetime.Gui)
+{
+    internal string? OwnerLeaseId { get; init; }
+}

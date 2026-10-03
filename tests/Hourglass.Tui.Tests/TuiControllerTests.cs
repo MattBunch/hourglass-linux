@@ -39,6 +39,24 @@ public sealed class TuiControllerTests
     }
 
     [Fact]
+    public async Task DetachConfirmationMakesQuitPreserveTimer()
+    {
+        await using HourglassRuntime runtime = Runtime();
+        await runtime.InitializeHostAsync();
+        await using RuntimeClientLease lease = await runtime.OpenClientAsync(RuntimeClientKind.Tui);
+        TuiController tui = new(lease.Client);
+        tui.OpenNew(); tui.SetDraft("25m", "Detached");
+        await tui.SubmitDraftAsync();
+        tui.RequestDetach();
+        Assert.Equal(TuiMode.ConfirmChange, tui.State.Mode);
+        await tui.ConfirmChangeAsync();
+        Assert.Equal(SessionLifetime.Detached, tui.State.Selected?.Lifetime);
+        Assert.True(await tui.RequestQuitAsync());
+        await lease.DisposeAsync();
+        Assert.Single(Assert.IsType<ApplicationResult<System.Collections.Immutable.ImmutableArray<TimerSessionSnapshot>>.Success>(await runtime.ListSessionsAsync()).Value);
+    }
+
+    [Fact]
     public async Task InvalidCreationRetainsDraftAndDoesNotLeaveSession()
     {
         await using HourglassRuntime runtime = Runtime();

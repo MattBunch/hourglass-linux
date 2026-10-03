@@ -4,18 +4,23 @@ namespace Hourglass.Settings;
 
 using System.Text.Json.Serialization;
 
+public enum SessionLifetime { Gui, Foreground, Tui, Detached }
+
 public sealed record ActiveTimerSessionDefinition
 {
     [JsonConstructor]
-    public ActiveTimerSessionDefinition(string sessionId, ActiveTimerSessionDocument? session)
+    public ActiveTimerSessionDefinition(string sessionId, ActiveTimerSessionDocument? session, SessionLifetime lifetime = SessionLifetime.Gui)
     {
         this.SessionId = string.IsNullOrWhiteSpace(sessionId) ? Guid.NewGuid().ToString("N") : sessionId.Trim();
         this.Session = session;
+        this.Lifetime = lifetime;
     }
 
     public string SessionId { get; }
 
     public ActiveTimerSessionDocument? Session { get; }
+
+    public SessionLifetime Lifetime { get; }
 
     public bool IsValid => this.Session != null;
 }
@@ -47,7 +52,7 @@ public sealed record ActiveTimerSessionsDocument
     {
         ArgumentNullException.ThrowIfNull(session);
 
-        ActiveTimerSessionDefinition replacement = new(sessionId, session);
+        ActiveTimerSessionDefinition replacement = new(sessionId, session, this.sessions.FirstOrDefault(item => item.SessionId == sessionId)?.Lifetime ?? SessionLifetime.Gui);
         ActiveTimerSessionDefinition[] updated = this.sessions
             .Where(existing => !StringComparer.Ordinal.Equals(existing.SessionId, replacement.SessionId))
             .Append(replacement)

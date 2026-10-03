@@ -11,6 +11,8 @@ public sealed partial class HourglassRuntime
         ArgumentNullException.ThrowIfNull(request);
         return this.QueryAsync(() =>
         {
+            if (this.authorityDraining) { return Failure(ApplicationErrorCode.RuntimeUnavailable, "Runtime authority is shutting down."); }
+            if (!Enum.IsDefined(request.Lifetime) || (request.OwnerLeaseId != null && !this.clientLeases.ContainsKey(request.OwnerLeaseId))) { return Failure(ApplicationErrorCode.Validation, "Invalid session ownership."); }
             if (string.IsNullOrWhiteSpace(request.SessionId) || request.TimerInput == null || request.TimerTitle == null || request.Options == null || request.Preferences == null)
             {
                 return Failure(ApplicationErrorCode.Validation, "Session metadata is required.");
@@ -21,8 +23,9 @@ public sealed partial class HourglassRuntime
             }
             TimerSession session = new(this.clock);
             session.CommitMetadata(request.TimerInput, request.TimerTitle, request.Options, request.Preferences);
+            session.SetLifetime(request.Lifetime);
             SessionEffects effects = new(this, session, this.services.Notifications, this.services.Audio, this.services.Inhibitor, this.services.Power, this.diagnostics);
-            this.sessions.Add(request.SessionId, new SessionRegistration(session, _ => { }, Effects: effects, Id: request.SessionId, Authoritative: true));
+            this.sessions.Add(request.SessionId, new SessionRegistration(session, _ => { }, Effects: effects, Id: request.SessionId, Authoritative: true) { OwnerLeaseId = request.OwnerLeaseId });
             this.QueuePersistence();
             this.QueueWakeAlarm();
             return Success(session.Snapshot(request.SessionId));

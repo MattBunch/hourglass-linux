@@ -10,8 +10,10 @@ public sealed record ForegroundOutcome(TimerSessionSnapshot Session, ForegroundC
 
 public sealed partial class HourglassRuntime
 {
-    public async Task<ApplicationResult<ImmutableArray<ForegroundOutcome>>> RunSavedForegroundAsync(
-        SavedTimerSelection selection, CancellationToken cancellationToken = default)
+    public Task<ApplicationResult<ImmutableArray<ForegroundOutcome>>> RunSavedForegroundAsync(
+        SavedTimerSelection selection, CancellationToken cancellationToken = default) => this.RunSavedForegroundCoreAsync(selection, null, cancellationToken);
+
+    internal async Task<ApplicationResult<ImmutableArray<ForegroundOutcome>>> RunSavedForegroundCoreAsync(SavedTimerSelection selection, string? ownerId, CancellationToken cancellationToken)
     {
         ApplicationResult<ImmutableArray<SavedTimerDefinition>> resolved = await this.ResolveSavedAsync(selection, cancellationToken).ConfigureAwait(false);
         if (resolved is ApplicationResult<ImmutableArray<SavedTimerDefinition>>.Failure failed)
@@ -25,7 +27,8 @@ public sealed partial class HourglassRuntime
         {
             LinuxAppSettings settings = NormalizeThemeSelection(template.Options.ApplyTo(data.Settings), data.CustomThemes);
             return this.RunForegroundAsync(new(Guid.NewGuid().ToString("N"), template.TimerInput, template.TimerTitle,
-                TimerDefaults.FromSettings(settings), ApplicationPreferences.FromSettings(settings)), batch.Token);
+                TimerDefaults.FromSettings(settings), ApplicationPreferences.FromSettings(settings))
+            { OwnerLeaseId = ownerId }, batch.Token);
         }).ToArray();
         try
         {
@@ -128,6 +131,7 @@ public sealed partial class HourglassRuntime
     public async Task<ApplicationResult<ForegroundOutcome>> RunForegroundAsync(CreateSessionRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
+        request = request with { Lifetime = SessionLifetime.Foreground };
         ApplicationResult<bool> validated = await this.QueryAsync(() =>
         {
             if (request.TimerInput == null) { return (ApplicationResult<bool>)new ApplicationResult<bool>.Failure(new(ApplicationErrorCode.Validation, "Timer input is required.")); }

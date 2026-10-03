@@ -597,7 +597,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged, IDispo
     public bool CanModifyCustomThemes => !this.IsTimerModificationLocked;
 
     public bool ShouldPromptOnExit =>
-        this.settings.PromptOnExit && (this.sessionSnapshot.Countdown.State is TimerState.Running or TimerState.Paused);
+        this.sessionSnapshot.Lifetime != SessionLifetime.Detached && this.settings.PromptOnExit && (this.sessionSnapshot.Countdown.State is TimerState.Running or TimerState.Paused);
 
     public StatusIconMenuState StatusIconMenuState => new(
         this.WindowTitle,
@@ -752,7 +752,13 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged, IDispo
     {
         await this.PendingCommands.ConfigureAwait(false);
         this.subscription?.Dispose();
-        Task removal = this.removeSessionOnDispose ? this.client.CloseSessionAsync(this.SessionId) : Task.CompletedTask;
+        Task removal = Task.CompletedTask;
+        if (this.removeSessionOnDispose)
+        {
+            ApplicationResult<TimerSessionSnapshot> current = await this.client.GetSessionAsync(this.SessionId).ConfigureAwait(false);
+            if (current is ApplicationResult<TimerSessionSnapshot>.Success selected && selected.Value.Lifetime != SessionLifetime.Detached)
+            { removal = this.client.CloseSessionAsync(this.SessionId); }
+        }
         Task cancelPreview = this.StopAudioPreviewAsync();
         if (this.runtime != null) { await this.runtime.DrainAsync(Task.WhenAll(cancelPreview, this.pendingAudioPreview), "audio-preview").ConfigureAwait(false); }
         else { await Task.WhenAll(cancelPreview, this.pendingAudioPreview).ConfigureAwait(false); }

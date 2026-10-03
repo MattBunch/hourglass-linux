@@ -26,3 +26,7 @@ public sealed record SettingsChange(LinuxAppSettings Previous, LinuxAppSettings 
 public sealed record SavedDocumentChange(SavedTimersDocument Previous, SavedTimersDocument Requested);
 public sealed record ThemeDocumentChange(CustomThemesDocument Previous, CustomThemesDocument Requested);
 public sealed record PresentationChange(string SessionId, SessionPresentation Presentation);
+
+public sealed record ControlHello(RuntimeClientKind Kind = RuntimeClientKind.Control);
+public sealed record DetachRequest(string SessionId, long ExpectedRevision);
+public sealed record GuiInitialization(string? LaunchInput = null, string? LaunchTitle = null);

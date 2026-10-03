@@ -52,8 +52,11 @@ internal static class CliParity
         run.Arguments.Add(selector);
         run.Options.Add(all);
         run.Options.Add(wait);
+        Option<bool> detach = new("--detach");
+        run.Options.Add(detach);
         run.SetAction((parse, token) =>
         {
+            if (parse.GetValue(wait) && parse.GetValue(detach)) { return Task.FromResult(output().Failure("saved run", new(ApplicationErrorCode.Validation, "--wait and --detach cannot be combined."))); }
             string? selected = parse.GetValue(selector);
             if (parse.GetValue(all) == (selected != null))
             {
@@ -62,6 +65,12 @@ internal static class CliParity
             return withRuntime(ExclusiveRuntimePurpose.Sessions, async client =>
             {
                 SavedTimerSelection choice = parse.GetValue(all) ? new SavedTimerSelection.All() : new SavedTimerSelection.ByNameOrId(selected!);
+                if (parse.GetValue(detach))
+                {
+                    var detached = await client.StartSavedDetachedAsync(choice, token).ConfigureAwait(false);
+                    return detached is ApplicationResult<System.Collections.Immutable.ImmutableArray<TimerSessionSnapshot>>.Success started
+                        ? output().Sessions("saved run", started.Value, "detached") : output().Failure("saved run", ((ApplicationResult<System.Collections.Immutable.ImmutableArray<TimerSessionSnapshot>>.Failure)detached).Error);
+                }
                 var result = await client.RunSavedForegroundAsync(choice, token).ConfigureAwait(false);
                 if (result is ApplicationResult<System.Collections.Immutable.ImmutableArray<ForegroundOutcome>>.Failure failed) { return output().Failure("saved run", failed.Error); }
                 var outcomes = ((ApplicationResult<System.Collections.Immutable.ImmutableArray<ForegroundOutcome>>.Success)result).Value;
@@ -152,7 +161,7 @@ internal static class CliParity
         update.Options.Add(newTitle);
         update.Options.Add(revision);
         update.Options.Add(changes);
-        update.SetAction((parse, token) => withRuntime(ExclusiveRuntimePurpose.Query, async client =>
+        update.SetAction((parse, token) => withRuntime(ExclusiveRuntimePurpose.Control, async client =>
         {
             string id = parse.GetValue(sessionId) ?? string.Empty;
             var existing = await client.GetSessionAsync(id, token).ConfigureAwait(false);
@@ -174,7 +183,7 @@ internal static class CliParity
         Command unlock = new("unlock");
         Argument<string> unlockId = new("id");
         unlock.Arguments.Add(unlockId);
-        unlock.SetAction((parse, token) => withRuntime(ExclusiveRuntimePurpose.Query, async client =>
+        unlock.SetAction((parse, token) => withRuntime(ExclusiveRuntimePurpose.Control, async client =>
         {
             var result = await client.ExecuteAsync(new SessionCommand.Unlock(parse.GetValue(unlockId) ?? string.Empty), token).ConfigureAwait(false);
             if (result is ApplicationResult<TimerSessionSnapshot>.Failure failed) { return output().Failure("unlock", failed.Error); }

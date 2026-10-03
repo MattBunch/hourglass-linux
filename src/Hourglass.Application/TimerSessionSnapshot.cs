@@ -14,7 +14,8 @@ public sealed record TimerSessionSnapshot(
     TimerDefaults Options,
     SessionActions AllowedActions,
     ApplicationPreferences Preferences,
-    long PublicationSequence = 0)
+    long PublicationSequence = 0,
+    SessionLifetime Lifetime = SessionLifetime.Gui)
 {
     public TimerSessionSnapshot(string sessionId, long revision, string timerInput, string timerTitle,
         CountdownState countdown, TimerDefaults options, SessionActions allowedActions)

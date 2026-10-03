@@ -10,7 +10,7 @@ public static class Program
     {
         if (args is ["--help"] or ["-h"])
         {
-            Console.Out.WriteLine("hourglass-tui: interactive Hourglass timer. Keys: n new, e edit, Tab select, Space pause/resume, ? help, q quit.");
+            Console.Out.WriteLine("hourglass-tui: interactive Hourglass timer. Keys: n new, e edit, Tab select, Space pause/resume, d detach, ? help, q quit.");
             return 0;
         }
         if (args is ["--version"])
@@ -35,7 +35,7 @@ public static class Program
         try
         {
             ApplicationResult<ExclusiveRuntimeLease> opened = await new ExclusiveRuntimeFactory()
-                .OpenAsync(ExclusiveRuntimePurpose.Sessions, interrupted.Token).ConfigureAwait(false);
+                .OpenAsync(ExclusiveRuntimePurpose.Tui, interrupted.Token).ConfigureAwait(false);
             if (opened is ApplicationResult<ExclusiveRuntimeLease>.Failure unavailable)
             {
                 Console.Error.WriteLine(unavailable.Error.Message);

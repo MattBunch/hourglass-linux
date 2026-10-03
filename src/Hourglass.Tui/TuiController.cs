@@ -31,6 +31,7 @@ public sealed class TuiController(IHourglassClient client)
     private LinuxAppSettings settings = LinuxAppSettings.Default;
     private int menuIndex;
     private string? pendingChange;
+    private DetachRequest? pendingDetach;
     private TuiMode returnMode = TuiMode.Dashboard;
     private CancellationTokenSource? previewCancellation;
     private Task previewTask = Task.CompletedTask;
@@ -230,7 +231,7 @@ public sealed class TuiController(IHourglassClient client)
     public async Task<bool> RequestQuitAsync(CancellationToken cancellationToken = default)
     {
         if (this.disconnected) { return true; }
-        if (this.state.Mode != TuiMode.ConfirmQuit && this.state.Sessions.Any(session => this.ownedIds.Contains(session.SessionId)
+        if (this.state.Mode != TuiMode.ConfirmQuit && this.state.Sessions.Any(session => this.ownedIds.Contains(session.SessionId) && session.Lifetime != SessionLifetime.Detached
             && session.Preferences.PromptOnExit && session.Countdown.State is TimerState.Running or TimerState.Paused))
         {
             this.Change(this.state with { Mode = TuiMode.ConfirmQuit });
@@ -247,6 +248,8 @@ public sealed class TuiController(IHourglassClient client)
         ApplicationError? firstFailure = null;
         foreach (string id in this.ownedIds.Order(StringComparer.Ordinal).ToArray())
         {
+            ApplicationResult<TimerSessionSnapshot> current = await client.GetSessionAsync(id, cancellationToken).ConfigureAwait(false);
+            if (current is ApplicationResult<TimerSessionSnapshot>.Success selected && selected.Value.Lifetime == SessionLifetime.Detached) { this.ownedIds.Remove(id); continue; }
             ApplicationResult<bool> closed = await client.CloseSessionAsync(id, cancellationToken).ConfigureAwait(false);
             if (closed is ApplicationResult<bool>.Failure failure && failure.Error.Code != ApplicationErrorCode.NotFound)
             {
@@ -373,9 +376,20 @@ public sealed class TuiController(IHourglassClient client)
         this.Change(this.state with { Mode = TuiMode.ConfirmChange, Error = null });
     }
 
+    public void RequestDetach()
+    {
+        if (!this.CanMutate() || this.state.Selected is not { } session) { return; }
+        if (session.Lifetime is SessionLifetime.Detached or SessionLifetime.Foreground) { this.ShowError("This session cannot be detached."); return; }
+        this.pendingDetach = new(session.SessionId, session.Revision);
+        this.pendingChange = "detach timer";
+        this.returnMode = TuiMode.Dashboard;
+        this.Change(this.state with { Mode = TuiMode.ConfirmChange, Error = null });
+    }
+
     public void CancelChange()
     {
         this.pendingChange = null;
+        this.pendingDetach = null;
         this.Change(this.state with { Mode = this.returnMode, Error = null });
     }
 
@@ -385,7 +399,16 @@ public sealed class TuiController(IHourglassClient client)
         string? change = this.pendingChange;
         this.pendingChange = null;
         if (change == null) { this.Back(); return; }
-        if (change.StartsWith("saved:", StringComparison.Ordinal))
+        if (change == "detach timer" && this.pendingDetach is { } detach)
+        {
+            this.pendingDetach = null;
+            var result = await client.DetachSessionAsync(detach.SessionId, detach.ExpectedRevision, cancellationToken).ConfigureAwait(false);
+            if (result is ApplicationResult<TimerSessionSnapshot>.Failure failure) { this.ShowError(failure.Error.Message); return; }
+            this.ownedIds.Remove(detach.SessionId);
+            this.Change(this.state with { Mode = TuiMode.Dashboard, Error = null });
+            await this.RefreshAsync(cancellationToken).ConfigureAwait(false);
+        }
+        else if (change.StartsWith("saved:", StringComparison.Ordinal))
         {
             SavedTimerChange action = change == "saved:clear" ? new SavedTimerChange.Clear()
                 : new SavedTimerChange.Remove(change[6..]);

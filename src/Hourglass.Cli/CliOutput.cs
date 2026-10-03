@@ -10,12 +10,12 @@ public enum CliOutputMode { Human, Plain, Json }
 
 public sealed record CliSession(string SessionId, long Revision, string State, string Input, string Title,
     double? RemainingMilliseconds, double? ElapsedMilliseconds, double? TotalMilliseconds,
-    double ProgressPercent, TimerDefaults Options, ApplicationPreferences Preferences)
+    double ProgressPercent, TimerDefaults Options, ApplicationPreferences Preferences, string Lifetime)
 {
     public static CliSession FromSnapshot(TimerSessionSnapshot session) => new(session.SessionId, session.Revision,
         session.Countdown.State.ToString().ToLowerInvariant(), session.TimerInput, session.TimerTitle,
         session.Countdown.TimeLeft?.TotalMilliseconds, session.Countdown.TimeElapsed?.TotalMilliseconds, session.Countdown.TotalTime?.TotalMilliseconds,
-        TimerDisplay.GetProgressPercent(session.Countdown, session.Options.ReverseProgressBar), session.Options, session.Preferences);
+        TimerDisplay.GetProgressPercent(session.Countdown, session.Options.ReverseProgressBar), session.Options, session.Preferences, session.Lifetime.ToString().ToLowerInvariant());
 }
 
 internal sealed class CliOutput(TextWriter output, TextWriter error, CliOutputMode mode)
@@ -40,12 +40,12 @@ internal sealed class CliOutput(TextWriter output, TextWriter error, CliOutputMo
         }
         else if (mode == CliOutputMode.Plain)
         {
-            output.WriteLine("sessionId\tstate\ttitle\tinput\tremainingMilliseconds\telapsedMilliseconds\ttotalMilliseconds\tprogressPercent\trevision");
+            output.WriteLine("sessionId\tstate\ttitle\tinput\tremainingMilliseconds\telapsedMilliseconds\ttotalMilliseconds\tprogressPercent\trevision\tlifetime");
             foreach (CliSession session in values)
             {
                 output.WriteLine(string.Join('\t', Escape(session.SessionId), session.State, Escape(session.Title), Escape(session.Input),
                     Number(session.RemainingMilliseconds), Number(session.ElapsedMilliseconds), Number(session.TotalMilliseconds),
-                    Number(session.ProgressPercent), session.Revision.ToString(CultureInfo.InvariantCulture)));
+                    Number(session.ProgressPercent), session.Revision.ToString(CultureInfo.InvariantCulture), session.Lifetime));
             }
         }
         else
@@ -53,7 +53,7 @@ internal sealed class CliOutput(TextWriter output, TextWriter error, CliOutputMo
             if (values.Length == 0) { output.WriteLine("No live sessions."); }
             foreach (CliSession session in values)
             {
-                output.WriteLine($"{Escape(session.SessionId)}  {session.State}  {Escape(session.Title)}  {Escape(session.Input)}  {Number(session.RemainingMilliseconds)} ms remaining");
+                output.WriteLine($"{Escape(session.SessionId)}  {session.State} [{session.Lifetime}]  {Escape(session.Title)}  {Escape(session.Input)}  {Number(session.RemainingMilliseconds)} ms remaining");
             }
         }
         return 0;

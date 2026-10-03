@@ -1,4 +1,4 @@
-# Hourglass TUI (DEV-18 Stage G)
+# Hourglass TUI (DEV-18 Stage H)
 
 Build the modern solution in Release, then run `src/Hourglass.Tui/bin/Release/net10.0/hourglass-tui`. `hourglass tui` launches the same interface from the CLI build. `--help` and `--version` work without a terminal.
 
@@ -15,6 +15,7 @@ The TUI shows live timer snapshots from the shared application runtime. At 80×2
 | Tab / Shift+Tab | Select next / previous timer |
 | Escape | Dismiss eligible stopped or expired timer |
 | `u` | Unlock selected timer |
+| `d` | Confirm detachment of selected GUI/TUI timer |
 | `v` | Saved timers |
 | `c` | Recent inputs |
 | `,` | Shared settings |
@@ -32,18 +33,24 @@ to select a key, Enter to toggle/cycle its value, and `p` to preview the
 chosen sound. Session edits use the latest revision and report conflicts.
 Escape returns to the dashboard. Service errors remain visible in status.
 
-The TUI connects to an active GUI/terminal authority, or acquires the same
-per-user authority lock to own a local runtime. Observed sessions remain alive
-when this TUI quits. Ordinary quit closes only TUI-created timers, using the
-existing prompt-on-exit preference. Ctrl+C/SIGTERM closes owned timers and returns
-130. A save failure returns 7 after terminal restoration; an unexpected exception
-returns 1 and preserves recovery checkpoints.
+The TUI connects to GUI authority or starts an on-demand host. Ordinary quit closes
+only its non-detached timers using the existing prompt preference; observed and
+detached sessions remain alive. Ctrl+C/SIGTERM closes ordinary owned timers and
+returns 130. A save failure returns 7 after terminal restoration; unexpected
+exceptions return 1. Connection loss closes ordinary TUI-owned sessions.
 
-Owner exit disconnects attached frontends. The TUI displays the disconnection,
-disables mutations, and permits quit; reopen it to reconnect. Connection errors
-return 5 and incompatible protocols return 6. With no authority, existing GUI
-recovery sessions still require the GUI before the TUI can become the owner.
-The on-demand host and detached lifetime arrive in Stage H. Terminal release
-tarballs arrive in Stage I.
+Authority loss is displayed, disables mutations and permits quit. Reopen the TUI
+to reconnect. Connection errors return 5 and incompatible protocols return 6.
+Terminal startup preserves GUI recovery records until shared GUI initialization.
+Terminal release tarballs arrive in Stage I.
 
 The bounded PTY smoke test is `python3 tests/Hourglass.Tui.Tests/verify-terminal.py` after a Release build. It checks keyboard workflows, resize, interruption, exception cleanup, and terminal mode restoration. Attended terminal emulators, SSH, screen readers, and physical desktop services require separate validation.
+
+## Session lifetime (Stage H)
+
+The TUI attaches to GUI authority or an on-demand host. Dashboard `d` confirms
+detachment of the selected GUI/TUI timer; the detail and session list show its
+lifetime. Detached and observed sessions survive TUI quit. Exit prompts and cleanup
+apply only to the TUI’s ordinary sessions, including cleanup after connection loss.
+Detachment is one-way and preserves countdown state; locked timers require unlocking.
+See [runtime control](linux-port/runtime-control.md) for host and crash recovery rules.

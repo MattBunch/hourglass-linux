@@ -196,7 +196,7 @@ public sealed class Milestone6CoordinatorTests
         int windowClosedStart = coordinator.IndexOf("private void WindowClosed(object? sender, EventArgs e)", StringComparison.Ordinal);
         int statusIconActionStart = coordinator.IndexOf("private void StatusIconActionRequested", StringComparison.Ordinal);
         int shutdownHelperStart = coordinator.IndexOf(
-            "private async Task ShutdownAfterFinalSessionSaveAsync(Task sessionSave)",
+            "private async Task ShutdownAfterFinalSessionSaveAsync(Task sessionSave, long generation)",
             StringComparison.Ordinal);
         int prepareCloseStart = coordinator.IndexOf("private async Task PrepareWindowCloseAsync", StringComparison.Ordinal);
 
@@ -208,7 +208,8 @@ public sealed class Milestone6CoordinatorTests
         string shutdownHelper = coordinator[shutdownHelperStart..prepareCloseStart];
 
         Assert.Contains("Task sessionSave = this.QueueSessionSave();", windowClosedMethod, StringComparison.Ordinal);
-        Assert.Contains("_ = this.ShutdownAfterFinalSessionSaveAsync(sessionSave);", windowClosedMethod, StringComparison.Ordinal);
+        Assert.Contains("_ = this.ShutdownAfterFinalSessionSaveAsync(sessionSave, ++this.shutdownGeneration);", windowClosedMethod, StringComparison.Ordinal);
+        Assert.Contains("if (generation != this.shutdownGeneration) { return; }", shutdownHelper, StringComparison.Ordinal);
         Assert.DoesNotContain("this.lifetime.Shutdown();", windowClosedMethod, StringComparison.Ordinal);
         Assert.Contains("await sessionSave.ConfigureAwait(true);", shutdownHelper, StringComparison.Ordinal);
         Assert.Contains("this.lifetime.Shutdown();", shutdownHelper, StringComparison.Ordinal);

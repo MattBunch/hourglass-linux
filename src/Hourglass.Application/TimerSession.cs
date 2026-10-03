@@ -20,6 +20,8 @@ internal sealed class TimerSession : IDisposable
     internal string TimerTitle { get; private set; } = string.Empty;
     internal TimerDefaults Options { get; private set; } = new();
     internal ApplicationPreferences Preferences { get; private set; } = new();
+    internal SessionLifetime Lifetime { get; private set; }
+    internal void SetLifetime(SessionLifetime lifetime) { if (this.Lifetime != lifetime) { this.Lifetime = lifetime; this.commandRevision++; } }
     internal long PublicationSequence { get; set; }
     internal long CommandRevision => this.commandRevision;
     internal void InvalidateLifecycle() => Interlocked.Increment(ref this.revision);
@@ -57,7 +59,7 @@ internal sealed class TimerSession : IDisposable
             };
             if (this.Countdown.SupportsRestart) { actions |= SessionActions.Restart; }
         }
-        return new(id, this.commandRevision, this.TimerInput, this.TimerTitle, this.Countdown, this.Options, actions, this.Preferences, this.PublicationSequence);
+        return new(id, this.commandRevision, this.TimerInput, this.TimerTitle, this.Countdown, this.Options, actions, this.Preferences, this.PublicationSequence, this.Lifetime);
     }
 
     public TimerSession(CountdownEngine engine)

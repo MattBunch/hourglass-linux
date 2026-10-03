@@ -65,7 +65,7 @@ public sealed class TuiShell(TuiController controller, CancellationToken interru
             }
             else if (state.Mode == TuiMode.Help)
             {
-                detail.Text = "n new   e edit   Enter start\nSpace/Ctrl+P pause or resume\ns/Ctrl+S stop   r/Ctrl+R restart\nTab/Shift+Tab select   Esc dismiss\nv saved   c recent   , settings   o options\nu unlock   q/Ctrl+Q quit\nEsc returns to the dashboard";
+                detail.Text = "n new   e edit   Enter start\nSpace/Ctrl+P pause or resume\ns/Ctrl+S stop   r/Ctrl+R restart\nTab/Shift+Tab select   Esc dismiss\nv saved   c recent   , settings   o options\nu unlock   d detach   q/Ctrl+Q quit\nEsc returns to the dashboard";
             }
             else if (state.Mode == TuiMode.ConfirmQuit)
             {
@@ -110,14 +110,14 @@ public sealed class TuiShell(TuiController controller, CancellationToken interru
                 TimeSpan? time = elapsedMode ? selected.Countdown.TimeElapsed : selected.Countdown.TimeLeft;
                 string display = time is TimeSpan value ? TimerDisplay.FormatTimerTime(value) : "--:--:--";
                 double progress = TimerDisplay.GetProgressPercent(selected.Countdown, selected.Options.ReverseProgressBar);
-                detail.Text = $"{selected.TimerTitle}\n{selected.Countdown.State}   {(elapsedMode ? "Elapsed" : "Remaining")}: {display}\nProgress: {progress:0}%\n{selected.TimerInput}\n\nEnter start   Space pause/resume\ns stop   r restart   e edit\nEsc dismiss   u unlock   ? help";
+                detail.Text = $"{selected.TimerTitle}\n{selected.Countdown.State} [{selected.Lifetime}]   {(elapsedMode ? "Elapsed" : "Remaining")}: {display}\nProgress: {progress:0}%\n{selected.TimerInput}\n\nEnter start   Space pause/resume\ns stop   r restart   e edit\nEsc dismiss   u unlock   d detach   ? help";
             }
             else { detail.Text = "No live timers. Press n to create one.\n? help   q quit"; }
 
             if (list.Visible)
             {
                 list.Text = "Sessions\n" + string.Join('\n', state.Sessions.Take(Math.Max(1, height - 8)).Select(session =>
-                    $"{(session.SessionId == state.SelectedId ? '>' : ' ')} {session.TimerTitle} [{session.Countdown.State}]"));
+                    $"{(session.SessionId == state.SelectedId ? '>' : ' ')} {session.TimerTitle} [{session.Countdown.State}] [{session.Lifetime}]"));
             }
             string modeHelp = editing ? "Enter save   Tab fields   Esc cancel" : menu ? "Up/Down select   Esc back   q quit" : "n new   Tab select   ? help   q quit";
             status.Text = $"{(state.Busy ? "Working..." : modeHelp)}\n{state.Error ?? string.Empty}";
@@ -251,6 +251,7 @@ public sealed class TuiShell(TuiController controller, CancellationToken interru
             else if (key == Key.S || key == Key.S.WithCtrl) { key.Handled = true; _ = ExecuteAsync(() => controller.ActAsync("stop", interruption)); }
             else if (key == Key.R || key == Key.R.WithCtrl) { key.Handled = true; _ = ExecuteAsync(() => controller.ActAsync("restart", interruption)); }
             else if (key == Key.Esc) { key.Handled = true; _ = ExecuteAsync(() => controller.ActAsync("dismiss", interruption)); }
+            else if (key == Key.D) { controller.RequestDetach(); key.Handled = true; }
             else if (key == Key.U) { key.Handled = true; _ = ExecuteAsync(() => controller.ActAsync("unlock", interruption)); }
             else if (key.ToString() == "?" || key == Key.F1) { controller.ShowHelp(); key.Handled = true; }
             else if (key == Key.Q) { key.Handled = true; _ = ExecuteAsync(QuitAsync); }

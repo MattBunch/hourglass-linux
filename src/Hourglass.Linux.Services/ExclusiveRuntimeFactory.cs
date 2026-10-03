@@ -3,7 +3,7 @@ namespace Hourglass.Linux.Services;
 using Hourglass.Application;
 using Hourglass.Platform;
 
-public enum ExclusiveRuntimePurpose { Query, Sessions }
+public enum ExclusiveRuntimePurpose { Query, Sessions, Control, Tui }
 
 public interface IExclusiveRuntimeFactory
 {
@@ -23,13 +23,15 @@ public sealed class ExclusiveRuntimeFactory : IExclusiveRuntimeFactory
     private readonly ISettingsPathService settingsPaths;
     private readonly ISettingsStore settingsProbe;
     private readonly string? controlPath;
+    private readonly HostBootstrap? host;
 
-    public ExclusiveRuntimeFactory() : this(() => new LinuxFileLockSingleInstanceService(), CreateRuntime, new XdgSettingsPathService(), controlPath: RuntimeControlTransport.DefaultPath) { }
+    public ExclusiveRuntimeFactory() : this(() => new LinuxFileLockSingleInstanceService(), CreateRuntime, new XdgSettingsPathService(), controlPath: RuntimeControlTransport.DefaultPath, host: new HostBootstrap()) { }
 
     public ExclusiveRuntimeFactory(Func<ISingleInstanceService> authority, Func<HourglassRuntime> createRuntime,
-        ISettingsPathService? settingsPaths = null, ISettingsStore? settingsProbe = null, string? controlPath = null)
+        ISettingsPathService? settingsPaths = null, ISettingsStore? settingsProbe = null, string? controlPath = null, HostBootstrap? host = null)
     {
         this.controlPath = controlPath;
+        this.host = host;
         this.authority = authority ?? throw new ArgumentNullException(nameof(authority));
         this.createRuntime = createRuntime ?? throw new ArgumentNullException(nameof(createRuntime));
         this.settingsPaths = settingsPaths ?? new XdgSettingsPathService();
@@ -48,9 +50,18 @@ public sealed class ExclusiveRuntimeFactory : IExclusiveRuntimeFactory
             {
                 ownership.Dispose();
                 if (this.controlPath == null) { return Failed(ApplicationErrorCode.RuntimeUnavailable, "Another runtime is active."); }
-                return await this.ConnectAsync(cancellationToken).ConfigureAwait(false);
+                return await this.ConnectAsync(purpose, cancellationToken).ConfigureAwait(false);
             }
-            if (purpose == ExclusiveRuntimePurpose.Sessions && await this.HasUnparsedRecoveryDocumentAsync(cancellationToken).ConfigureAwait(false))
+            if (this.host != null && purpose != ExclusiveRuntimePurpose.Query)
+            {
+                ownership.Dispose(); ownership = null;
+                if (await HasUnreadableRecoveryAsync(this.settingsPaths, this.settingsProbe, cancellationToken).ConfigureAwait(false)) { return Failed(ApplicationErrorCode.PersistenceFailure, "Unreadable recovery document; restore or dismiss it through the GUI."); }
+                ApplicationResult<RemoteHourglassClient> connected = await this.host.StartAsync(Kind(purpose), cancellationToken).ConfigureAwait(false);
+                return connected is ApplicationResult<RemoteHourglassClient>.Success ready
+                    ? new ApplicationResult<ExclusiveRuntimeLease>.Success(new(ready.Value, ready.Value.DisposeAsync))
+                    : new ApplicationResult<ExclusiveRuntimeLease>.Failure(((ApplicationResult<RemoteHourglassClient>.Failure)connected).Error);
+            }
+            if (purpose == ExclusiveRuntimePurpose.Sessions && await HasUnreadableRecoveryAsync(this.settingsPaths, this.settingsProbe, cancellationToken).ConfigureAwait(false))
             {
                 ownership.Dispose();
                 return Failed(ApplicationErrorCode.RuntimeUnavailable, "An unreadable recovery document is present; restore or dismiss it through the GUI.");
@@ -98,28 +109,30 @@ public sealed class ExclusiveRuntimeFactory : IExclusiveRuntimeFactory
         }
     }
 
-    private async Task<ApplicationResult<ExclusiveRuntimeLease>> ConnectAsync(CancellationToken cancellationToken)
+    private async Task<ApplicationResult<ExclusiveRuntimeLease>> ConnectAsync(ExclusiveRuntimePurpose purpose, CancellationToken cancellationToken)
     {
-        ApplicationResult<RemoteHourglassClient> result = await RemoteHourglassClient.ConnectWhenReadyAsync(this.controlPath, cancellationToken).ConfigureAwait(false);
+        ApplicationResult<RemoteHourglassClient> result = await RemoteHourglassClient.ConnectWhenReadyAsync(this.controlPath, cancellationToken, Kind(purpose)).ConfigureAwait(false);
         return result is ApplicationResult<RemoteHourglassClient>.Success connected
             ? new ApplicationResult<ExclusiveRuntimeLease>.Success(new(connected.Value, connected.Value.DisposeAsync))
             : new ApplicationResult<ExclusiveRuntimeLease>.Failure(((ApplicationResult<RemoteHourglassClient>.Failure)result).Error);
     }
 
-    private async Task<bool> HasUnparsedRecoveryDocumentAsync(CancellationToken cancellationToken)
+    public static async Task<bool> HasUnreadableRecoveryAsync(ISettingsPathService settingsPaths, ISettingsStore settingsProbe, CancellationToken cancellationToken)
     {
-        string directory = this.settingsPaths.GetSettingsDirectory();
+        string directory = settingsPaths.GetSettingsDirectory();
         if (File.Exists(Path.Combine(directory, "active-sessions.json")))
         {
-            return await this.settingsProbe.LoadAsync<Hourglass.Settings.ActiveTimerSessionsDocument>("active-sessions", cancellationToken).ConfigureAwait(false) == null;
+            return await settingsProbe.LoadAsync<Hourglass.Settings.ActiveTimerSessionsDocument>("active-sessions", cancellationToken).ConfigureAwait(false) == null;
         }
         return File.Exists(Path.Combine(directory, "active-session.json"))
-            && await this.settingsProbe.LoadAsync<Hourglass.Settings.ActiveTimerSessionDocument>("active-session", cancellationToken).ConfigureAwait(false) == null;
+            && await settingsProbe.LoadAsync<Hourglass.Settings.ActiveTimerSessionDocument>("active-session", cancellationToken).ConfigureAwait(false) == null;
     }
+
+    private static RuntimeClientKind Kind(ExclusiveRuntimePurpose purpose) => purpose switch { ExclusiveRuntimePurpose.Tui => RuntimeClientKind.Tui, ExclusiveRuntimePurpose.Sessions => RuntimeClientKind.Foreground, _ => RuntimeClientKind.Control };
 
     private static ApplicationResult<ExclusiveRuntimeLease> Failed(ApplicationErrorCode code, string message) => new ApplicationResult<ExclusiveRuntimeLease>.Failure(new(code, message));
 
-    private static HourglassRuntime CreateRuntime()
+    public static HourglassRuntime CreateRuntime()
     {
         IDiagnosticSink diagnostics = new DiagnosticJournal();
         var services = new SessionRuntimeServices(new NotifySendNotificationService(diagnostics),

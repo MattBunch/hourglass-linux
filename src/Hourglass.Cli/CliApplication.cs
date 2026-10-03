@@ -11,7 +11,7 @@ public sealed class CliApplication(IExclusiveRuntimeFactory runtimeFactory, Text
     Func<CancellationToken, Task<int>>? launchTui = null, Func<CancellationToken, Task<int>>? launchGui = null)
 {
     private static readonly ImmutableHashSet<string> ReservedCommands = ImmutableHashSet.Create(StringComparer.Ordinal,
-        "start", "list", "status", "pause", "resume", "stop", "restart", "dismiss", "version", "saved", "recent", "config", "update", "unlock", "gui", "tui", "doctor", "about", "sounds");
+        "start", "list", "status", "pause", "resume", "stop", "restart", "dismiss", "version", "saved", "recent", "config", "update", "unlock", "gui", "tui", "doctor", "about", "sounds", "detach");
 
     public async Task<int> RunAsync(string[] arguments, CancellationToken cancellationToken = default)
     {
@@ -56,10 +56,9 @@ public sealed class CliApplication(IExclusiveRuntimeFactory runtimeFactory, Text
         start.Options.Add(startSettings);
         start.SetAction(async (parse, token) =>
         {
-            if (parse.GetValue(detach))
+            if (parse.GetValue(detach) && parse.GetValue(wait))
             {
-                return writer.Failure("start", new(parse.GetValue(wait) ? ApplicationErrorCode.Validation : ApplicationErrorCode.Unsupported,
-                    parse.GetValue(wait) ? "--wait and --detach cannot be combined." : "Detached timers require the later shared host milestone."));
+                return writer.Failure("start", new(ApplicationErrorCode.Validation, "--wait and --detach cannot be combined."));
             }
             return await WithRuntimeAsync(ExclusiveRuntimePurpose.Sessions, async client =>
             {
@@ -71,6 +70,12 @@ public sealed class CliApplication(IExclusiveRuntimeFactory runtimeFactory, Text
                 defaults = ((ApplicationResult<LinuxAppSettings>.Success)applied).Value;
                 CreateSessionRequest request = new(Guid.NewGuid().ToString("N"), string.Join(' ', parse.GetValue(expression) ?? []).Trim(),
                     parse.GetValue(title) ?? string.Empty, TimerDefaults.FromSettings(defaults), ApplicationPreferences.FromSettings(defaults));
+                if (parse.GetValue(detach))
+                {
+                    ApplicationResult<TimerSessionSnapshot> detached = await client.StartDetachedAsync(request, token).ConfigureAwait(false);
+                    return detached is ApplicationResult<TimerSessionSnapshot>.Success started ? writer.Sessions("start", [started.Value], "detached")
+                        : writer.Failure("start", ((ApplicationResult<TimerSessionSnapshot>.Failure)detached).Error);
+                }
                 ApplicationResult<ForegroundOutcome> result = await client.RunForegroundAsync(request, token).ConfigureAwait(false);
                 return result switch
                 {
@@ -83,7 +88,7 @@ public sealed class CliApplication(IExclusiveRuntimeFactory runtimeFactory, Text
         root.Subcommands.Add(start);
 
         Command list = new("list", "List live sessions; preserved recovery records are not live sessions.");
-        list.SetAction((_, token) => WithRuntimeAsync(ExclusiveRuntimePurpose.Query, async client =>
+        list.SetAction((_, token) => WithRuntimeAsync(ExclusiveRuntimePurpose.Control, async client =>
         {
             ApplicationResult<ImmutableArray<TimerSessionSnapshot>> result = await client.ListSessionsAsync(token).ConfigureAwait(false);
             return result is ApplicationResult<ImmutableArray<TimerSessionSnapshot>>.Success success
@@ -96,7 +101,7 @@ public sealed class CliApplication(IExclusiveRuntimeFactory runtimeFactory, Text
             Command command = new(name, $"{name} a live session by its exact ID.");
             Argument<string> id = new("id");
             command.Arguments.Add(id);
-            command.SetAction((parse, token) => WithRuntimeAsync(ExclusiveRuntimePurpose.Query, async client =>
+            command.SetAction((parse, token) => WithRuntimeAsync(ExclusiveRuntimePurpose.Control, async client =>
             {
                 string selected = parse.GetValue(id) ?? string.Empty;
                 if (selected == "all" && name is "pause" or "resume" or "stop")
@@ -128,6 +133,20 @@ public sealed class CliApplication(IExclusiveRuntimeFactory runtimeFactory, Text
             }, token));
             root.Subcommands.Add(command);
         }
+
+        Command detachExisting = new("detach", "Detach a GUI or TUI timer from its frontend lifetime.");
+        Argument<string> detachId = new("id");
+        detachExisting.Arguments.Add(detachId);
+        detachExisting.SetAction((parse, token) => WithRuntimeAsync(ExclusiveRuntimePurpose.Control, async client =>
+        {
+            string id = parse.GetValue(detachId) ?? string.Empty;
+            ApplicationResult<TimerSessionSnapshot> selected = await client.GetSessionAsync(id, token).ConfigureAwait(false);
+            if (selected is ApplicationResult<TimerSessionSnapshot>.Failure failure) { return writer.Failure("detach", failure.Error); }
+            var result = await client.DetachSessionAsync(id, ((ApplicationResult<TimerSessionSnapshot>.Success)selected).Value.Revision, token).ConfigureAwait(false);
+            return result is ApplicationResult<TimerSessionSnapshot>.Success success ? writer.Sessions("detach", [success.Value], "detached")
+                : writer.Failure("detach", ((ApplicationResult<TimerSessionSnapshot>.Failure)result).Error);
+        }, token));
+        root.Subcommands.Add(detachExisting);
 
         CliParity.Register(root, () => writer, WithRuntimeAsync, launchGui);
 

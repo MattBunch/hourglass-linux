@@ -1,4 +1,4 @@
-# Hourglass CLI (DEV-18 Stage G)
+# Hourglass CLI (DEV-18 Stage H)
 
 Build with `dotnet build Hourglass.Linux.sln -c Release`; the executable in
 `src/Hourglass.Cli/bin/Release/net10.0/` is `hourglass`. For a development run:
@@ -11,7 +11,7 @@ dotnet run --project src/Hourglass.Cli -- list --json
 `hourglass` with no arguments prints help. The standalone CLI accepts:
 
 ```text
-hourglass start <expression...> [-t|--title <title>] [--set key=value ...] [--wait]
+hourglass start <expression...> [-t|--title <title>] [--set key=value ...] [--wait|--detach]
 hourglass <expression...> [-t|--title <title>]
 hourglass list
 hourglass status <session-id>
@@ -19,9 +19,10 @@ hourglass pause|resume|stop <session-id|all>
 hourglass restart|dismiss <session-id>
 hourglass update <session-id> [--input <expression>] [--title <title>] [--revision <number>] [--set key=value ...]
 hourglass unlock <session-id>
+hourglass detach <session-id>
 hourglass saved list|clear
 hourglass saved add <expression...> [--title <title>] [--name <name>] [--set key=value ...]
-hourglass saved run <name-or-id>|--all [--wait]
+hourglass saved run <name-or-id>|--all [--wait|--detach]
 hourglass saved remove <name-or-id>
 hourglass recent list|clear
 hourglass config list|get <key>|set <key> <value>
@@ -36,20 +37,15 @@ hourglass tui
 `start` waits without animation until expiry or a stop/dismiss command in its
 shared runtime. A repeating timer keeps running until stopped or interrupted.
 Ctrl+C and SIGTERM remove only the foreground command's session and return
-130. `--wait` is equivalent to the default. `--detach` is reserved and returns
-6; `--wait --detach` returns 2. Use `--` to end options before an expression.
+130. `--wait` is equivalent to the default. `--detach` returns a durable retained
+session immediately; `--wait --detach` returns 2. Use `--` to end options before an expression.
 
-The CLI connects to an active GUI or terminal runtime using versioned local
-control. Commands from another shell operate on the same session IDs. With no
-owner, a foreground start owns a local runtime; queries remain short transactions
-and do not restore saved sessions. Preserved GUI recovery records still require
-the GUI before a terminal can become the owner.
-
-The owning process remains responsible for runtime lifetime during Stage G.
-Its exit disconnects attached clients; the command outcome can be uncertain if a
-response was lost. Mutations are never automatically replayed. Reopen the
-frontend to reconnect explicitly. The on-demand host and detached lifetime arrive
-in Stage H; terminal release tarballs arrive in Stage I.
+Session commands connect to GUI authority or start an on-demand `hourglass-host`.
+Configuration/catalog transactions remain short operations and do not initialize
+sessions. Terminal startup restores eligible detached records and preserves GUI
+recovery records until GUI attachment. Mutations with lost responses are never
+replayed automatically; reopen clients explicitly after authority loss. Terminal
+release tarballs arrive in Stage I.
 
 All information commands accept `--json` or `--plain`, including before the
 command. The flags are exclusive. Successful data goes to stdout. The CLI
@@ -58,7 +54,7 @@ does not prompt. `--json` emits exactly one document with `schemaVersion: 1`,
 has `sessionId`, `revision`, stable lowercase `state`, `input`, `title`, and
 `remainingMilliseconds`, `elapsedMilliseconds`, and `totalMilliseconds`.
 Results also include `progressPercent`, effective `options`, and
-`preferences`.
+`preferences`, and lowercase `lifetime`.
 Unavailable time values are `null`. Foreground results also carry `outcome`:
 `expired`, `stopped`, or `dismissed`. List order and successful bulk result
 order are ascending by ID. `version --json` returns a `version` string.
@@ -66,7 +62,7 @@ order are ascending by ID. `version --json` returns a `version` string.
 `--plain` emits a header followed by tab-separated session rows:
 
 ```text
-sessionId  state  title  input  remainingMilliseconds  elapsedMilliseconds  totalMilliseconds  progressPercent  revision
+sessionId  state  title  input  remainingMilliseconds  elapsedMilliseconds  totalMilliseconds  progressPercent  revision  lifetime
 ```
 
 The actual separators are tabs. Cells escape backslashes, tabs, newlines,
@@ -108,7 +104,7 @@ message goes to stderr. Exit codes:
 | 1 | Unexpected internal failure |
 | 2 | Usage or validation error |
 | 3 | Unknown session or saved timer |
-| 4 | Runtime unavailable or recovery records require GUI handling |
+| 4 | Runtime unavailable or host startup failure |
 | 5 | Transport error |
 | 6 | Unsupported operation |
 | 7 | Persistence failure |
@@ -121,3 +117,19 @@ offending ID. An empty live set succeeds with an empty result.
 
 `hourglass-linux` continues to launch or activate the GUI and retains its
 existing timer-expression launch syntax.
+
+## Detached timers (Stage H)
+
+`hourglass start 25m --detach --json` returns a retained session ID. Use `status`,
+`pause`, `resume`, `stop` and `dismiss` from another shell. `stop` retains a
+detached session; `dismiss` removes it and permits idle host shutdown.
+`hourglass saved run --all --detach` uses the same lifetime. `hourglass detach ID`
+detaches a GUI/TUI timer without replacing its countdown; unlock locked timers
+first. Active foreground waits cannot be detached in place.
+
+Foreground starts still wait by default and Ctrl+C affects only that command.
+Session commands attach to GUI authority or bootstrap `hourglass-host`. Configuration
+transactions and `doctor` do not start timers. Output includes a stable lifetime
+string; plain output appends a `lifetime` column. Install the host alongside terminal
+executables; development use requires a full solution build. See
+[runtime control](linux-port/runtime-control.md) for recovery and protocol compatibility.

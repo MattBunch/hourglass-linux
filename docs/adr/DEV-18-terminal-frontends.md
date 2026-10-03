@@ -33,3 +33,24 @@ See [implementation plan](../DEV-18_IMPLEMENTATION_PLAN.md) and [research](../re
 ## Stage G lifetime decision
 
 Until Stage H supplies the host, runtime ownership remains with the process that acquired the existing authority lock. Owner exit drains active responses and saves recovery state, then disconnects attached clients. Frontends do not transfer engines or replay uncertain commands. GUI presentation uses a separate registration lock/socket; an attached GUI closes only its own logical sessions.
+
+## Stage H lifetime implementation
+
+Terminal frontends attach to GUI authority or bootstrap an on-demand internal Host.
+They do not acquire production engine ownership. GUI-first authority remains valid
+and stays alive without windows when retained sessions or terminal clients need it.
+There is no engine transfer or system daemon.
+
+A typed session lifetime and authority-assigned client lease separate timer state
+from frontend lifetime. Detached sessions remain retained even when stopped or
+expired. TUI connection loss removes only its ordinary sessions. GUI connection
+loss preserves ordinary sessions as deferred recovery records. Terminal startup
+restores only eligible detached records and preserves GUI records until shared GUI
+initialization; this follows the user's Stage H recovery choices. Existing restore
+preferences, schemas, XDG paths and GUI startup actions remain compatible.
+
+Protocol 2 explicitly registers client kinds and lifetime operations. Version 1
+clients receive a compatibility error; lifetime behavior is not silently downgraded.
+The host's three-second idle grace is followed by an atomic runtime draining
+transition and bounded cleanup. Detached acknowledgement includes persistence;
+failed durability remains an error with inspectable live IDs.

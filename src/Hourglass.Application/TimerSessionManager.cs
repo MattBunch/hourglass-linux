@@ -22,6 +22,7 @@ internal sealed class TimerSessionManager : IEnumerable<KeyValuePair<string, Ses
 
 internal sealed record SessionRegistration(TimerSession Session, Action<SessionTick> Publish, bool TickEnabled = true, SessionEffects? Effects = null, string Id = "", bool Authoritative = false)
 {
+    public string? OwnerLeaseId { get; set; }
     public List<SessionSubscription> Subscriptions { get; } = [];
     public long PersistenceRevision { get; set; } = -1;
     public long Sequence { get; set; }

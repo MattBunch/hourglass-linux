@@ -29,6 +29,7 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
     private RemoteHourglassClient? remote;
     private ISingleInstanceService? authority;
     private RuntimeControlServer? control;
+    private RuntimeClientLease? localLease;
     private readonly HashSet<string> observedSessions = [];
     private IHourglassClient Client => this.client ?? throw new InvalidOperationException(nameof(StartAsync));
     private readonly IClassicDesktopStyleApplicationLifetime lifetime;
@@ -48,6 +49,7 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
     private Task pendingSessionSave = Task.CompletedTask;
     private bool exitCloseInProgress;
     private bool isShuttingDown;
+    private long shutdownGeneration;
     private bool showInNotificationArea;
     private WindowRegistration? mostRecentWindow;
 
@@ -135,27 +137,27 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
         if (!await this.authority.TryAcquireAsync(cancellationToken).ConfigureAwait(true))
         {
             this.authority.Dispose(); this.authority = null;
-            ApplicationResult<RemoteHourglassClient> connection = await RemoteHourglassClient.ConnectWhenReadyAsync(cancellationToken: cancellationToken).ConfigureAwait(true);
+            ApplicationResult<RemoteHourglassClient> connection = await RemoteHourglassClient.ConnectWhenReadyAsync(cancellationToken: cancellationToken, kind: RuntimeClientKind.Gui).ConfigureAwait(true);
             if (connection is ApplicationResult<RemoteHourglassClient>.Failure failed) { throw new IOException(failed.Error.Message); }
             this.remote = ((ApplicationResult<RemoteHourglassClient>.Success)connection).Value;
             this.client = this.remote;
-            ApplicationResult<ApplicationDataSnapshot> data = await this.Client.GetApplicationDataAsync(cancellationToken).ConfigureAwait(true);
-            if (data is not ApplicationResult<ApplicationDataSnapshot>.Success loaded) { throw new IOException(ApplicationStrings.StatusRuntimeUnavailable); }
-            this.showInNotificationArea = loaded.Value.Settings.ShowInNotificationArea && this.statusIconService.IsSupported;
-            ApplicationResult<System.Collections.Immutable.ImmutableArray<TimerSessionSnapshot>> list = await this.Client.ListSessionsAsync(cancellationToken).ConfigureAwait(true);
-            if (list is not ApplicationResult<System.Collections.Immutable.ImmutableArray<TimerSessionSnapshot>>.Success sessions) { throw new IOException(ApplicationStrings.StatusRuntimeUnavailable); }
-            foreach (TimerSessionSnapshot session in sessions.Value)
+            ApplicationResult<RuntimeStartupSnapshot> initialized = await this.Client.InitializeGuiAsync(
+                initialRequest?.Kind == SingleInstanceLaunchRequestKind.StartTimer ? initialRequest.TimerInput : null,
+                initialRequest?.TimerTitle, cancellationToken).ConfigureAwait(true);
+            if (initialized is not ApplicationResult<RuntimeStartupSnapshot>.Success loaded) { throw new IOException(ApplicationStrings.StatusRuntimeUnavailable); }
+            this.showInNotificationArea = loaded.Value.Data.Settings.ShowInNotificationArea && this.statusIconService.IsSupported;
+            foreach (RestoredSession session in loaded.Value.Sessions)
             {
-                this.observedSessions.Add(session.SessionId);
-                this.CreateWindow(session.SessionId);
+                if (session.Lifetime != SessionLifetime.Gui) { this.observedSessions.Add(session.SessionId); }
+                this.CreateWindow(session.SessionId, session.Session.ToDocument(), restoredExpiry: session.ExpiredWhileClosed);
             }
-            if (initialRequest?.Kind == SingleInstanceLaunchRequestKind.StartTimer) { this.CreateWindow(launchRequest: initialRequest); }
-            else { this.ActivateMostRelevantWindow(); }
+            this.ActivateMostRelevantWindow();
             return;
         }
         this.runtime = this.createRuntime();
-        this.client = this.runtime;
-        ApplicationResult<RuntimeStartupSnapshot> result = await this.runtime.InitializeSessionsAsync(
+        this.localLease = await this.runtime.OpenClientAsync(RuntimeClientKind.Gui, cancellationToken).ConfigureAwait(true);
+        this.client = this.localLease.Client;
+        ApplicationResult<RuntimeStartupSnapshot> result = await this.Client.InitializeGuiAsync(
             initialRequest?.Kind == SingleInstanceLaunchRequestKind.StartTimer ? initialRequest.TimerInput : null,
             initialRequest?.TimerTitle, cancellationToken).ConfigureAwait(true);
         if (result is not ApplicationResult<RuntimeStartupSnapshot>.Success started)
@@ -170,27 +172,40 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
         this.showInNotificationArea = started.Value.Data.Settings.ShowInNotificationArea && this.statusIconService.IsSupported;
         foreach (RestoredSession session in started.Value.Sessions)
         {
+            if (session.Lifetime != SessionLifetime.Gui) { this.observedSessions.Add(session.SessionId); }
             this.CreateWindow(session.SessionId, session.Session.ToDocument(), restoredExpiry: session.ExpiredWhileClosed);
         }
         if (initialRequest?.Kind == SingleInstanceLaunchRequestKind.Activate) { this.ActivateMostRelevantWindow(); }
     }
 
-    public Task HandleLaunchRequestAsync(SingleInstanceLaunchRequest request)
+    public async Task HandleLaunchRequestAsync(SingleInstanceLaunchRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
 
         if (request.Kind == SingleInstanceLaunchRequestKind.StartTimer)
         {
             this.CreateWindow(launchRequest: request);
-            return Task.CompletedTask;
+            return;
         }
 
+        if (this.windows.Count == 0)
+        {
+            var live = await this.Client.ListSessionsAsync().ConfigureAwait(true);
+            if (live is ApplicationResult<System.Collections.Immutable.ImmutableArray<TimerSessionSnapshot>>.Success sessions)
+            {
+                foreach (TimerSessionSnapshot session in sessions.Value)
+                {
+                    if (session.Lifetime != SessionLifetime.Gui) { this.observedSessions.Add(session.SessionId); }
+                    this.CreateWindow(session.SessionId);
+                }
+            }
+        }
         this.ActivateMostRelevantWindow();
-        return Task.CompletedTask;
     }
 
     public async ValueTask DisposeAsync()
     {
+        this.shutdownGeneration++;
         this.statusIconService.ActionRequested -= this.StatusIconActionRequested;
         try
         {
@@ -204,6 +219,7 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
             {
                 if (this.control != null) { await this.control.DisposeAsync().ConfigureAwait(false); }
                 if (this.remote != null) { await this.remote.DisposeAsync().ConfigureAwait(false); }
+                if (this.localLease != null) { await this.localLease.DisposeAsync().ConfigureAwait(false); }
                 if (this.runtime != null) { await this.runtime.DisposeAsync().ConfigureAwait(false); }
             }
             finally { this.authority?.Dispose(); }
@@ -217,6 +233,8 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
         SingleInstanceLaunchRequest? launchRequest = null,
         bool restoredExpiry = false)
     {
+        this.isShuttingDown = false;
+        this.shutdownGeneration++;
         var viewModel = new MainWindowViewModel(
             new SystemMonotonicClock(),
             () => DateTime.Now,
@@ -438,7 +456,7 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
         if (this.windows.Count == 0 && !this.isShuttingDown)
         {
             this.isShuttingDown = true;
-            _ = this.ShutdownAfterFinalSessionSaveAsync(sessionSave);
+            _ = this.ShutdownAfterFinalSessionSaveAsync(sessionSave, ++this.shutdownGeneration);
         }
     }
 
@@ -627,7 +645,7 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
         }
     }
 
-    private async Task ShutdownAfterFinalSessionSaveAsync(Task sessionSave)
+    private async Task ShutdownAfterFinalSessionSaveAsync(Task sessionSave, long generation)
     {
         try
         {
@@ -638,6 +656,17 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
             this.RecordDataRecovery("save", ActiveSessionsKey, "Final session save failed before shutdown.", exception);
         }
 
+        if (this.runtime != null)
+        {
+            using PeriodicTimer wait = new(TimeSpan.FromMilliseconds(200));
+            while (generation == this.shutdownGeneration && this.windows.Count == 0 && await this.runtime.RequiresAuthorityAsync(ignoreClientId: this.localLease?.Id).ConfigureAwait(true))
+            {
+                await wait.WaitForNextTickAsync().ConfigureAwait(true);
+            }
+            if (generation != this.shutdownGeneration) { return; }
+            if (this.windows.Count > 0) { this.isShuttingDown = false; return; }
+            if (!await this.runtime.TryBeginIdleShutdownAsync(ignoreClientId: this.localLease?.Id).ConfigureAwait(true)) { this.isShuttingDown = false; return; }
+        }
         this.lifetime.Shutdown();
     }
 
@@ -653,7 +682,9 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
         await registration.ViewModel.PendingCommands.ConfigureAwait(false);
         if (!this.observedSessions.Contains(registration.ViewModel.SessionId))
         {
-            await this.Client.CloseSessionAsync(registration.ViewModel.SessionId).ConfigureAwait(false);
+            var current = await this.Client.GetSessionAsync(registration.ViewModel.SessionId).ConfigureAwait(false);
+            if (current is ApplicationResult<TimerSessionSnapshot>.Success selected && selected.Value.Lifetime != SessionLifetime.Detached)
+            { await this.Client.CloseSessionAsync(registration.ViewModel.SessionId).ConfigureAwait(false); }
         }
         await this.QueueSessionSave().ConfigureAwait(false);
     }

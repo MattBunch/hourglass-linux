@@ -22,7 +22,7 @@ public sealed class Milestone7CoordinatorTests
     public void CoordinatorRoutesActivationAndTimerRequests()
     {
         string coordinator = File.ReadAllText(FindRepositoryFile("src/Hourglass.Linux.Avalonia/TimerWindowCoordinator.cs"));
-        int handleStart = coordinator.IndexOf("public Task HandleLaunchRequestAsync", StringComparison.Ordinal);
+        int handleStart = coordinator.IndexOf("public async Task HandleLaunchRequestAsync", StringComparison.Ordinal);
         int disposeStart = coordinator.IndexOf("public async ValueTask DisposeAsync", StringComparison.Ordinal);
         int activateStart = coordinator.IndexOf("private void ActivateMostRelevantWindow()", StringComparison.Ordinal);
         int closeAllStart = coordinator.IndexOf("private async Task CloseAllWindowsAsync()", StringComparison.Ordinal);

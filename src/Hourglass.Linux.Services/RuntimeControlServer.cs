@@ -147,12 +147,15 @@ public sealed class RuntimeControlServer : IAsyncDisposable
         if (this.listener != null) { File.Delete(this.path); this.listener = null; }
     }
 
-    private sealed class ConnectionState(IHourglassClient client, string authorityId, CancellationToken disconnected) : IAsyncDisposable
+    private sealed class ConnectionState(IHourglassClient authorityClient, string authorityId, CancellationToken disconnected) : IAsyncDisposable
     {
         private readonly Dictionary<string, RemoteSubscription> subscriptions = [];
         private readonly Dictionary<string, (CancellationTokenSource Cancellation, Task<ControlResponse> Task)> operations = [];
         private readonly Dictionary<string, ImmutableArray<JsonElement>> pages = [];
         private bool negotiated;
+        private readonly IHourglassClient authority = authorityClient;
+        private IHourglassClient client = authorityClient;
+        private RuntimeClientLease? lease;
 
         internal async Task<ControlResponse> ExecuteAsync(ControlRequest request, CancellationToken token)
         {
@@ -161,6 +164,15 @@ public sealed class RuntimeControlServer : IAsyncDisposable
             if (request.ProtocolVersion != RuntimeControlTransport.Version) { return Error(id, ApplicationErrorCode.Unsupported, "Incompatible control protocol."); }
             if (request.RequestKind == "hello")
             {
+                if (this.negotiated) { return Error(id, ApplicationErrorCode.InvalidTransition, "Client is already registered."); }
+                RuntimeClientKind kind = request.Payload.ValueKind == JsonValueKind.True ? RuntimeClientKind.Control : RuntimeControlJson.Read<ControlHello>(request.Payload).Kind;
+                if (!Enum.IsDefined(kind)) { return Error(id, ApplicationErrorCode.Validation, "Unknown client kind."); }
+                if (this.authority is HourglassRuntime runtime)
+                {
+                    try { this.lease = await runtime.OpenClientAsync(kind, token).ConfigureAwait(false); }
+                    catch (ObjectDisposedException) { return Error(id, ApplicationErrorCode.RuntimeUnavailable, "Runtime authority is shutting down."); }
+                    this.client = this.lease.Client;
+                }
                 this.negotiated = true;
                 return Success(id, new ControlHandshake(authorityId, RuntimeControlTransport.Version));
             }
@@ -257,6 +269,7 @@ public sealed class RuntimeControlServer : IAsyncDisposable
             try { await Task.WhenAll(this.operations.Values.Select(value => value.Task)).WaitAsync(RuntimeControlTransport.Deadline).ConfigureAwait(false); }
             catch (TimeoutException) { }
             foreach (var operation in this.operations.Values) { operation.Cancellation.Dispose(); }
+            if (this.lease != null) { await this.lease.DisposeAsync().ConfigureAwait(false); }
         }
     }
 

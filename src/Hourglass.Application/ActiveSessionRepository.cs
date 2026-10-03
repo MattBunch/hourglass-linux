@@ -7,7 +7,7 @@ using Hourglass.Settings;
 /// <summary>Preserves the distinction between an absent collection and an explicitly empty collection.</summary>
 internal sealed class ActiveSessionRepository(ApplicationData data, IDiagnosticSink diagnostics)
 {
-    public async Task<ImmutableArray<RestoredSession>> LoadAsync(DateTime now, CancellationToken cancellationToken)
+    public async Task<ActiveTimerSessionsDocument> LoadDocumentAsync(CancellationToken cancellationToken)
     {
         ActiveTimerSessionsDocument? document = await data.LoadOrDefaultAsync<ActiveTimerSessionsDocument?>("active-sessions", null, cancellationToken).ConfigureAwait(false);
         if (document == null)
@@ -16,12 +16,18 @@ internal sealed class ActiveSessionRepository(ApplicationData data, IDiagnosticS
             document = legacy == null ? ActiveTimerSessionsDocument.Empty
                 : new ActiveTimerSessionsDocument(sessions: [new(Guid.NewGuid().ToString("N"), legacy)]);
         }
+        return document;
+    }
+
+    public async Task<ImmutableArray<RestoredSession>> LoadAsync(DateTime now, CancellationToken cancellationToken)
+    {
+        ActiveTimerSessionsDocument document = await this.LoadDocumentAsync(cancellationToken).ConfigureAwait(false);
         var result = ImmutableArray.CreateBuilder<RestoredSession>();
         foreach (ActiveTimerSessionDefinition definition in document.Sessions)
         {
             ActiveTimerSessionSnapshot? restored = definition.Session == null ? null
                 : ActiveTimerSessionSnapshot.FromDocument(definition.Session, now, TimeSpan.Zero);
-            if (restored != null) { result.Add(new(definition.SessionId, restored, restored.ExpiredWhileClosed)); }
+            if (restored != null) { result.Add(new(definition.SessionId, restored, restored.ExpiredWhileClosed, definition.Lifetime)); }
             else
             {
                 diagnostics.TryRecord(new(DiagnosticSeverity.Warning, DiagnosticFailureClass.DataRecovery,
@@ -35,7 +41,7 @@ internal sealed class ActiveSessionRepository(ApplicationData data, IDiagnosticS
         data.SaveAsync("active-sessions", new ActiveTimerSessionsDocument(sessions: sessions.ToArray()), cancellationToken);
 }
 
-public sealed record RestoredSession(string SessionId, ActiveTimerSessionSnapshot Session, bool ExpiredWhileClosed = false);
+public sealed record RestoredSession(string SessionId, ActiveTimerSessionSnapshot Session, bool ExpiredWhileClosed = false, SessionLifetime Lifetime = SessionLifetime.Gui);
 
 /// <summary>Frontend data retained for restoration; it never supplies countdown state or timer options.</summary>
 public sealed record SessionPresentation(string TimerInput, ActiveTimerPresentationMode PresentationMode, WindowGeometrySnapshot? WindowGeometry = null);

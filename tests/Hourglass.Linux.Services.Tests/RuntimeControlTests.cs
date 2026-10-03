@@ -24,6 +24,7 @@ public sealed class RuntimeControlTests
         Assert.Equal(TimerState.Paused, paused.Countdown.State);
         Assert.Equal(RuntimeControlJson.Value(paused).GetRawText(), RuntimeControlJson.Value(Success(await first.GetSessionAsync("shared"))).GetRawText());
         Assert.Single(Success(await fixture.Runtime.ListSessionsAsync()));
+        Success(await first.DetachSessionAsync("shared", paused.Revision));
         await first.DisposeAsync();
         Assert.Equal(TimerState.Paused, Success(await second.GetSessionAsync("shared")).Countdown.State);
     }
@@ -84,11 +85,12 @@ public sealed class RuntimeControlTests
     }
 
     [Fact]
-    public async Task AuthorityShutdownDisconnectsClientsWithoutRemovingRecoverySessions()
+    public async Task AuthorityShutdownDisconnectsClientsWithoutRemovingDetachedSessions()
     {
         await using Fixture fixture = new();
         await using RemoteHourglassClient client = await fixture.ConnectAsync();
-        Success(await client.CreateSessionAsync(Request("recover")));
+        await fixture.Runtime.InitializeHostAsync();
+        Success(await client.StartDetachedAsync(Request("recover")));
         await fixture.Server.DisposeAsync();
         ApplicationResult<TimerSessionSnapshot>.Failure failure = Assert.IsType<ApplicationResult<TimerSessionSnapshot>.Failure>(await client.GetSessionAsync("recover"));
         Assert.Equal(ApplicationErrorCode.TransportFailure, failure.Error.Code);
@@ -97,15 +99,16 @@ public sealed class RuntimeControlTests
     }
 
     [Theory]
+    [InlineData(1, "hello", ApplicationErrorCode.Unsupported)]
     [InlineData(99, "hello", ApplicationErrorCode.Unsupported)]
-    [InlineData(1, "unknown", ApplicationErrorCode.Unsupported)]
+    [InlineData(2, "unknown", ApplicationErrorCode.Unsupported)]
     public async Task UnsupportedVersionOrRequestReturnsTypedError(int version, string kind, ApplicationErrorCode code)
     {
         await using Fixture fixture = new();
         using Socket socket = new(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
         await socket.ConnectAsync(new UnixDomainSocketEndPoint(fixture.Path));
         await using NetworkStream stream = new(socket, ownsSocket: false);
-        await RuntimeControlTransport.WriteAsync(stream, new ControlRequest(1, "hello", "hello", null, RuntimeControlJson.Value(true)), RuntimeControlTransport.RequestLimit, CancellationToken.None);
+        await RuntimeControlTransport.WriteAsync(stream, new ControlRequest(RuntimeControlTransport.Version, "hello", "hello", null, RuntimeControlJson.Value(true)), RuntimeControlTransport.RequestLimit, CancellationToken.None);
         Assert.True((await RuntimeControlTransport.ReadAsync<ControlResponse>(stream, RuntimeControlTransport.ResponseLimit, CancellationToken.None))?.Success);
         await RuntimeControlTransport.WriteAsync(stream, new ControlRequest(version, "request", kind, null, RuntimeControlJson.Value(true)), RuntimeControlTransport.RequestLimit, CancellationToken.None);
         ControlResponse response = await RuntimeControlTransport.ReadAsync<ControlResponse>(stream, RuntimeControlTransport.ResponseLimit, CancellationToken.None) ?? throw new IOException();
@@ -209,9 +212,9 @@ public sealed class RuntimeControlTests
         using Socket socket = new(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
         await socket.ConnectAsync(new UnixDomainSocketEndPoint(fixture.Path));
         await using NetworkStream stream = new(socket, ownsSocket: false);
-        await RuntimeControlTransport.WriteAsync(stream, new ControlRequest(1, "hello", "hello", null, RuntimeControlJson.Value(true)), RuntimeControlTransport.RequestLimit, CancellationToken.None);
+        await RuntimeControlTransport.WriteAsync(stream, new ControlRequest(RuntimeControlTransport.Version, "hello", "hello", null, RuntimeControlJson.Value(true)), RuntimeControlTransport.RequestLimit, CancellationToken.None);
         await RuntimeControlTransport.ReadAsync<ControlResponse>(stream, RuntimeControlTransport.ResponseLimit, CancellationToken.None);
-        await RuntimeControlTransport.WriteAsync(stream, new ControlRequest(1, "bad", "create", null, RuntimeControlJson.Value("invalid payload")), RuntimeControlTransport.RequestLimit, CancellationToken.None);
+        await RuntimeControlTransport.WriteAsync(stream, new ControlRequest(RuntimeControlTransport.Version, "bad", "create", null, RuntimeControlJson.Value("invalid payload")), RuntimeControlTransport.RequestLimit, CancellationToken.None);
         ControlResponse response = await RuntimeControlTransport.ReadAsync<ControlResponse>(stream, RuntimeControlTransport.ResponseLimit, CancellationToken.None) ?? throw new IOException();
         Assert.Equal(ApplicationErrorCode.Validation, response.Error?.Code);
         Assert.Empty(Success(await fixture.Runtime.ListSessionsAsync()));
@@ -347,7 +350,7 @@ public sealed class RuntimeControlTests
             this.Server = new(this.Runtime, this.Path);
             this.Server.Start();
         }
-        internal async Task<RemoteHourglassClient> ConnectAsync() => Success(await RemoteHourglassClient.ConnectAsync(this.Path));
+        internal async Task<RemoteHourglassClient> ConnectAsync() => Success(await RemoteHourglassClient.ConnectAsync(this.Path, kind: RuntimeClientKind.Tui));
         public async ValueTask DisposeAsync()
         {
             await this.Server.DisposeAsync();

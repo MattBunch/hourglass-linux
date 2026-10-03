@@ -17,7 +17,7 @@ public static class TerminalDiagnostics
         [
             new("settings-directory", true, directory),
             new("runtime-authority-path", true, authority),
-            new("cross-process-control", true, "Versioned local control protocol 1 is supported."),
+            new("cross-process-control", true, "Versioned local control protocol 2 is supported."),
             new("notify-send", ExistsOnPath("notify-send"), "Desktop notifications require notify-send and a notification service."),
             new("audio-player", ExistsOnPath("pw-play") || ExistsOnPath("paplay") || ExistsOnPath("aplay"), "Audio playback requires a supported player."),
             new("sound-assets", BuiltInAudioAlertSounds.All.Where(sound => !sound.IsNone).All(sound =>
@@ -38,7 +38,7 @@ public static class TerminalDiagnostics
         if (result is Hourglass.Application.ApplicationResult<RemoteHourglassClient>.Success connected)
         {
             await using RemoteHourglassClient client = connected.Value;
-            checks.Add(new("runtime-connection", true, $"Protocol 1; authority {client.AuthorityId}."));
+            checks.Add(new("runtime-connection", true, $"Protocol 2; authority {client.AuthorityId}."));
         }
         else { checks.Add(new("runtime-connection", false, ((Hourglass.Application.ApplicationResult<RemoteHourglassClient>.Failure)result).Error.Message)); }
         return checks;

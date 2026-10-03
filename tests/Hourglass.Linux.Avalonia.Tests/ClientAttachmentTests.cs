@@ -30,6 +30,24 @@ public sealed class ClientAttachmentTests
     }
 
     [Fact]
+    public async Task CreatedViewDisposalPreservesTimerDetachedAfterCreation()
+    {
+        await using HourglassRuntime runtime = new(clock: new Clock(), wallClockNow: () => Now);
+        await runtime.InitializeHostAsync();
+        await using MainWindowViewModel view = View(runtime, null, removeOnDispose: true);
+        await view.LoadSettingsAsync();
+        await view.PendingCommands;
+        TimerSessionSnapshot session = Assert.Single(Success(await runtime.ListSessionsAsync()));
+        Success(await runtime.ExecuteAsync(new SessionCommand.Start(session.SessionId)));
+        session = Success(await runtime.GetSessionAsync(session.SessionId));
+        Success(await runtime.DetachSessionAsync(session.SessionId, session.Revision));
+        await view.PendingCommands;
+        Assert.False(view.ShouldPromptOnExit);
+        await view.DisposeAsync();
+        Assert.Equal(SessionLifetime.Detached, Assert.Single(Success(await runtime.ListSessionsAsync())).Lifetime);
+    }
+
+    [Fact]
     public async Task CreatedViewClosesOnlyItsSession()
     {
         await using HourglassRuntime runtime = new(clock: new Clock(), wallClockNow: () => Now);

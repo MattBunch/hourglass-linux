@@ -19,6 +19,14 @@ internal static class RuntimeControlDispatch
         JsonElement payload = request.Payload;
         switch (request.RequestKind)
         {
+            case "detached-start": return Result(id, await client.StartDetachedAsync(RuntimeControlJson.Read<CreateSessionRequest>(payload), token).ConfigureAwait(false));
+            case "saved-detached": return Result(id, await client.StartSavedDetachedAsync(RuntimeControlJson.Read<SavedTimerSelection>(payload), token).ConfigureAwait(false));
+            case "detach":
+                DetachRequest detach = RuntimeControlJson.Read<DetachRequest>(payload);
+                return Result(id, await client.DetachSessionAsync(detach.SessionId, detach.ExpectedRevision, token).ConfigureAwait(false));
+            case "gui-initialize":
+                GuiInitialization gui = RuntimeControlJson.Read<GuiInitialization>(payload);
+                return Result(id, await client.InitializeGuiAsync(gui.LaunchInput, gui.LaunchTitle, token).ConfigureAwait(false));
             case "create": return Result(id, await client.CreateSessionAsync(RuntimeControlJson.Read<CreateSessionRequest>(payload), token).ConfigureAwait(false));
             case "execute": return Result(id, await client.ExecuteAsync(RuntimeControlJson.Read<SessionCommand>(payload), token).ConfigureAwait(false));
             case "batch": return Result(id, await client.ExecuteAllAsync(RuntimeControlJson.Read<SessionBatchCommand>(payload), token).ConfigureAwait(false));

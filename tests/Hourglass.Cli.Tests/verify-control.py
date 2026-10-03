@@ -38,7 +38,12 @@ with tempfile.TemporaryDirectory(prefix="hourglass-control-") as directory:
     waiter = None
     try:
         wait_ready(owner, directory)
-        session = call(env, "list")["sessions"][0]
+        deadline = time.monotonic() + 10
+        while not (sessions := call(env, "list")["sessions"]):
+            assert owner.poll() is None, owner.communicate()
+            assert time.monotonic() < deadline, "Foreground session did not become ready"
+            time.sleep(0.05)
+        session = sessions[0]
         identifier = session["sessionId"]
         assert call(env, "pause", identifier)["sessions"][0]["state"] == "paused"
         assert call(env, "resume", identifier)["sessions"][0]["state"] == "running"

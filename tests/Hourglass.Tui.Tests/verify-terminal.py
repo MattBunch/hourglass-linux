@@ -37,14 +37,15 @@ def check(actions, size=(80, 24), expected=0, resize=None, fail=False, terminate
         process = subprocess.Popen(command, stdin=slave, stdout=slave, stderr=slave,
                                    start_new_session=True, env=env)
         started = time.monotonic()
+        rendered_at = None
         resized = False
         terminated = False
         try:
             while process.poll() is None:
-                elapsed = time.monotonic() - started
-                if elapsed > 18:
+                elapsed = time.monotonic() - (rendered_at or started)
+                if time.monotonic() - started > 30 or (rendered_at is not None and elapsed > 18):
                     raise AssertionError("TUI exceeded PTY deadline: " + output[-600:].decode(errors="replace"))
-                if actions and elapsed >= actions[0][0]:
+                if rendered_at is not None and actions and elapsed >= actions[0][0]:
                     os.write(master, actions.pop(0)[1])
                 if resize and not resized and elapsed >= resize[0]:
                     fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", resize[2], resize[1], 0, 0))
@@ -56,6 +57,7 @@ def check(actions, size=(80, 24), expected=0, resize=None, fail=False, terminate
                 if select.select([master], [], [], 0.05)[0]:
                     try:
                         output.extend(os.read(master, 65536))
+                        if rendered_at is None and b"Hourglass" in output: rendered_at = time.monotonic()
                     except OSError:
                         break
             assert process.returncode == expected, (process.returncode, output[-800:].decode(errors="replace"))
@@ -81,9 +83,9 @@ def check(actions, size=(80, 24), expected=0, resize=None, fail=False, terminate
 
 check([(1, b"q")])
 check([(1, b"q")], via_cli=True)
-help_screen = check([(1, b"?"), (2, b"\x1b"), (2.5, b"q")])
+help_screen = check([(1, b"?"), (2, b"\x1b"), (3, b"q")])
 assert b"Ctrl+P pause or resume" in help_screen, help_screen[-800:].decode(errors="replace")
-tiny = check([(1, b"?"), (2, b"\x1b"), (2.5, b"q")], size=(30, 10))
+tiny = check([(1, b"?"), (2, b"\x1b"), (3, b"q")], size=(30, 10))
 assert b"Terminal too small" in tiny, tiny[-800:].decode(errors="replace")
 check([(1, b"n"), (1.6, b"0 seconds"), (2.2, b"\t"), (2.8, b"Tea"),
        (3.4, b"\r"), (5, b"q")], resize=(4, 40, 12))
@@ -126,13 +128,24 @@ with tempfile.TemporaryDirectory(prefix="hourglass-shared-pty-") as directory:
                                     capture_output=True, timeout=10)
             assert result.returncode == 0, result.stderr
             return json.loads(result.stdout)["result"]["sessions"]
-        observed_id = shared_sessions()[0]["sessionId"]
+        while not (sessions := shared_sessions()):
+            assert owner.poll() is None, owner.communicate()
+            assert time.monotonic() < deadline, "Foreground session did not become ready"
+            time.sleep(0.05)
+        observed_id = sessions[0]["sessionId"]
         attached = check([(1, b"q")], environment=environment)
         assert b"Observed" in attached, attached[-800:].decode(errors="replace")
         assert [session["sessionId"] for session in shared_sessions()] == [observed_id]
         check([(1, b"n"), (1.5, b"5 minutes"), (2, b"\t"), (2.5, b"TUI-owned"),
                (3, b"\r"), (4, b"q"), (4.5, b"y")], environment=environment)
         assert [session["sessionId"] for session in shared_sessions()] == [observed_id]
+        check([(1, b"n"), (1.5, b"5 minutes"), (2, b"\t"), (2.5, b"Detached-TUI"),
+               (3, b"\r"), (4, b"d"), (4.5, b"y"), (5.5, b"q")], environment=environment)
+        detached = [session for session in shared_sessions() if session["sessionId"] != observed_id]
+        assert len(detached) == 1 and detached[0]["lifetime"] == "detached"
+        for command in ("stop", "dismiss"):
+            result = subprocess.run([str(CLI), command, detached[0]["sessionId"], "--json"], env=environment, capture_output=True, timeout=10)
+            assert result.returncode == 0, result.stderr
     finally:
         if owner.poll() is None:
             owner.send_signal(signal.SIGTERM)

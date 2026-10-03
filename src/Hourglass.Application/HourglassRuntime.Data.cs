@@ -53,6 +53,9 @@ public sealed partial class HourglassRuntime
     }
 
     public Task<ApplicationResult<RuntimeStartupSnapshot>> InitializeSessionsAsync(string? launchInput = null, string? launchTitle = null, CancellationToken cancellationToken = default)
+        => this.InitializeSessionsCoreAsync(null, launchInput, launchTitle, cancellationToken);
+
+    internal Task<ApplicationResult<RuntimeStartupSnapshot>> InitializeSessionsCoreAsync(string? ownerId, string? launchInput = null, string? launchTitle = null, CancellationToken cancellationToken = default)
     {
         lock (this.initializationGate)
         {
@@ -61,28 +64,35 @@ public sealed partial class HourglassRuntime
         }
         async Task<ApplicationResult<RuntimeStartupSnapshot>> InitializeAsync()
         {
+            await this.InitializeHostCoreAsync(false, CancellationToken.None).ConfigureAwait(false);
             bool initialized = false;
             await this.InvokeAsync(() => this.suppressPersistence = true).ConfigureAwait(false);
             try
             {
                 ApplicationDataSnapshot data = await this.LoadApplicationDataAsync().ConfigureAwait(false);
+                ActiveTimerSessionDefinition[] deferred = await this.InvokeAsync(() => this.deferredGui.Values.ToArray()).ConfigureAwait(false);
                 ImmutableArray<RestoredSession> persisted = data.Settings.RestoreActiveSessionOnStartup
-                    ? await this.Data.ActiveSessions.LoadAsync(this.wallClockNow(), CancellationToken.None).ConfigureAwait(false) : [];
+                    ? deferred.Select(record => (record.SessionId, Session: record.Session == null ? null : ActiveTimerSessionSnapshot.FromDocument(record.Session, this.wallClockNow(), TimeSpan.Zero)))
+                        .Where(record => record.Session != null).Select(record => record.Session is { } session
+                            ? new RestoredSession(record.SessionId, session, session.ExpiredWhileClosed) : throw new InvalidOperationException("Invalid recovery record.")).ToImmutableArray() : [];
                 foreach (RestoredSession restored in persisted)
                 {
-                    await this.CreateSessionAsync(new(restored.SessionId, restored.Session.TimerStartInput, restored.Session.TimerTitle,
-                        TimerDefaults.FromSettings(data.Settings), ApplicationPreferences.FromSettings(data.Settings))).ConfigureAwait(false);
-                    await this.RestoreSessionAsync(restored.SessionId, restored.Session,
-                        ApplicationPreferences.FromSettings(NormalizeThemeSelection(restored.Session.HasOptions ? restored.Session.Options.ApplyTo(data.Settings) : data.Settings, data.CustomThemes))).ConfigureAwait(false);
-                    await this.UpdatePresentationAsync(restored.SessionId, new(restored.Session.TimerInput, restored.Session.PresentationMode, restored.Session.WindowGeometry)).ConfigureAwait(false);
+                    if (!await this.RestoreRecordAsync(restored, data, ownerId).ConfigureAwait(false)) { return new ApplicationResult<RuntimeStartupSnapshot>.Failure(new(ApplicationErrorCode.RuntimeUnavailable, "GUI client disconnected during recovery.")); }
                 }
+                bool registered = await this.InvokeAsync(() =>
+                {
+                    if (ownerId != null && !this.clientLeases.ContainsKey(ownerId)) { return false; }
+                    this.deferredGui.Clear(); return true;
+                }).ConfigureAwait(false);
+                if (!registered) { return new ApplicationResult<RuntimeStartupSnapshot>.Failure(new(ApplicationErrorCode.RuntimeUnavailable, "GUI client disconnected during startup.")); }
                 if (persisted.IsEmpty && data.Settings.OpenSavedTimersOnStartup)
                 {
                     foreach (SavedTimerDefinition saved in data.SavedTimers.Timers)
                     {
                         LinuxAppSettings options = NormalizeThemeSelection(saved.Options.ApplyTo(data.Settings), data.CustomThemes);
                         await this.CreateSessionAsync(new(Guid.NewGuid().ToString("N"), saved.TimerInput, saved.TimerTitle,
-                            TimerDefaults.FromSettings(options), ApplicationPreferences.FromSettings(options))).ConfigureAwait(false);
+                            TimerDefaults.FromSettings(options), ApplicationPreferences.FromSettings(options))
+                        { OwnerLeaseId = ownerId }).ConfigureAwait(false);
                         try { await this.Data.AppSettings.SaveChangeAsync(data.Settings, options).ConfigureAwait(false); }
                         catch (Exception exception)
                         {
@@ -94,7 +104,7 @@ public sealed partial class HourglassRuntime
                 if (!string.IsNullOrWhiteSpace(launchInput))
                 {
                     string id = Guid.NewGuid().ToString("N");
-                    await this.CreateSessionAsync(new(id, launchInput, launchTitle ?? string.Empty, TimerDefaults.FromSettings(data.Settings), ApplicationPreferences.FromSettings(data.Settings))).ConfigureAwait(false);
+                    await this.CreateSessionAsync(new(id, launchInput, launchTitle ?? string.Empty, TimerDefaults.FromSettings(data.Settings), ApplicationPreferences.FromSettings(data.Settings)) { OwnerLeaseId = ownerId }).ConfigureAwait(false);
                     ApplicationResult<TimerSessionSnapshot> launch = await this.ExecuteAsync(new SessionCommand.Start(id)).ConfigureAwait(false);
                     if (launch is ApplicationResult<TimerSessionSnapshot>.Failure failed)
                     {
@@ -104,7 +114,8 @@ public sealed partial class HourglassRuntime
                 if (await this.InvokeAsync(() => this.sessions.Count == 0).ConfigureAwait(false))
                 {
                     await this.CreateSessionAsync(new(Guid.NewGuid().ToString("N"), data.Settings.GetInitialTimerInput(TimerStart.Default.ToString()), string.Empty,
-                        TimerDefaults.FromSettings(data.Settings), ApplicationPreferences.FromSettings(data.Settings))).ConfigureAwait(false);
+                        TimerDefaults.FromSettings(data.Settings), ApplicationPreferences.FromSettings(data.Settings))
+                    { OwnerLeaseId = ownerId }).ConfigureAwait(false);
                 }
                 initialized = true;
                 return await this.QueryAsync(() => (ApplicationResult<RuntimeStartupSnapshot>)new ApplicationResult<RuntimeStartupSnapshot>.Success(
@@ -113,12 +124,15 @@ public sealed partial class HourglassRuntime
             }
             finally
             {
-                await this.InvokeAsync(() => { this.suppressPersistence = false; this.persistenceReady = initialized; this.QueuePersistence(); this.QueueWakeAlarm(); return true; }).ConfigureAwait(false);
+                await this.InvokeAsync(() => { this.suppressPersistence = false; this.persistenceReady = initialized || this.hostInitialization?.IsCompletedSuccessfully == true; this.QueuePersistence(); this.QueueWakeAlarm(); return true; }).ConfigureAwait(false);
             }
         }
     }
 
-    public async Task<ApplicationResult<TimerSessionSnapshot>> CreateSavedSessionAsync(SavedTimerDefinition saved, CancellationToken cancellationToken = default)
+    public Task<ApplicationResult<TimerSessionSnapshot>> CreateSavedSessionAsync(SavedTimerDefinition saved, CancellationToken cancellationToken = default) =>
+        this.CreateSavedSessionCoreAsync(saved, SessionLifetime.Gui, null, cancellationToken);
+
+    internal async Task<ApplicationResult<TimerSessionSnapshot>> CreateSavedSessionCoreAsync(SavedTimerDefinition saved, SessionLifetime lifetime, string? ownerId, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(saved);
         if (!saved.IsValid) { return Failure(ApplicationErrorCode.Validation, "Invalid saved timer."); }
@@ -130,7 +144,8 @@ public sealed partial class HourglassRuntime
         }
         string id = Guid.NewGuid().ToString("N");
         ApplicationResult<TimerSessionSnapshot> created = await this.CreateSessionAsync(new(id, saved.TimerInput, saved.TimerTitle,
-            TimerDefaults.FromSettings(settings), ApplicationPreferences.FromSettings(settings)), cancellationToken).ConfigureAwait(false);
+            TimerDefaults.FromSettings(settings), ApplicationPreferences.FromSettings(settings), lifetime)
+        { OwnerLeaseId = ownerId }, cancellationToken).ConfigureAwait(false);
         if (created is ApplicationResult<TimerSessionSnapshot>.Failure) { return created; }
         try
         {
@@ -145,8 +160,10 @@ public sealed partial class HourglassRuntime
         }
     }
 
-    public async Task<ApplicationResult<ImmutableArray<TimerSessionSnapshot>>> StartSavedSessionsAsync(
-        SavedTimerSelection selection, CancellationToken cancellationToken = default)
+    public Task<ApplicationResult<ImmutableArray<TimerSessionSnapshot>>> StartSavedSessionsAsync(
+        SavedTimerSelection selection, CancellationToken cancellationToken = default) => this.StartSavedSessionsCoreAsync(selection, SessionLifetime.Gui, null, cancellationToken);
+
+    internal async Task<ApplicationResult<ImmutableArray<TimerSessionSnapshot>>> StartSavedSessionsCoreAsync(SavedTimerSelection selection, SessionLifetime lifetime, string? ownerId, CancellationToken cancellationToken)
     {
         ApplicationResult<ImmutableArray<SavedTimerDefinition>> resolved = await this.ResolveSavedAsync(selection, cancellationToken).ConfigureAwait(false);
         if (resolved is ApplicationResult<ImmutableArray<SavedTimerDefinition>>.Failure failed)
@@ -159,7 +176,7 @@ public sealed partial class HourglassRuntime
         {
             foreach (SavedTimerDefinition template in templates)
             {
-                ApplicationResult<TimerSessionSnapshot> result = await this.CreateSavedSessionAsync(template, cancellationToken).ConfigureAwait(false);
+                ApplicationResult<TimerSessionSnapshot> result = await this.CreateSavedSessionCoreAsync(template, lifetime, ownerId, cancellationToken).ConfigureAwait(false);
                 if (result is ApplicationResult<TimerSessionSnapshot>.Failure error)
                 {
                     await CleanupAsync().ConfigureAwait(false);
@@ -182,6 +199,7 @@ public sealed partial class HourglassRuntime
         }
         if (durable is ApplicationResult<bool>.Failure storage)
         {
+            if (lifetime == SessionLifetime.Detached) { return new ApplicationResult<ImmutableArray<TimerSessionSnapshot>>.Failure(storage.Error with { Message = $"Live detached sessions {string.Join(", ", started.Select(session => session.SessionId))}: {storage.Error.Message}" }); }
             await CleanupAsync().ConfigureAwait(false);
             return new ApplicationResult<ImmutableArray<TimerSessionSnapshot>>.Failure(storage.Error);
         }
@@ -246,7 +264,7 @@ public sealed partial class HourglassRuntime
             ActiveTimerSessionSnapshot snapshot = ActiveTimerSessionSnapshot.FromState(presentation.TimerInput, session.TimerTitle,
                 presentation.PresentationMode, session.Countdown, this.wallClockNow(),
                 SavedTimerOptions.FromSettings(new LinuxSettingsSnapshot([], session.Preferences, session.Options).ToSettings()), presentation.WindowGeometry);
-            result.Add(new(pair.Key, snapshot));
+            result.Add(new(pair.Key, snapshot, Lifetime: session.Lifetime));
         }
         return result.ToImmutable();
     }
@@ -255,7 +273,8 @@ public sealed partial class HourglassRuntime
     {
         if (!this.persistenceReady || this.suppressPersistence || this.IsStopping) { return; }
         ImmutableArray<ActiveTimerSessionDefinition> sessions = this.CapturePersistedSessions()
-            .Select(item => new ActiveTimerSessionDefinition(item.SessionId, item.Session.ToDocument())).ToImmutableArray();
+            .Select(item => new ActiveTimerSessionDefinition(item.SessionId, item.Session.ToDocument(), item.Lifetime))
+            .Concat(this.deferredGui.Values.Where(item => !this.sessions.ContainsKey(item.SessionId))).ToImmutableArray();
         _ = this.ObserveLateCleanupAsync(this.Data.ActiveSessions.SaveAsync(sessions), "save-sessions");
     }
 

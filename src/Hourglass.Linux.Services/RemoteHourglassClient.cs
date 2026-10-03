@@ -21,7 +21,7 @@ public sealed class RemoteHourglassClient : IHourglassClient, IAsyncDisposable
     public bool IsConnected => !this.disconnected.IsCancellationRequested;
     private RemoteHourglassClient(Socket socket) { this.socket = socket; this.stream = new(socket, ownsSocket: false); }
 
-    public static async Task<ApplicationResult<RemoteHourglassClient>> ConnectAsync(string? path = null, CancellationToken cancellationToken = default)
+    public static async Task<ApplicationResult<RemoteHourglassClient>> ConnectAsync(string? path = null, CancellationToken cancellationToken = default, RuntimeClientKind kind = RuntimeClientKind.Control)
     {
         if (!OperatingSystem.IsLinux()) { return new ApplicationResult<RemoteHourglassClient>.Failure(new(ApplicationErrorCode.Unsupported, "Runtime control requires Linux.")); }
         path ??= RuntimeControlTransport.DefaultPath;
@@ -36,7 +36,7 @@ public sealed class RemoteHourglassClient : IHourglassClient, IAsyncDisposable
             await socket.ConnectAsync(new UnixDomainSocketEndPoint(path), deadline.Token).ConfigureAwait(false);
             RuntimeControlTransport.VerifyPeer(socket);
             client = new(socket);
-            ApplicationResult<ControlHandshake> handshake = await client.CallAsync<ControlHandshake, bool>("hello", true, null, cancellationToken).ConfigureAwait(false);
+            ApplicationResult<ControlHandshake> handshake = await client.CallAsync<ControlHandshake, ControlHello>("hello", new(kind), null, cancellationToken).ConfigureAwait(false);
             if (handshake is ApplicationResult<ControlHandshake>.Success success && success.Value.ProtocolVersion == RuntimeControlTransport.Version)
             { client.AuthorityId = success.Value.AuthorityId; return new ApplicationResult<RemoteHourglassClient>.Success(client); }
             await client.DisposeAsync().ConfigureAwait(false);
@@ -51,7 +51,7 @@ public sealed class RemoteHourglassClient : IHourglassClient, IAsyncDisposable
         }
     }
 
-    public static async Task<ApplicationResult<RemoteHourglassClient>> ConnectWhenReadyAsync(string? path = null, CancellationToken cancellationToken = default)
+    public static async Task<ApplicationResult<RemoteHourglassClient>> ConnectWhenReadyAsync(string? path = null, CancellationToken cancellationToken = default, RuntimeClientKind kind = RuntimeClientKind.Control)
     {
         path ??= RuntimeControlTransport.DefaultPath;
         using CancellationTokenSource readiness = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -64,7 +64,7 @@ public sealed class RemoteHourglassClient : IHourglassClient, IAsyncDisposable
             {
                 if (File.Exists(path))
                 {
-                    ApplicationResult<RemoteHourglassClient> result = await ConnectAsync(path, readiness.Token).ConfigureAwait(false);
+                    ApplicationResult<RemoteHourglassClient> result = await ConnectAsync(path, readiness.Token, kind).ConfigureAwait(false);
                     if (result is ApplicationResult<RemoteHourglassClient>.Success) { return result; }
                     error = ((ApplicationResult<RemoteHourglassClient>.Failure)result).Error;
                     if (error.Code == ApplicationErrorCode.Unsupported) { return result; }
@@ -194,6 +194,11 @@ public sealed class RemoteHourglassClient : IHourglassClient, IAsyncDisposable
 
     public Task<ApplicationResult<bool>> UpdatePresentationAsync(string sessionId, SessionPresentation presentation, CancellationToken cancellationToken = default) =>
         this.CallAsync<bool, object>("presentation", new PresentationChange(sessionId, presentation), sessionId, cancellationToken);
+
+    public Task<ApplicationResult<TimerSessionSnapshot>> StartDetachedAsync(CreateSessionRequest request, CancellationToken cancellationToken = default) => this.CallAsync<TimerSessionSnapshot, CreateSessionRequest>("detached-start", request, null, cancellationToken);
+    public Task<ApplicationResult<TimerSessionSnapshot>> DetachSessionAsync(string sessionId, long expectedRevision, CancellationToken cancellationToken = default) => this.CallAsync<TimerSessionSnapshot, DetachRequest>("detach", new(sessionId, expectedRevision), sessionId, cancellationToken);
+    public Task<ApplicationResult<ImmutableArray<TimerSessionSnapshot>>> StartSavedDetachedAsync(SavedTimerSelection selection, CancellationToken cancellationToken = default) => this.CallAsync<ImmutableArray<TimerSessionSnapshot>, SavedTimerSelection>("saved-detached", selection, null, cancellationToken);
+    public Task<ApplicationResult<RuntimeStartupSnapshot>> InitializeGuiAsync(string? launchInput = null, string? launchTitle = null, CancellationToken cancellationToken = default) => this.CallAsync<RuntimeStartupSnapshot, GuiInitialization>("gui-initialize", new(launchInput, launchTitle), null, cancellationToken);
 
     public Task<ApplicationResult<ForegroundOutcome>> RunForegroundAsync(CreateSessionRequest request, CancellationToken cancellationToken = default) =>
         this.RunOperationAsync<ForegroundOutcome, CreateSessionRequest>("foreground", request, cancellationToken);
