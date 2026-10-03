@@ -124,14 +124,20 @@ public sealed class ForegroundTests
         await using HourglassRuntime runtime = Runtime(clock, inhibitor);
         Task<ApplicationResult<ForegroundOutcome>> run = runtime.RunForegroundAsync(Request("own", "1 second", new(LoopTimer: true)));
         await inhibitor.Entries.Reader.ReadAsync();
+        await runtime.WaitForSessionEffectsAsync("own");
         clock.Advance(TimeSpan.FromSeconds(1));
         await runtime.TickAsync();
-        await inhibitor.Entries.Reader.ReadAsync();
+        // The coordinated inhibitor can reuse its backend during overlapping leases.
+        // Drain the expiry/restart transition rather than requiring another backend call.
+        await runtime.WaitForSessionEffectsAsync("own");
+        Assert.Equal(TimerState.Running, Assert.IsType<ApplicationResult<TimerSessionSnapshot>.Success>(await runtime.GetSessionAsync("own")).Value.Countdown.State);
+        await runtime.WaitForSessionEffectsAsync("own");
         Assert.False(run.IsCompleted);
         await runtime.ExecuteAsync(new SessionCommand.Pause("own"));
+        await runtime.WaitForSessionEffectsAsync("own");
         Assert.False(run.IsCompleted);
         await runtime.ExecuteAsync(new SessionCommand.Resume("own"));
-        await inhibitor.Entries.Reader.ReadAsync();
+        await runtime.WaitForSessionEffectsAsync("own");
         await runtime.ExecuteAsync(new SessionCommand.Stop("own"));
         Assert.Equal(ForegroundCompletion.Stopped, Assert.IsType<ApplicationResult<ForegroundOutcome>.Success>(await run).Value.Completion);
     }
