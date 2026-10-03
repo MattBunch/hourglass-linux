@@ -299,7 +299,7 @@ Highest risks: session/expiry extraction, window-independent persistence, runtim
 - Intentional mutation is confined to the queued runtime, connection/subscription/operation registries, transport DTOs and shallow frontend state. Countdown snapshot mapping is invariant across cultures and performs no timer transitions. No persistence schema or timer implementation was duplicated.
 - Attended desktop, real notification/audio, SSH, screen-reader and physical wake checks remain Not run.
 
-### Stage H — Complete locally; final remote CI pending (2026-10-03)
+### Stage H — Complete (2026-10-03)
 
 - Approved decisions: terminal startup restores detached recovery records and preserves GUI records until GUI attachment; TUI provides a confirmed detach action; attached GUI crashes retire ordinary sessions into recovery while detached timers keep running.
 - Application adds typed lifetime metadata, authority-assigned client leases, serialized detach and presentation-close decisions, split host/GUI initialization, and deferred GUI records merged with live checkpoints. Each TimerSession retains its existing sole engine. Transient checkpoints are tagged and not resurrected after authority recovery.
@@ -310,4 +310,4 @@ Highest risks: session/expiry extraction, window-independent persistence, runtim
 - Host self-contained linux-x64 publish passed at `/tmp/hourglass-dev18-h-host-publish`; version 0.2.0, all three sound assets and no Avalonia/Terminal.Gui assemblies verified. Existing session engines and timing schemas remain unchanged; optional lifetime metadata defaults legacy records to GUI ownership.
 - Not run: attended desktop interaction, physical suspend/wake and hardware-backed audio/notification validation. Native X11 process checks do not establish those behaviors.
 - Delivery: implementation committed as `32e2082` and pushed to the existing feature branch. Clean-checkout GUI self-contained linux-x64 publish (`/tmp/hourglass-dev18-h-publish`), AppDir (`/tmp/hourglass-dev18-h.AppDir`), AppImage (`/tmp/Hourglass-0.2.0-dev18-h-x86_64.AppImage`), SHA256 verification and `HOURGLASS_REQUIRE_PACKAGE_VALIDATORS=true` checks passed.
-- Remaining: final branch-head remote CI evidence. Stage I terminal tarballs remain out of scope.
+- Remote evidence: [Tests run 37109931942](https://github.com/MattBunch/hourglass-linux/actions/runs/37109931942) passed on `e48bdec`, including all solution tests, CLI/Host/Xvfb GUI/TUI smokes, formatting/version gates and GUI packaging/artifact uploads. Stage H is complete; Stage I terminal tarballs remain out of scope.
