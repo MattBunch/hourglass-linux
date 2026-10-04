@@ -314,7 +314,7 @@ Highest risks: session/expiry extraction, window-independent persistence, runtim
 - Final-head follow-up: run 37110242795 exposed an intermittent test-only wait in `LoopAndPauseKeepForegroundWaitingUntilStop`: coordinated inhibition may reuse an overlapping backend acquisition, so another backend-call notification is not guaranteed. The fixture now drains committed runtime effects and asserts the restarted state before pause/resume; production lifecycle and ownership behavior are unchanged. Repeated focused and full regression gates protect this correction.
 
 
-### Stage I — In progress (2026-10-03)
+### Stage I — Complete (2026-10-04)
 
 - Approved boundaries: separate self-contained CLI/TUI/Host payloads for linux-x64/linux-arm64; accessible/monochrome/narrow presentation; shared version; native archive execution, CI/release and documentation. Retain 0.2.0, existing GUI artifact names and all Stage H runtime/ownership contracts. No release tag/publication, native packages, completions, man pages, musl or new architecture.
 - Version/discovery: imported shared version property for all four executables; default ReleaseTool validation compares terminal versions with GUI/AppStream/tag, explicit-path behavior retained; prerelease display retained and build suffix omitted. Packaged sibling payload discovery preserves development/PATH fallbacks.
@@ -325,5 +325,29 @@ Highest risks: session/expiry extraction, window-independent persistence, runtim
 - Validation: baseline 976 tests passed; expanded monochrome/accessible/tiny PTY checks passed; six deterministic package rejection fixtures passed. An intermediate full run exposed old project-local version/checksum source assertions, now updated to the shared property and four-artifact release contract. A loaded parallel run also hit an existing legacy launch request deadline; final gates will rerun without weakening its timeout.
 - Local gates: restore, warning-as-error Release build, all 994 solution tests (serialized project execution), version validation and six package fixtures passed. The expanded PTY case exposed immediate child termination through `hourglass tui`; launcher interruption now requests graceful SIGTERM with a ten-second bounded cleanup before forced termination.
 - Final local source gates (2026-10-04): all 994 solution tests, warning-as-error Release build, formatting verification and six package rejection fixtures passed. Graceful CLI-launched TUI interruption/restoration PTY passed.
-- Remaining: clean committed x64/arm64 terminal publishes and extracted native smoke; existing GUI packaging; commit/push and native remote CI; requirement audit and final evidence.
+- Delivery: implementation `fe661b7`, readiness correction `3cab90c`, pushed to the existing feature branch. [Native CI on 3cab90c](https://github.com/MattBunch/hourglass-linux/actions/runs/37177348792) passed all 994 solution tests, source CLI/Host/Xvfb GUI/TUI process checks, formatting/version gates, GUI packaging, and native extracted terminal execution on both ubuntu-24.04 x64 and ubuntu-24.04-arm. All four jobs succeeded; tested artifacts are attached to that run.
+- Local terminal artifacts: `/tmp/hourglass-dev18-i-terminal-x64` and `/tmp/hourglass-dev18-i-terminal-arm64`, each with archive and verified SHA256SUMS. Isolated payloads, embedded runtime, three sound assets per executable, dependency isolation, verbatim license evidence and supplied notices passed. Extracted x64 package at `/tmp/hourglass-dev18-i terminal extracted x64` passed versions/help/invalid JSON, foreground/detached lifecycle, Host recovery/idle exit and default/accessible/NO_COLOR PTYs including graceful CLI interruption. A symlink launcher from a path with spaces also passed. ARM64 execution is established by native CI, not local cross-publishing.
+- GUI compatibility packaging: clean self-contained publish `/tmp/hourglass-dev18-i-gui-publish`, AppDir `/tmp/hourglass-dev18-i.AppDir`, AppImage `/tmp/Hourglass-0.2.0-dev18-i-x86_64.AppImage`, checksum verification and required desktop/AppStream validators passed. Native Xvfb GUI close/reopen/detached/crash recovery behavior passed in remote CI; attended desktop/hardware claims remain separate.
+- PTY discovery: packaged startup can exceed one second. Resize and interruption now wait for the first rendered screen before measuring their action delay; the 30-second startup deadline and terminal restoration assertions remain intact. No production timeout or timing behavior was relaxed.
+- Interrupted local Git metadata contained empty loose objects and an unreadable commit. Working files and Git metadata were backed up under `/tmp/hourglass-dev18-recovery`; verified pushed objects restored, the two-line fixture change recommitted, and stale cache references quarantined. `git fsck --full` passes (only harmless dangling blobs). Temporary package artifacts were rebuilt. Fresh post-recovery restore, warning-as-error build and all 994 solution tests passed.
+- This evidence is committed with the milestone closure; the delivery response reports CI on that final documentation head. Release tag/publication remains outside this authorization; native packages, man pages/completions, musl and further Flatpak work remain deferred.
 - Not run: attended SSH/emulator/screen-reader checks and physical desktop-service/suspend/wake validation. The selected completion policy records unavailable attended checks explicitly.
+
+
+## Final DEV-18 implementation audit (2026-10-04)
+
+| Required outcome | Implementation and evidence | Result |
+| --- | --- | --- |
+| Existing Avalonia GUI and launch compatibility | Stages B/C/G/H adapters and legacy launch bridge; Avalonia tests, Xvfb lifetime smoke, GUI publish/AppDir/AppImage | Pass (automated); attended checks below |
+| One engine per logical session and shared application behavior | Internal TimerSession ownership, immutable snapshots and typed client commands; architecture guards and 126 Application tests | Pass |
+| Scriptable CLI, shorthand, lifecycle, plain/JSON and exit codes | Stages D/F/G/H command contracts; 43 CLI tests and source/extracted process smokes | Pass |
+| Keyboard TUI, multiple sessions, saved/recent/settings and restoration | Stages E/F/H/I; 21 TUI tests plus default/accessible/NO_COLOR, compact/tiny, editing, resize and interruption PTYs | Pass |
+| Shared XDG persistence and defined concurrency | Stage C repositories and single runtime writer; restoration/merge/recovery and IPC tests | Pass |
+| Active runtime control and detached ownership | Protocol 2, authority leases, Host election and lifetime; 185 Services tests, Host and cross-process smokes | Pass |
+| Build/test/format/version gates | Fresh restore, zero-warning Release build, all 994 tests, formatter, shared 0.2.0 evaluated versions | Pass |
+| Existing GUI distribution and terminal linux-x64/linux-arm64 | Clean publishers, static/notice/checksum checks, GUI validators and native extracted execution on both CI architectures | Pass |
+| Documentation of all three interfaces | CLI, TUI, terminal installation, current architecture, runtime-control and release documentation | Pass |
+| Attended SSH/emulator/screen-reader behavior | No attended session available; CLI accessibility fallback documented | Not run |
+| Physical notifications/audio/suspend/wake and attended GUI | No hardware-backed attended validation performed | Not run |
+
+The approved Stage I completion policy accepts unavailable attended checks as explicitly Not run. All implementation milestones are complete; this records automated delivery, not a public release or certification of untested terminals/desktops/hardware. No tag or GitHub release was created.
