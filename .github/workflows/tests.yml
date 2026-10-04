@@ -40,6 +40,9 @@ jobs:
       - name: Test
         run: dotnet test Hourglass.Linux.sln --configuration Release --no-build --verbosity normal --logger trx --results-directory TestResults --blame-hang-timeout 90s --blame-hang-dump-type none
 
+      - name: Terminal packaging rejection fixtures
+        run: python3 tests/terminal-packaging-tests.py
+
       - name: CLI runtime control smoke
         run: python3 tests/Hourglass.Cli.Tests/verify-control.py
 
@@ -151,3 +154,41 @@ jobs:
           path: |
             ${{ steps.appimage.outputs.path }}
             /tmp/Hourglass-AppImage-SHA256SUMS
+
+  terminal:
+    name: Terminal package (${{ matrix.runtime }})
+    runs-on: ${{ matrix.runner }}
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runtime: linux-x64
+            runner: ubuntu-24.04
+          - runtime: linux-arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: Set up .NET
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9
+        with:
+          dotnet-version: 10.0.x
+      - name: Validate version
+        run: dotnet run --project tools/Hourglass.ReleaseTool --configuration Release -- validate-version
+      - name: Publish terminal archive
+        run: scripts/publish-terminal-release.sh --runtime "${{ matrix.runtime }}" --output "$RUNNER_TEMP/terminal"
+      - name: Extract and verify checksum
+        run: |
+          (cd "$RUNNER_TEMP/terminal" && sha256sum --check SHA256SUMS)
+          mkdir -p "$RUNNER_TEMP/terminal extracted"
+          tar -xzf "$RUNNER_TEMP"/terminal/hourglass-terminal-*.tar.gz -C "$RUNNER_TEMP/terminal extracted"
+          python3 scripts/validate-terminal-packaging.py "$RUNNER_TEMP/terminal extracted" "${{ matrix.runtime }}"
+      - name: Execute native terminal package
+        run: python3 tests/verify-terminal-package.py "$RUNNER_TEMP/terminal extracted" "${{ matrix.runtime }}"
+      - name: Upload tested terminal archive
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: terminal-${{ matrix.runtime }}
+          path: ${{ runner.temp }}/terminal/hourglass-terminal-*.tar.gz
+          if-no-files-found: error

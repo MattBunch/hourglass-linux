@@ -1,4 +1,4 @@
-# Hourglass CLI (DEV-18 Stage H)
+# Hourglass CLI (DEV-18)
 
 Build with `dotnet build Hourglass.Linux.sln -c Release`; the executable in
 `src/Hourglass.Cli/bin/Release/net10.0/` is `hourglass`. For a development run:
@@ -31,7 +31,7 @@ hourglass doctor|about|gui
 hourglass version
 hourglass --version
 hourglass --help
-hourglass tui
+hourglass tui [--accessible] [--no-color]
 ```
 
 `start` waits without animation until expiry or a stop/dismiss command in its
@@ -44,8 +44,7 @@ Session commands connect to GUI authority or start an on-demand `hourglass-host`
 Configuration/catalog transactions remain short operations and do not initialize
 sessions. Terminal startup restores eligible detached records and preserves GUI
 recovery records until GUI attachment. Mutations with lost responses are never
-replayed automatically; reopen clients explicitly after authority loss. Terminal
-release tarballs arrive in Stage I.
+replayed automatically; reopen clients explicitly after authority loss. See [terminal installation](terminal-installation.md) for self-contained x64/arm64 archives.
 
 All information commands accept `--json` or `--plain`, including before the
 command. The flags are exclusive. Successful data goes to stdout. The CLI

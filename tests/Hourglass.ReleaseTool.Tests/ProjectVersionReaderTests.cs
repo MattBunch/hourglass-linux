@@ -21,6 +21,15 @@ public sealed class ProjectVersionReaderTests
     }
 
     [Fact]
+    public async Task ReadAsyncUsesImportedVersionProperty()
+    {
+        using ProjectFixture fixture = new("<Project><Import Project=\"Version.props\" /></Project>");
+        File.WriteAllText(Path.Combine(Path.GetDirectoryName(fixture.ProjectPath)!, "Version.props"),
+            "<Project><PropertyGroup><Version>0.2.0-beta.1</Version></PropertyGroup></Project>");
+        Assert.Equal("0.2.0-beta.1", (await new ProjectVersionReader().ReadAsync(fixture.ProjectPath)).Version);
+    }
+
+    [Fact]
     public async Task ReadAsyncSupportsProjectPathsContainingWhitespace()
     {
         using ProjectFixture fixture = new("<Project><PropertyGroup><Version>0.2.0</Version></PropertyGroup></Project>", "release project path");

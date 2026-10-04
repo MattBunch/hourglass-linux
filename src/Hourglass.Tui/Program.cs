@@ -10,15 +10,15 @@ public static class Program
     {
         if (args is ["--help"] or ["-h"])
         {
-            Console.Out.WriteLine("hourglass-tui: interactive Hourglass timer. Keys: n new, e edit, Tab select, Space pause/resume, d detach, ? help, q quit.");
+            Console.Out.WriteLine("hourglass-tui: interactive Hourglass timer. Options: --accessible (1 Hz, monochrome), --no-color. Keys: n new, e edit, Tab select, Space pause/resume, d detach, ? help, q quit.");
             return 0;
         }
         if (args is ["--version"])
         {
-            Console.Out.WriteLine(typeof(Program).Assembly.GetName().Version?.ToString(3) ?? "0.2.0");
+            Console.Out.WriteLine(ApplicationVersion.Read(typeof(Program).Assembly));
             return 0;
         }
-        if (args.Length > 0 || Console.IsInputRedirected || Console.IsOutputRedirected)
+        if (!TuiLaunchOptions.TryParse(args, Environment.GetEnvironmentVariable("NO_COLOR"), out TuiLaunchOptions options) || Console.IsInputRedirected || Console.IsOutputRedirected)
         {
             Console.Error.WriteLine("The TUI requires an interactive terminal. Use --help or --version for information.");
             return 2;
@@ -54,7 +54,7 @@ public static class Program
             {
                 Action? tickHook = Environment.GetEnvironmentVariable("HOURGLASS_TUI_TEST_THROW") == "1"
                     ? () => throw new InvalidOperationException("Intentional TUI test failure.") : null;
-                TuiShell shell = new(controller, interrupted.Token, tickHook);
+                TuiShell shell = new(controller, interrupted.Token, tickHook, options);
                 bool cleanQuit = shell.Run();
                 if (interrupted.IsCancellationRequested)
                 {

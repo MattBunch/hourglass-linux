@@ -3,12 +3,13 @@ namespace Hourglass.Cli;
 using System.CommandLine;
 using System.Collections.Immutable;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using Hourglass.Application;
 using Hourglass.Linux.Services;
 using Hourglass.Settings;
 
 public sealed class CliApplication(IExclusiveRuntimeFactory runtimeFactory, TextWriter output, TextWriter error,
-    Func<CancellationToken, Task<int>>? launchTui = null, Func<CancellationToken, Task<int>>? launchGui = null)
+    Func<IReadOnlyList<string>, CancellationToken, Task<int>>? launchTui = null, Func<CancellationToken, Task<int>>? launchGui = null)
 {
     private static readonly ImmutableHashSet<string> ReservedCommands = ImmutableHashSet.Create(StringComparer.Ordinal,
         "start", "list", "status", "pause", "resume", "stop", "restart", "dismiss", "version", "saved", "recent", "config", "update", "unlock", "gui", "tui", "doctor", "about", "sounds", "detach");
@@ -18,24 +19,30 @@ public sealed class CliApplication(IExclusiveRuntimeFactory runtimeFactory, Text
         ArgumentNullException.ThrowIfNull(arguments);
         Option<bool> json = new("--json") { Recursive = true };
         Option<bool> plain = new("--plain") { Recursive = true };
-        RootCommand root = new("Hourglass scriptable CLI. This interim release supports an exclusive foreground runtime.");
+        RootCommand root = new("Hourglass scriptable CLI over the shared GUI or headless runtime.");
         root.Options.Add(json);
         root.Options.Add(plain);
         string commandName = "help";
         CliOutput writer = new(output, error, CliOutputMode.Human);
 
         Command version = new("version", "Print the application version.");
-        version.SetAction(_ => writer.Version(typeof(CliApplication).Assembly.GetName().Version?.ToString(3) ?? "0.2.0"));
+        version.SetAction(_ => writer.Version(ApplicationVersion.Read(typeof(CliApplication).Assembly)));
         root.Subcommands.Add(version);
 
         Command tui = new("tui", "Open the interactive terminal timer.");
+        Option<bool> accessible = new("--accessible");
+        Option<bool> noColor = new("--no-color");
+        tui.Options.Add(accessible);
+        tui.Options.Add(noColor);
         tui.SetAction(async (parse, token) =>
         {
             if (parse.GetValue(json) || parse.GetValue(plain))
             {
                 return writer.Failure("tui", new(ApplicationErrorCode.Validation, "The TUI requires an interactive terminal without output flags."));
             }
-            try { return await (launchTui ?? LaunchTuiAsync)(token).ConfigureAwait(false); }
+            IReadOnlyList<string> presentation = new[] { parse.GetValue(accessible) ? "--accessible" : null, parse.GetValue(noColor) ? "--no-color" : null }
+                .OfType<string>().ToArray();
+            try { return await (launchTui ?? LaunchTuiAsync)(presentation, token).ConfigureAwait(false); }
             catch (System.ComponentModel.Win32Exception)
             {
                 return writer.Failure("tui", new(ApplicationErrorCode.RuntimeUnavailable, "hourglass-tui executable was not found."));
@@ -159,7 +166,7 @@ public sealed class CliApplication(IExclusiveRuntimeFactory runtimeFactory, Text
         {
             string name = token.Split('=', 2)[0];
             if (name is "--title" or "-t") { titleOptions++; }
-            if (name.StartsWith("-", StringComparison.Ordinal) && name is not ("--title" or "-t" or "--json" or "--plain" or "--wait" or "--detach" or "--help" or "-h" or "-?" or "--set" or "--name" or "--all" or "--input" or "--revision"))
+            if (name.StartsWith("-", StringComparison.Ordinal) && name is not ("--title" or "-t" or "--json" or "--plain" or "--wait" or "--detach" or "--help" or "-h" or "-?" or "--set" or "--name" or "--all" or "--input" or "--revision" or "--accessible" or "--no-color"))
             {
                 return writer.Failure(commandName, new(ApplicationErrorCode.Validation, $"Unrecognized option: {name}"));
             }
@@ -219,17 +226,14 @@ public sealed class CliApplication(IExclusiveRuntimeFactory runtimeFactory, Text
         return ["start", .. arguments];
     }
 
-    private static async Task<int> LaunchTuiAsync(CancellationToken cancellationToken)
+    private static async Task<int> LaunchTuiAsync(IReadOnlyList<string> arguments, CancellationToken cancellationToken)
     {
-        string sibling = Path.Combine(AppContext.BaseDirectory, "hourglass-tui");
-        string configuration = new DirectoryInfo(AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar)).Parent?.Name ?? "Release";
-        string developmentBuild = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..",
-            "Hourglass.Tui", "bin", configuration, "net10.0", "hourglass-tui"));
         ProcessStartInfo start = new()
         {
-            FileName = File.Exists(sibling) ? sibling : File.Exists(developmentBuild) ? developmentBuild : "hourglass-tui",
+            FileName = FrontendExecutable.Resolve(AppContext.BaseDirectory, "hourglass-tui", "Hourglass.Tui", "tui"),
             UseShellExecute = false
         };
+        foreach (string argument in arguments) { start.ArgumentList.Add(argument); }
         using Process process = Process.Start(start) ?? throw new InvalidOperationException("The TUI could not be started.");
         try
         {
@@ -238,9 +242,21 @@ public sealed class CliApplication(IExclusiveRuntimeFactory runtimeFactory, Text
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            if (!process.HasExited) { process.Kill(entireProcessTree: true); }
-            await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
+            if (!process.HasExited)
+            {
+                const int terminationSignal = 15;
+                _ = SendSignal(process.Id, terminationSignal);
+                try { await process.WaitForExitAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(10)).ConfigureAwait(false); }
+                catch (TimeoutException)
+                {
+                    if (!process.HasExited) { process.Kill(entireProcessTree: true); }
+                    await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
+                }
+            }
             throw;
         }
     }
+
+    [DllImport("libc", EntryPoint = "kill", SetLastError = true)]
+    private static extern int SendSignal(int processId, int signal);
 }

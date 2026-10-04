@@ -15,13 +15,27 @@ public sealed class CliTests
     private static readonly DateTime Now = new(2026, 9, 27, 12, 0, 0);
 
     [Fact]
+    public async Task TuiPresentationFlagsAreForwardedWithoutOpeningRuntime()
+    {
+        Factory factory = new(null);
+        using StringWriter output = new();
+        using StringWriter error = new();
+        string[] forwarded = [];
+        CliApplication cli = new(factory, output, error, (arguments, _) => { forwarded = arguments.ToArray(); return Task.FromResult(0); });
+        Assert.Equal(0, await cli.RunAsync(["tui", "--accessible", "--no-color"]));
+        Assert.Equal(new[] { "--accessible", "--no-color" }, forwarded);
+        Assert.Equal(0, factory.Opens);
+        Assert.Equal(2, await cli.RunAsync(["tui", "--bad-option"]));
+    }
+
+    [Fact]
     public async Task TuiLauncherPropagatesExitWithoutOpeningRuntime()
     {
         Factory factory = new(null);
         int launches = 0;
         using StringWriter output = new();
         using StringWriter error = new();
-        CliApplication cli = new(factory, output, error, _ => { launches++; return Task.FromResult(7); });
+        CliApplication cli = new(factory, output, error, (_, _) => { launches++; return Task.FromResult(7); });
         Assert.Equal(7, await cli.RunAsync(["tui"]));
         Assert.Equal(1, launches);
         Assert.Equal(0, factory.Opens);
@@ -385,7 +399,7 @@ public sealed class CliTests
             Assert.DoesNotContain("Avalonia", dependency.Name, StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain("Terminal.Gui", dependency.Name, StringComparison.OrdinalIgnoreCase);
         }
-        string? expected = XDocument.Load(Path.Combine(root, "src/Hourglass.Linux.Avalonia/Hourglass.Linux.Avalonia.csproj")).Descendants("Version").Single().Value;
+        string? expected = XDocument.Load(Path.Combine(root, "build/Hourglass.Version.props")).Descendants("Version").Single().Value;
         Assert.Equal(expected, typeof(CliApplication).Assembly.GetName().Version?.ToString(3));
     }
 

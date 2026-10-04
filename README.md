@@ -24,8 +24,9 @@ dotnet test Hourglass.Linux.sln --configuration Release --no-build --verbosity n
 
 The legacy Windows solution remains available as `Hourglass.sln`, but Linux port work should use `Hourglass.Linux.sln`.
 
-The development [scriptable CLI](docs/cli.md) builds as `hourglass` and runs foreground timers through the shared application runtime.
-The development [interactive TUI](docs/tui.md) builds as `hourglass-tui` and can also be opened with `hourglass tui`.
+The [scriptable CLI](docs/cli.md) builds as `hourglass` and runs foreground timers through the shared application runtime.
+The [interactive TUI](docs/tui.md) builds as `hourglass-tui` and can also be opened with `hourglass tui`.
+Self-contained terminal archives for Linux x64 and arm64 are prepared for the next tagged release; see [terminal installation](docs/terminal-installation.md). Existing published releases are not retroactively updated.
 
 ## Run Locally
 

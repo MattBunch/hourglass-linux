@@ -18,10 +18,10 @@ import time
 
 ROOT = Path(__file__).resolve().parents[2]
 DLL = ROOT / "src/Hourglass.Tui/bin/Release/net10.0/hourglass-tui.dll"
-CLI = ROOT / "src/Hourglass.Cli/bin/Release/net10.0/hourglass"
+CLI = Path(os.environ.get("HOURGLASS_TEST_CLI", ROOT / "src/Hourglass.Cli/bin/Release/net10.0/hourglass"))
 
 
-def check(actions, size=(80, 24), expected=0, resize=None, fail=False, terminate_at=None, via_cli=False, environment=None):
+def check(actions, size=(80, 24), expected=0, resize=None, fail=False, terminate_at=None, via_cli=False, environment=None, options=()):
     master, slave = pty.openpty()
     before = termios.tcgetattr(slave)
     fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", size[1], size[0], 0, 0))
@@ -33,7 +33,8 @@ def check(actions, size=(80, 24), expected=0, resize=None, fail=False, terminate
             env.update(environment)
         if fail:
             env["HOURGLASS_TUI_TEST_THROW"] = "1"
-        command = [str(CLI), "tui"] if via_cli else ["dotnet", str(DLL)]
+        command = [str(CLI), "tui"] if via_cli else ([os.environ["HOURGLASS_TEST_TUI"]] if "HOURGLASS_TEST_TUI" in os.environ else ["dotnet", str(DLL)])
+        command.extend(options)
         process = subprocess.Popen(command, stdin=slave, stdout=slave, stderr=slave,
                                    start_new_session=True, env=env)
         started = time.monotonic()
@@ -81,11 +82,16 @@ def check(actions, size=(80, 24), expected=0, resize=None, fail=False, terminate
             os.close(slave)
 
 
+monochrome = check([(1, b"?"), (2, b"\x1b[B"), (3, b"\x1b"), (4, b"q")], options=("--accessible", "--no-color"))
+assert not re.search(rb"\x1b\[(?:[0-9;:]*;)?(?:3[0-8]|4[0-8]|9[0-7]|10[0-7])(?:[;:][0-9;:]*)?m", monochrome), "Monochrome output contains color sequences"
+no_color = check([(1, b"q")], environment={"NO_COLOR": "1"}, via_cli=True)
+assert not re.search(rb"\x1b\[(?:[0-9;:]*;)?(?:3[0-8]|4[0-8]|9[0-7]|10[0-7])(?:[;:][0-9;:]*)?m", no_color), "NO_COLOR contains color sequences"
 check([(1, b"q")])
 check([(1, b"q")], via_cli=True)
 help_screen = check([(1, b"?"), (2, b"\x1b"), (3, b"q")])
 assert b"Ctrl+P pause or resume" in help_screen, help_screen[-800:].decode(errors="replace")
 tiny = check([(1, b"?"), (2, b"\x1b"), (3, b"q")], size=(30, 10))
+assert b"pause or resume" in tiny, "Tiny terminal help is inaccessible"
 assert b"Terminal too small" in tiny, tiny[-800:].decode(errors="replace")
 check([(1, b"n"), (1.6, b"0 seconds"), (2.2, b"\t"), (2.8, b"Tea"),
        (3.4, b"\r"), (5, b"q")], resize=(4, 40, 12))
@@ -108,6 +114,7 @@ parity = check([(1, b"n"), (1.5, b"5 minutes"), (2, b"\t"), (2.5, b"Focus"),
 for text in (b"Saved", b"Settings", b"Recent", b"Options"):
     assert text in parity, (text, parity[-800:].decode(errors="replace"))
 check([], expected=130, terminate_at=1)
+check([], expected=130, terminate_at=1, via_cli=True)
 check([], expected=1, fail=True)
 # Observe a separate CLI authority, create/close TUI-owned sessions, and preserve the observed timer.
 with tempfile.TemporaryDirectory(prefix="hourglass-shared-pty-") as directory:

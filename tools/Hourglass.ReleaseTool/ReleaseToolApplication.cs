@@ -96,6 +96,20 @@ internal sealed class ReleaseToolApplication
                 return 1;
             }
 
+            if (options.ProjectPath == null)
+            {
+                foreach (string frontend in new[] { "Hourglass.Cli", "Hourglass.Tui", "Hourglass.Host" })
+                {
+                    string path = Path.Combine(repositoryRoot!, "src", frontend, frontend + ".csproj");
+                    ProjectVersionReadResult result = await this.projectVersionReader.ReadAsync(path).ConfigureAwait(false);
+                    if (!result.IsSuccess || !StringComparer.Ordinal.Equals(result.Version, projectResult.Version))
+                    {
+                        await standardError.WriteLineAsync(result.Error ?? $"{frontend} version {result.Version} does not match GUI version {projectResult.Version}").ConfigureAwait(false);
+                        return 1;
+                    }
+                }
+            }
+
             await standardOutput.WriteLineAsync($"Release version validation passed: {projectResult.Version}").ConfigureAwait(false);
             return 0;
         }

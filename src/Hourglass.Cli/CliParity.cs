@@ -227,7 +227,7 @@ internal static class CliParity
         Command about = new("about", "Show Hourglass version and interfaces.");
         about.SetAction(_ => output().Data("about", new
         {
-            version = typeof(CliParity).Assembly.GetName().Version?.ToString(3) ?? "0.2.0",
+            version = ApplicationVersion.Read(typeof(CliParity).Assembly),
             interfaces = new[] { "GUI", "CLI", "TUI" }
         }, ["Hourglass Linux: GUI, CLI and TUI"]));
         root.Subcommands.Add(about);

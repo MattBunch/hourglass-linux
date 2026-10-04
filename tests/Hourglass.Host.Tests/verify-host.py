@@ -10,7 +10,7 @@ import tempfile
 import time
 
 ROOT = Path(__file__).resolve().parents[2]
-CLI = ROOT / "src/Hourglass.Cli/bin/Release/net10.0/hourglass"
+CLI = Path(os.environ.get("HOURGLASS_TEST_CLI", ROOT / "src/Hourglass.Cli/bin/Release/net10.0/hourglass"))
 OPTIONS = ["--set", "notifications-enabled=false", "--set", "audio-alerts-enabled=false", "--set", "do-not-keep-computer-awake=true"]
 
 def call(env, *args):

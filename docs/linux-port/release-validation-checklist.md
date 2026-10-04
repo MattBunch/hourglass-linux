@@ -332,3 +332,19 @@ Taskbar/dock progress and status-icon behavior are capability-based and desktop-
 - [Status Icon Compatibility](status-icon-compatibility.md)
 
 Before claiming support, record the exact distro, desktop environment, session type, display server, panel/dock/extension, selected backend, package type, app version, commit SHA, tester, date, and visible behavior. A backend reporting support is not enough by itself; visible desktop behavior must be observed in the target environment.
+
+## DEV-18 terminal release evidence
+
+- [ ] GUI/CLI/TUI/Host evaluated versions match the shared version and AppStream/tag.
+- [ ] Native linux-x64 terminal archive extracted, statically validated and executed.
+- [ ] Native linux-arm64 terminal archive extracted, statically validated and executed.
+- [ ] Foreground completion/cancellation and detached Host control/recovery/idle exit passed.
+- [ ] Default, accessible and NO_COLOR PTY workflows and restoration passed.
+- [ ] Wide/compact/tiny help, selection, editor focus and resize behavior covered.
+- [ ] Existing GUI publish/AppDir/AppImage and package validation passed.
+- [ ] Verbatim dependency notices, sounds, executable permissions and checksums verified.
+- [ ] Final pushed-head CI links and package artifacts recorded in the DEV-18 plan.
+- [ ] Attended SSH, emulator, screen-reader, desktop services and physical wake checks separately recorded as passed/failed/Not run.
+
+Terminal archives are only publicly available after an authorized tagged release;
+feature-branch CI artifacts do not establish release availability.

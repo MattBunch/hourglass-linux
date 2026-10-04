@@ -1,4 +1,4 @@
-# Hourglass TUI (DEV-18 Stage H)
+# Hourglass TUI (DEV-18)
 
 Build the modern solution in Release, then run `src/Hourglass.Tui/bin/Release/net10.0/hourglass-tui`. `hourglass tui` launches the same interface from the CLI build. `--help` and `--version` work without a terminal.
 
@@ -42,7 +42,7 @@ exceptions return 1. Connection loss closes ordinary TUI-owned sessions.
 Authority loss is displayed, disables mutations and permits quit. Reopen the TUI
 to reconnect. Connection errors return 5 and incompatible protocols return 6.
 Terminal startup preserves GUI recovery records until shared GUI initialization.
-Terminal release tarballs arrive in Stage I.
+See [terminal installation](terminal-installation.md) for self-contained x64/arm64 archives.
 
 The bounded PTY smoke test is `python3 tests/Hourglass.Tui.Tests/verify-terminal.py` after a Release build. It checks keyboard workflows, resize, interruption, exception cleanup, and terminal mode restoration. Attended terminal emulators, SSH, screen readers, and physical desktop services require separate validation.
 
@@ -54,3 +54,20 @@ lifetime. Detached and observed sessions survive TUI quit. Exit prompts and clea
 apply only to the TUI’s ordinary sessions, including cleanup after connection loss.
 Detachment is one-way and preserves countdown state; locked timers require unlocking.
 See [runtime control](linux-port/runtime-control.md) for host and crash recovery rules.
+
+## Accessible and compact presentation
+
+`hourglass-tui --accessible` or `hourglass tui --accessible` refreshes at 1 Hz
+and uses terminal-default monochrome colors. `--no-color` and nonempty `NO_COLOR`
+use the same monochrome scheme at the usual 5 Hz. Default-color reset and cursor
+sequences are still emitted; no explicit foreground/background colors are chosen.
+These options do not change runtime timing or shared settings.
+
+States, lock status, lifetime, selection and editor focus have text labels. The
+selected session remains visible when the session list scrolls. Up/Down scroll
+long help/detail/confirmation content; catalog screens retain their own selection
+keys. PageUp/PageDown scroll long status errors, including in the editor. Small terminals keep help and exit confirmations available while requiring
+resize for timer editing. Drafts survive resize. No mouse is required.
+
+The CLI's plain and JSON modes are the accessibility alternatives to full-screen
+rendering. Screen-reader usability is not established by the automated PTY checks.

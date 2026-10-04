@@ -8,7 +8,7 @@ using Terminal.Gui.ViewBase;
 using Terminal.Gui.Views;
 
 /// <summary>Terminal.Gui owns only views and input routing; the controller owns presentation state.</summary>
-public sealed class TuiShell(TuiController controller, CancellationToken interruption, Action? tickHook = null)
+public sealed class TuiShell(TuiController controller, CancellationToken interruption, Action? tickHook = null, TuiLaunchOptions? launchOptions = null)
 {
     private volatile bool running;
     private bool cleanQuit;
@@ -16,9 +16,13 @@ public sealed class TuiShell(TuiController controller, CancellationToken interru
     private string? loadedDraftId;
     private long loadedDraftRevision = -1;
     private TuiMode loadedMode = TuiMode.Dashboard;
+    private int scrollOffset;
+    private int errorOffset;
+    private string? displayedError;
 
     public bool Run()
     {
+        TuiLaunchOptions options = launchOptions ?? new();
         using IApplication app = Application.Create();
         app.Init();
         using Window window = new() { Title = "Hourglass" };
@@ -30,6 +34,11 @@ public sealed class TuiShell(TuiController controller, CancellationToken interru
         using Label titleLabel = new() { X = 0, Y = 5, Width = Dim.Fill(), Height = 1, Text = "Title:" };
         using TextField title = new() { X = 0, Y = 6, Width = Dim.Fill() };
         window.Add(list, detail, status, editorLabel, input, titleLabel, title);
+        if (options.Monochrome)
+        {
+            foreach (View view in new View[] { window, list, detail, status, editorLabel, input, titleLabel, title })
+            { view.SetScheme(MonochromeScheme.Create()); }
+        }
 
         void Render(TuiState state)
         {
@@ -38,16 +47,17 @@ public sealed class TuiShell(TuiController controller, CancellationToken interru
             int height = app.Screen.Height;
             bool editing = state.Mode is TuiMode.New or TuiMode.Edit or TuiMode.Save;
             bool menu = state.Mode is TuiMode.Saved or TuiMode.Recent or TuiMode.Settings or TuiMode.Options;
-            bool narrow = width < 80;
-            bool tiny = width < 40 || height < 12;
-            list.Visible = !narrow && !tiny && !editing && !menu && state.Mode == TuiMode.Dashboard;
+            TuiLayout layout = TuiLayout.Calculate(width, height, !editing && !menu && state.Mode == TuiMode.Dashboard);
+            bool tiny = layout.Tiny;
+            list.Visible = layout.ShowSessions;
+            if (this.loadedMode != state.Mode) { this.scrollOffset = 0; }
             detail.X = list.Visible ? 25 : 0;
             detail.Visible = !editing || tiny;
             editorLabel.Visible = editing && !tiny;
             input.Visible = editing && !tiny;
             titleLabel.Visible = editing && !tiny;
             title.Visible = editing && !tiny;
-            status.Y = Math.Max(0, height - 5);
+            status.Y = layout.StatusRow;
 
             if (editing && state.Draft is TuiDraft draft && (this.loadedMode != state.Mode || this.loadedDraftId != draft.SessionId || this.loadedDraftRevision != draft.Revision))
             {
@@ -57,9 +67,11 @@ public sealed class TuiShell(TuiController controller, CancellationToken interru
                 this.loadedDraftId = draft.SessionId;
                 this.loadedDraftRevision = draft.Revision;
             }
+            editorLabel.Text = input.HasFocus ? "> Expression:" : "Expression:";
+            titleLabel.Text = title.HasFocus ? "> Title:" : "Title:";
             this.loadedMode = state.Mode;
 
-            if (tiny)
+            if (tiny && state.Mode is not (TuiMode.Help or TuiMode.ConfirmQuit or TuiMode.ConfirmChange or TuiMode.Conflict))
             {
                 detail.Text = "Terminal too small. Resize for timers.\n? help   q quit";
             }
@@ -110,17 +122,24 @@ public sealed class TuiShell(TuiController controller, CancellationToken interru
                 TimeSpan? time = elapsedMode ? selected.Countdown.TimeElapsed : selected.Countdown.TimeLeft;
                 string display = time is TimeSpan value ? TimerDisplay.FormatTimerTime(value) : "--:--:--";
                 double progress = TimerDisplay.GetProgressPercent(selected.Countdown, selected.Options.ReverseProgressBar);
-                detail.Text = $"{selected.TimerTitle}\n{selected.Countdown.State} [{selected.Lifetime}]   {(elapsedMode ? "Elapsed" : "Remaining")}: {display}\nProgress: {progress:0}%\n{selected.TimerInput}\n\nEnter start   Space pause/resume\ns stop   r restart   e edit\nEsc dismiss   u unlock   d detach   ? help";
+                detail.Text = $"{selected.TimerTitle}\n{selected.Countdown.State} [{selected.Lifetime}] {(selected.Options.LockInterface ? "Locked" : "Unlocked")}   {(elapsedMode ? "Elapsed" : "Remaining")}: {display}\nProgress: {progress:0}%\n{selected.TimerInput}\n\nEnter start   Space pause/resume\ns stop   r restart   e edit\nEsc dismiss   u unlock   d detach   ? help";
             }
             else { detail.Text = "No live timers. Press n to create one.\n? help   q quit"; }
 
+            if (!editing && !menu)
+            {
+                detail.Text = TuiLayout.Scroll(TuiLayout.Wrap(detail.Text, width - (list.Visible ? 27 : 2)), this.scrollOffset, layout.ContentRows);
+            }
+
             if (list.Visible)
             {
-                list.Text = "Sessions\n" + string.Join('\n', state.Sessions.Take(Math.Max(1, height - 8)).Select(session =>
+                list.Text = "Sessions\n" + string.Join('\n', state.Sessions.Skip(TuiLayout.FirstVisible(Array.FindIndex(state.Sessions.ToArray(), item => item.SessionId == state.SelectedId), state.Sessions.Length, Math.Max(1, height - 8))).Take(Math.Max(1, height - 8)).Select(session =>
                     $"{(session.SessionId == state.SelectedId ? '>' : ' ')} {session.TimerTitle} [{session.Countdown.State}] [{session.Lifetime}]"));
             }
             string modeHelp = editing ? "Enter save   Tab fields   Esc cancel" : menu ? "Up/Down select   Esc back   q quit" : "n new   Tab select   ? help   q quit";
-            status.Text = $"{(state.Busy ? "Working..." : modeHelp)}\n{state.Error ?? string.Empty}";
+            if (this.displayedError != state.Error) { this.errorOffset = 0; this.displayedError = state.Error; }
+            string error = TuiLayout.Scroll(TuiLayout.Wrap(state.Error ?? string.Empty, width - 2), this.errorOffset, 2);
+            status.Text = $"{(state.Busy ? "Working..." : modeHelp)}\n{error}";
         }
 
         void Changed(TuiState state)
@@ -155,7 +174,7 @@ public sealed class TuiShell(TuiController controller, CancellationToken interru
         try
         {
             Render(controller.State);
-            app.AddTimeout(TimeSpan.FromMilliseconds(200), () =>
+            app.AddTimeout(options.RefreshInterval, () =>
             {
                 if (!this.running) { return false; }
                 tickHook?.Invoke();
@@ -176,6 +195,19 @@ public sealed class TuiShell(TuiController controller, CancellationToken interru
         void OnKeyDown(object? sender, Key key)
         {
             TuiMode mode = controller.State.Mode;
+            if (controller.State.Error != null && (key == Key.PageDown || key == Key.PageUp))
+            {
+                this.errorOffset = Math.Max(0, this.errorOffset + (key == Key.PageDown ? 1 : -1));
+                Render(controller.State); key.Handled = true; return;
+            }
+            if (mode is not (TuiMode.New or TuiMode.Edit or TuiMode.Save or TuiMode.Saved or TuiMode.Recent or TuiMode.Settings or TuiMode.Options)
+                && (key == Key.CursorDown || key == Key.CursorUp))
+            {
+                this.scrollOffset = Math.Max(0, this.scrollOffset + (key == Key.CursorDown ? 1 : -1));
+                Render(controller.State); key.Handled = true; return;
+            }
+            if (mode is not (TuiMode.New or TuiMode.Edit or TuiMode.Save) && (key.ToString() == "?" || key == Key.F1))
+            { controller.ShowHelp(); key.Handled = true; return; }
             if (key == Key.Q.WithCtrl) { key.Handled = true; _ = ExecuteAsync(QuitAsync); return; }
             if ((app.Screen.Width < 40 || app.Screen.Height < 12) && key == Key.Q)
             {
