@@ -48,11 +48,11 @@ def check(actions, size=(80, 24), expected=0, resize=None, fail=False, terminate
                     raise AssertionError("TUI exceeded PTY deadline: " + output[-600:].decode(errors="replace"))
                 if rendered_at is not None and actions and elapsed >= actions[0][0]:
                     os.write(master, actions.pop(0)[1])
-                if resize and not resized and elapsed >= resize[0]:
+                if rendered_at is not None and resize and not resized and elapsed >= resize[0]:
                     fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", resize[2], resize[1], 0, 0))
                     os.kill(process.pid, signal.SIGWINCH)
                     resized = True
-                if terminate_at and not terminated and elapsed >= terminate_at:
+                if rendered_at is not None and terminate_at and not terminated and elapsed >= terminate_at:
                     os.kill(process.pid, signal.SIGTERM)
                     terminated = True
                 if select.select([master], [], [], 0.05)[0]:
