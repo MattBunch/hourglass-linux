@@ -58,32 +58,6 @@ If the desktop does not provide FUSE support, run the same verified file with
 `./Hourglass-<version>-x86_64.AppImage --appimage-extract-and-run` instead.
 AppImage signing and automatic updates are not yet available.
 
-## Regenerate The README Demo
-
-Requirements:
-
-- .NET 10 SDK.
-- FFmpeg.
-- Normal repository restore dependencies.
-
-Generate the README GIF and MP4:
-
-```bash
-./scripts/record-readme-demo.sh
-```
-
-Advanced direct invocation:
-
-```bash
-dotnet run \
-  --configuration Release \
-  --project tools/Hourglass.DemoRecorder/Hourglass.DemoRecorder.csproj \
-  -- \
-  --scenario readme
-```
-
-The recorder uses Avalonia headless rendering with isolated in-memory platform services. It does not read or modify normal Hourglass settings.
-
 ## Restricted Environments
 
 If the local environment blocks writes under the default .NET CLI home, prefix the commands with a writable CLI home:
