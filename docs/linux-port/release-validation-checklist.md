@@ -332,3 +332,21 @@ Taskbar/dock progress and status-icon behavior are capability-based and desktop-
 - [Status Icon Compatibility](status-icon-compatibility.md)
 
 Before claiming support, record the exact distro, desktop environment, session type, display server, panel/dock/extension, selected backend, package type, app version, commit SHA, tester, date, and visible behavior. A backend reporting support is not enough by itself; visible desktop behavior must be observed in the target environment.
+
+## DEV-18 terminal release evidence
+
+- [x] GUI/CLI/TUI/Host evaluated versions match the shared version and AppStream/tag.
+- [x] Native linux-x64 terminal archive extracted, statically validated and executed.
+- [x] Native linux-arm64 terminal archive extracted, statically validated and executed.
+- [x] Foreground completion/cancellation and detached Host control/recovery/idle exit passed.
+- [x] Default, accessible and NO_COLOR PTY workflows and restoration passed.
+- [x] Wide/compact/tiny help, selection, editor focus and resize behavior covered.
+- [x] Existing GUI publish/AppDir/AppImage and package validation passed.
+- [x] Verbatim dependency notices, sounds, executable permissions and checksums verified.
+- [x] Final pushed-head CI links and package artifacts recorded in the DEV-18 plan.
+- [x] Attended SSH, emulator, screen-reader, desktop services and physical wake checks separately recorded as passed/failed/Not run.
+
+Evidence: [successful Stage I CI on 3cab90c](https://github.com/MattBunch/hourglass-linux/actions/runs/37177348792); local artifact paths and explicit Not run attended checks are recorded in [the implementation plan](../DEV-18_IMPLEMENTATION_PLAN.md#final-dev-18-implementation-audit-2026-10-04). Checked items concerning attended checks mean their status was recorded, not that those checks passed.
+
+Terminal archives are only publicly available after an authorized tagged release;
+feature-branch CI artifacts do not establish release availability.

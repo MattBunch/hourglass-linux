@@ -5,6 +5,23 @@ using Xunit;
 public sealed class ReleaseToolApplicationTests
 {
     [Fact]
+    public async Task RepositoryValidationRejectsDivergentTerminalVersion()
+    {
+        using StringWriter output = new();
+        using StringWriter error = new();
+        var application = new ReleaseToolApplication(new DivergentVersionReader(),
+            new StubAppStreamMetadataReader(AppStreamMetadataReadResult.Success("0.2.0")));
+        Assert.Equal(1, await application.RunAsync(["validate-version"], output, error));
+        Assert.Contains("Hourglass.Tui version", error.ToString(), StringComparison.Ordinal);
+    }
+
+    private sealed class DivergentVersionReader : IProjectVersionReader
+    {
+        public Task<ProjectVersionReadResult> ReadAsync(string projectPath) => Task.FromResult(
+            ProjectVersionReadResult.Success(projectPath.Contains("Hourglass.Tui", StringComparison.Ordinal) ? "9.9.9" : "0.2.0"));
+    }
+
+    [Fact]
     public async Task VersionWritesOnlyTheEvaluatedVersion()
     {
         ApplicationResult result = await RunAsync(["version", "--project", "project with spaces.csproj"]);

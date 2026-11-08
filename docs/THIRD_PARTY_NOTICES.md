@@ -45,3 +45,20 @@ release pipeline must include the project MIT license and the verbatim
 third-party notices supplied by the self-contained .NET runtime and native
 asset packages. `scripts/publish-linux-release.sh` stages that notice bundle in
 `licenses/`, and the AppDir builder copies it into the final AppImage payload.
+
+## DEV-18 terminal archives
+
+The terminal notice bundle is independent of the earlier GUI audit above.
+`scripts/stage-terminal-notices.py` audits resolved CLI/TUI/Host package identities
+and versions, stages verbatim licenses from pinned upstream revisions with SHA256
+checks, copies notices supplied inside NuGet packages and includes the target .NET
+runtime LICENSE/THIRD-PARTY-NOTICES. The resulting `licenses/dependencies.json`
+records resolved versions and provenance. Unknown versions or missing evidence
+fail packaging. Terminal archives contain no Avalonia, Skia or HarfBuzz payloads.
+
+The pinned texts cover System.CommandLine, Terminal.Gui, Tmds.DBus.Protocol,
+ColorHelper, JetBrains.Annotations, Markdig (BSD-2-Clause), Onigwrap,
+TestableIO/Testably abstractions, TextMateSharp/Grammars, Wcwidth and Microsoft
+Extensions. ColorHelper and JetBrains package metadata omit source commits;
+their reviewed license texts use explicitly recorded upstream revisions. This
+notice audit is separate from vulnerability checks and attended service testing.

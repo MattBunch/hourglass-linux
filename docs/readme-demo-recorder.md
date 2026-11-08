@@ -4,11 +4,31 @@
 
 The README demo recorder is a dedicated .NET tool in `tools/Hourglass.DemoRecorder`. It runs a deterministic C# scenario against the real Hourglass Avalonia `MainWindow` and `MainWindowViewModel`, renders numbered PNG frames with Avalonia headless and Skia, then invokes FFmpeg to create `docs/assets/demo.gif` and `docs/assets/demo.mp4`.
 
-The default command is:
+## Running The Recorder
+
+Requirements:
+
+- .NET 10 SDK.
+- FFmpeg.
+- Normal repository restore dependencies.
+
+Generate the README GIF and MP4 with the wrapper script:
 
 ```bash
 ./scripts/record-readme-demo.sh
 ```
+
+For direct invocation, run the recorder project:
+
+```bash
+dotnet run \
+  --configuration Release \
+  --project tools/Hourglass.DemoRecorder/Hourglass.DemoRecorder.csproj \
+  -- \
+  --scenario readme
+```
+
+The recorder uses Avalonia headless rendering with isolated in-memory platform services. It does not read or modify normal Hourglass settings.
 
 ## Scenario Timeline
 

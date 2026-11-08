@@ -19,6 +19,8 @@ public sealed class LinuxAudioAlertServiceTests : IDisposable
 
         Assert.Equal(executableName, startInfo.FileName);
         Assert.False(startInfo.UseShellExecute);
+        Assert.True(startInfo.RedirectStandardError);
+        Assert.True(startInfo.RedirectStandardOutput);
         Assert.Equal([soundPath], startInfo.ArgumentList);
     }
 
@@ -29,6 +31,8 @@ public sealed class LinuxAudioAlertServiceTests : IDisposable
 
         Assert.Equal("aplay", startInfo.FileName);
         Assert.False(startInfo.UseShellExecute);
+        Assert.True(startInfo.RedirectStandardError);
+        Assert.True(startInfo.RedirectStandardOutput);
         Assert.Equal(["--quiet", "/tmp/beep.wav"], startInfo.ArgumentList);
     }
 

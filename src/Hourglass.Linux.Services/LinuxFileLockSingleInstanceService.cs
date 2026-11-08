@@ -55,6 +55,9 @@ public sealed class LinuxFileLockSingleInstanceService : ISingleInstanceService
     {
     }
 
+    public LinuxFileLockSingleInstanceService(string lockPath, string socketPath)
+        : this(lockPath, socketPath, new LockFileSystem(), () => Environment.ProcessId, () => DateTimeOffset.UtcNow) { }
+
     internal LinuxFileLockSingleInstanceService(
         string lockPath,
         string socketPath,
@@ -527,6 +530,7 @@ public sealed class LinuxFileLockSingleInstanceService : ISingleInstanceService
         public void CreateDirectory(string path)
         {
             Directory.CreateDirectory(path);
+            if (OperatingSystem.IsLinux()) { this.EnsurePrivateDirectory(path); }
         }
 
         public void EnsurePrivateDirectory(string path)
@@ -534,6 +538,7 @@ public sealed class LinuxFileLockSingleInstanceService : ISingleInstanceService
             Directory.CreateDirectory(path);
 
 #pragma warning disable CA1416
+            if (OperatingSystem.IsLinux()) { RuntimeControlTransport.VerifyPath(path, directory: true, requirePrivate: false); }
             File.SetUnixFileMode(path, PrivateDirectoryMode);
             UnixFileMode mode = File.GetUnixFileMode(path);
 #pragma warning restore CA1416

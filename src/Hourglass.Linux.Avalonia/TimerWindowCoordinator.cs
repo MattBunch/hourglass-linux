@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Platform;
 using Avalonia.Threading;
+using Hourglass.Application;
 using Hourglass.Linux.Services;
 using Hourglass.Platform;
 using Hourglass.Settings;
@@ -12,10 +13,7 @@ namespace Hourglass.Linux.Avalonia;
 
 internal sealed class TimerWindowCoordinator : IAsyncDisposable
 {
-    private const string ActiveSessionKey = "active-session";
     private const string ActiveSessionsKey = "active-sessions";
-    private const string SettingsKey = "app";
-    private const string SavedTimersKey = "saved-timers";
 
     private static readonly string SoundAssetsDirectory = Path.Combine(
         AppContext.BaseDirectory,
@@ -25,7 +23,15 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
     private static readonly Uri StatusIconResourceUri = new("avares://hourglass-linux/Assets/hourglass.png");
 
     private readonly DesktopProgressController desktopProgressController;
-    private readonly WakeAlarmController wakeAlarmController;
+    private readonly Func<HourglassRuntime> createRuntime;
+    private HourglassRuntime? runtime;
+    private IHourglassClient? client;
+    private RemoteHourglassClient? remote;
+    private ISingleInstanceService? authority;
+    private RuntimeControlServer? control;
+    private RuntimeClientLease? localLease;
+    private readonly HashSet<string> observedSessions = [];
+    private IHourglassClient Client => this.client ?? throw new InvalidOperationException(nameof(StartAsync));
     private readonly IClassicDesktopStyleApplicationLifetime lifetime;
     private readonly IAudioAlertService audioAlertService;
     private readonly IDiagnosticSink diagnosticSink;
@@ -34,8 +40,6 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
     private readonly ApplicationInfoProvider applicationInfoProvider;
     private readonly IExternalUriLauncher externalUriLauncher;
     private readonly ISettingsStore settingsStore;
-    private readonly IAppSettingsStore appSettingsStore;
-    private readonly ISavedTimersStore savedTimersStore;
     private readonly IStatusIconService statusIconService;
     private readonly ISystemPowerService systemPowerService;
     private readonly Func<IWindowAttentionTarget, IWindowAttentionService> createWindowAttentionService;
@@ -45,8 +49,8 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
     private Task pendingSessionSave = Task.CompletedTask;
     private bool exitCloseInProgress;
     private bool isShuttingDown;
+    private long shutdownGeneration;
     private bool showInNotificationArea;
-    private bool wakeFromSuspendEnabled;
     private WindowRegistration? mostRecentWindow;
 
     public TimerWindowCoordinator(IClassicDesktopStyleApplicationLifetime lifetime)
@@ -102,17 +106,18 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
         this.lifetime = lifetime ?? throw new ArgumentNullException(nameof(lifetime));
         this.settingsStore = settingsStore ?? throw new ArgumentNullException(nameof(settingsStore));
         this.diagnosticSink = diagnosticSink ?? NoOpDiagnosticSink.Instance;
+        this.createRuntime = () =>
+        {
+            HourglassRuntime owned = new(this.diagnosticSink, services: new SessionRuntimeServices(notificationService, audioAlertService, sessionInhibitor, systemPowerService,
+                ApplicationStrings.ApplicationTitle, ApplicationStrings.StatusTimerComplete, ApplicationStrings.SessionInhibitionReason), settingsStore: settingsStore);
+            owned.ConfigureWakeAlarms(wakeAlarmService ?? throw new ArgumentNullException(nameof(wakeAlarmService)));
+            return owned;
+        };
         this.startupDiagnostics = startupDiagnostics ?? StartupDiagnostics.Disabled;
-        this.appSettingsStore = new CoordinatedAppSettingsStore(this.settingsStore);
         this.notificationService = notificationService ?? throw new ArgumentNullException(nameof(notificationService));
         this.audioAlertService = audioAlertService ?? throw new ArgumentNullException(nameof(audioAlertService));
         this.sessionInhibitor = sessionInhibitor ?? throw new ArgumentNullException(nameof(sessionInhibitor));
         this.systemPowerService = systemPowerService ?? throw new ArgumentNullException(nameof(systemPowerService));
-        this.wakeAlarmController = new WakeAlarmController(
-            wakeAlarmService ?? throw new ArgumentNullException(nameof(wakeAlarmService)),
-            () => DateTimeOffset.Now,
-            this.diagnosticSink);
-        this.savedTimersStore = new CoordinatedSavedTimersStore(this.settingsStore);
         this.desktopProgressController = new DesktopProgressController(
             desktopProgressService ?? throw new ArgumentNullException(nameof(desktopProgressService)),
             this.diagnosticSink);
@@ -128,96 +133,114 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
         CancellationToken cancellationToken = default)
     {
         this.startupDiagnostics.Record(StartupStage.CoordinatorStarting);
-        LinuxAppSettings settings = await this.LoadDocumentAsync(SettingsKey, LinuxAppSettings.Default, cancellationToken)
-            .ConfigureAwait(true);
-        ActiveTimerSessionsDocument activeSessions = await this.LoadActiveSessionsAsync(cancellationToken)
-            .ConfigureAwait(true);
-        this.startupDiagnostics.Record(StartupStage.SettingsLoaded);
-        this.showInNotificationArea = settings.ShowInNotificationArea && this.statusIconService.IsSupported;
-        this.wakeFromSuspendEnabled = settings.WakeFromSuspendEnabled;
-
-        bool restoredAny = false;
-        if (settings.RestoreActiveSessionOnStartup)
+        this.authority = new LinuxFileLockSingleInstanceService();
+        if (!await this.authority.TryAcquireAsync(cancellationToken).ConfigureAwait(true))
         {
-            DateTime wallClockNow = DateTime.Now;
-            foreach (ActiveTimerSessionDefinition session in activeSessions.Sessions)
+            this.authority.Dispose(); this.authority = null;
+            ApplicationResult<RemoteHourglassClient> connection = await RemoteHourglassClient.ConnectWhenReadyAsync(cancellationToken: cancellationToken, kind: RuntimeClientKind.Gui).ConfigureAwait(true);
+            if (connection is ApplicationResult<RemoteHourglassClient>.Failure failed) { throw new IOException(failed.Error.Message); }
+            this.remote = ((ApplicationResult<RemoteHourglassClient>.Success)connection).Value;
+            this.client = this.remote;
+            ApplicationResult<RuntimeStartupSnapshot> initialized = await this.Client.InitializeGuiAsync(
+                initialRequest?.Kind == SingleInstanceLaunchRequestKind.StartTimer ? initialRequest.TimerInput : null,
+                initialRequest?.TimerTitle, cancellationToken).ConfigureAwait(true);
+            if (initialized is not ApplicationResult<RuntimeStartupSnapshot>.Success loaded) { throw new IOException(ApplicationStrings.StatusRuntimeUnavailable); }
+            this.showInNotificationArea = loaded.Value.Data.Settings.ShowInNotificationArea && this.statusIconService.IsSupported;
+            foreach (RestoredSession session in loaded.Value.Sessions)
             {
-                if (IsRestorableActiveSession(session.Session, wallClockNow)
-                    && this.CreateWindow(session.SessionId, session.Session) != null)
-                {
-                    restoredAny = true;
-                }
+                if (session.Lifetime != SessionLifetime.Gui) { this.observedSessions.Add(session.SessionId); }
+                this.CreateWindow(session.SessionId, session.Session.ToDocument(), restoredExpiry: session.ExpiredWhileClosed);
             }
-        }
-
-        if (!restoredAny && settings.OpenSavedTimersOnStartup)
-        {
-            SavedTimersDocument savedTimers = await this.LoadDocumentAsync(SavedTimersKey, SavedTimersDocument.Empty, cancellationToken)
-                .ConfigureAwait(true);
-            foreach (SavedTimerDefinition savedTimer in savedTimers.Timers)
-            {
-                this.CreateWindow(savedTimer: savedTimer);
-                restoredAny = true;
-            }
-        }
-
-        if (initialRequest?.Kind == SingleInstanceLaunchRequestKind.StartTimer)
-        {
-            this.CreateWindow(launchRequest: initialRequest);
-            restoredAny = true;
-        }
-
-        if (!restoredAny)
-        {
-            this.CreateWindow();
-        }
-
-        if (initialRequest?.Kind == SingleInstanceLaunchRequestKind.Activate)
-        {
             this.ActivateMostRelevantWindow();
+            return;
         }
-
-        this.ApplyWakeAlarm();
+        this.runtime = this.createRuntime();
+        this.localLease = await this.runtime.OpenClientAsync(RuntimeClientKind.Gui, cancellationToken).ConfigureAwait(true);
+        this.client = this.localLease.Client;
+        ApplicationResult<RuntimeStartupSnapshot> result = await this.Client.InitializeGuiAsync(
+            initialRequest?.Kind == SingleInstanceLaunchRequestKind.StartTimer ? initialRequest.TimerInput : null,
+            initialRequest?.TimerTitle, cancellationToken).ConfigureAwait(true);
+        if (result is not ApplicationResult<RuntimeStartupSnapshot>.Success started)
+        {
+            throw new InvalidOperationException(nameof(StartAsync));
+        }
+        this.runtime.StartScheduler();
+        this.control = new RuntimeControlServer(this.runtime, diagnostics: this.diagnosticSink);
+        this.control.Start();
+        await this.authority.StartRequestListenerAsync((request, _) => SingleInstanceLaunchRequestDispatcher.Shared.DispatchAsync(request), cancellationToken).ConfigureAwait(true);
+        this.startupDiagnostics.Record(StartupStage.SettingsLoaded);
+        this.showInNotificationArea = started.Value.Data.Settings.ShowInNotificationArea && this.statusIconService.IsSupported;
+        foreach (RestoredSession session in started.Value.Sessions)
+        {
+            if (session.Lifetime != SessionLifetime.Gui) { this.observedSessions.Add(session.SessionId); }
+            this.CreateWindow(session.SessionId, session.Session.ToDocument(), restoredExpiry: session.ExpiredWhileClosed);
+        }
+        if (initialRequest?.Kind == SingleInstanceLaunchRequestKind.Activate) { this.ActivateMostRelevantWindow(); }
     }
 
-    public Task HandleLaunchRequestAsync(SingleInstanceLaunchRequest request)
+    public async Task HandleLaunchRequestAsync(SingleInstanceLaunchRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
 
         if (request.Kind == SingleInstanceLaunchRequestKind.StartTimer)
         {
             this.CreateWindow(launchRequest: request);
-            return Task.CompletedTask;
+            return;
         }
 
+        if (this.windows.Count == 0)
+        {
+            var live = await this.Client.ListSessionsAsync().ConfigureAwait(true);
+            if (live is ApplicationResult<System.Collections.Immutable.ImmutableArray<TimerSessionSnapshot>>.Success sessions)
+            {
+                foreach (TimerSessionSnapshot session in sessions.Value)
+                {
+                    if (session.Lifetime != SessionLifetime.Gui) { this.observedSessions.Add(session.SessionId); }
+                    this.CreateWindow(session.SessionId);
+                }
+            }
+        }
         this.ActivateMostRelevantWindow();
-        return Task.CompletedTask;
     }
 
     public async ValueTask DisposeAsync()
     {
+        this.shutdownGeneration++;
         this.statusIconService.ActionRequested -= this.StatusIconActionRequested;
-        await this.pendingSessionSave.ConfigureAwait(false);
-        await this.wakeAlarmController.DisposeAsync().ConfigureAwait(false);
-        await this.desktopProgressController.ClearAsync().ConfigureAwait(false);
-        await this.statusIconService.DisposeAsync().ConfigureAwait(false);
-        await this.sessionInhibitor.DisposeAsync().ConfigureAwait(false);
+        try
+        {
+            await this.statusIconService.DisposeAsync().ConfigureAwait(false);
+            await this.pendingSessionSave.ConfigureAwait(false);
+            await this.desktopProgressController.ClearAsync().ConfigureAwait(false);
+        }
+        finally
+        {
+            try
+            {
+                if (this.control != null) { await this.control.DisposeAsync().ConfigureAwait(false); }
+                if (this.remote != null) { await this.remote.DisposeAsync().ConfigureAwait(false); }
+                if (this.localLease != null) { await this.localLease.DisposeAsync().ConfigureAwait(false); }
+                if (this.runtime != null) { await this.runtime.DisposeAsync().ConfigureAwait(false); }
+            }
+            finally { this.authority?.Dispose(); }
+        }
     }
 
     private MainWindow? CreateWindow(
         string? sessionId = null,
         ActiveTimerSessionDocument? session = null,
         SavedTimerDefinition? savedTimer = null,
-        SingleInstanceLaunchRequest? launchRequest = null)
+        SingleInstanceLaunchRequest? launchRequest = null,
+        bool restoredExpiry = false)
     {
+        this.isShuttingDown = false;
+        this.shutdownGeneration++;
         var viewModel = new MainWindowViewModel(
-            new CountdownEngine(new SystemMonotonicClock()),
+            new SystemMonotonicClock(),
             () => DateTime.Now,
             this.notificationService,
             this.sessionInhibitor,
             this.settingsStore,
-            this.appSettingsStore,
-            this.savedTimersStore,
             this.audioAlertService,
             this.systemPowerService,
             this.statusIconService.IsSupported,
@@ -226,7 +249,10 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
             persistActiveSessionDirectly: false,
             restoreActiveSessionOnLoad: false,
             uiDispatcher: AvaloniaUiDispatcher.Instance,
-            diagnosticSink: this.diagnosticSink);
+            diagnosticSink: this.diagnosticSink,
+            runtime: this.runtime,
+            client: this.Client,
+            removeSessionOnDispose: sessionId == null || !this.observedSessions.Contains(sessionId));
         this.startupDiagnostics.Record(StartupStage.MainWindowConstructionStarting);
         var window = new MainWindow(
             viewModel,
@@ -258,12 +284,11 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
         }
 
         this.ApplyInitialGeometry(window, session?.WindowGeometry);
-        _ = this.LoadWindowAsync(registration, session, savedTimer, launchRequest);
+        _ = this.LoadWindowAsync(registration, session, savedTimer, launchRequest, restoredExpiry);
         window.Show();
         this.startupDiagnostics.Record(StartupStage.MainWindowShowCalled);
         this.ApplyDesktopProgress();
         this.ApplyStatusIconState();
-        this.ApplyWakeAlarm();
         return window;
     }
 
@@ -271,7 +296,8 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
         WindowRegistration registration,
         ActiveTimerSessionDocument? session,
         SavedTimerDefinition? savedTimer,
-        SingleInstanceLaunchRequest? launchRequest)
+        SingleInstanceLaunchRequest? launchRequest,
+        bool restoredExpiry)
     {
         await registration.ViewModel.LoadSettingsAsync().ConfigureAwait(true);
 
@@ -280,7 +306,8 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
             return;
         }
 
-        if (session != null && !registration.ViewModel.RestoreActiveSession(session))
+        await registration.ViewModel.PendingCommands;
+        if (session != null && !registration.ViewModel.RestoreActiveSession(session, restoredExpiry))
         {
             registration.Window.Close();
             return;
@@ -299,10 +326,10 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
                 launchRequest.TimerTitle);
         }
 
+        await registration.ViewModel.PendingCommands;
         _ = this.QueueSessionSave();
         this.ApplyDesktopProgress();
         this.ApplyStatusIconState();
-        this.ApplyWakeAlarm();
     }
 
     private void ApplyInitialGeometry(MainWindow window, WindowGeometrySnapshot? restoredGeometry)
@@ -327,87 +354,6 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
         window.ApplyWindowGeometry(window.CreateCascadedWindowGeometry(previousGeometry));
     }
 
-    private async Task<ActiveTimerSessionsDocument> LoadActiveSessionsAsync(CancellationToken cancellationToken)
-    {
-        LoadDocumentResult<ActiveTimerSessionsDocument> activeSessions = await this.TryLoadDocumentAsync<ActiveTimerSessionsDocument>(
-            ActiveSessionsKey,
-            cancellationToken).ConfigureAwait(true);
-        if (activeSessions.Found)
-        {
-            return activeSessions.Value ?? ActiveTimerSessionsDocument.Empty;
-        }
-
-        ActiveTimerSessionDocument? legacySession = await this.LoadOptionalDocumentAsync<ActiveTimerSessionDocument>(
-            ActiveSessionKey,
-            cancellationToken).ConfigureAwait(true);
-        return legacySession == null
-            ? ActiveTimerSessionsDocument.Empty
-            : new ActiveTimerSessionsDocument(sessions:
-            [
-                new ActiveTimerSessionDefinition(Guid.NewGuid().ToString("N"), legacySession)
-            ]);
-    }
-
-    private async Task<T> LoadDocumentAsync<T>(string key, T fallback, CancellationToken cancellationToken)
-    {
-        try
-        {
-            return await this.settingsStore.LoadAsync<T>(key, cancellationToken).ConfigureAwait(true) ?? fallback;
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (Exception exception)
-        {
-            this.RecordDataRecovery("load", key, "Document load failed; using fallback.", exception);
-            return fallback;
-        }
-    }
-
-    private async Task<LoadDocumentResult<T>> TryLoadDocumentAsync<T>(string key, CancellationToken cancellationToken)
-    {
-        try
-        {
-            T? value = await this.settingsStore.LoadAsync<T>(key, cancellationToken).ConfigureAwait(true);
-            return value == null
-                ? new LoadDocumentResult<T>(false, default)
-                : new LoadDocumentResult<T>(true, value);
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (Exception exception)
-        {
-            this.RecordDataRecovery("load", key, "Document load failed; treating it as missing.", exception);
-            return new LoadDocumentResult<T>(false, default);
-        }
-    }
-
-    private async Task<T?> LoadOptionalDocumentAsync<T>(string key, CancellationToken cancellationToken)
-    {
-        try
-        {
-            return await this.settingsStore.LoadAsync<T>(key, cancellationToken).ConfigureAwait(true);
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (Exception exception)
-        {
-            this.RecordDataRecovery("load", key, "Optional document load failed; treating it as missing.", exception);
-            return default;
-        }
-    }
-
-    private static bool IsRestorableActiveSession(ActiveTimerSessionDocument? session, DateTime wallClockNow)
-    {
-        return session != null
-            && ActiveTimerSessionSnapshot.FromDocument(session, wallClockNow, TimeSpan.Zero) != null;
-    }
-
     private void ViewModelNewTimerRequested(object? sender, EventArgs e)
     {
         this.CreateWindow();
@@ -425,12 +371,18 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
     {
         _ = this.QueueSessionSave();
         this.ApplyStatusIconState();
-        this.ApplyWakeAlarm();
     }
 
     private void WindowGeometryChanged(object? sender, EventArgs e)
     {
-        _ = this.QueueSessionSave();
+        if (sender is MainWindow window)
+        {
+            WindowRegistration? registration = this.windows.FirstOrDefault(item => item.Window == window);
+            if (registration != null && !this.closingWindows.Contains(window))
+            {
+                registration.ViewModel.UpdateSessionGeometry(window.CurrentWindowGeometry);
+            }
+        }
     }
 
     private void ViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -500,12 +452,11 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
         Task sessionSave = this.QueueSessionSave();
         this.ApplyDesktopProgress();
         this.ApplyStatusIconState();
-        this.ApplyWakeAlarm();
 
         if (this.windows.Count == 0 && !this.isShuttingDown)
         {
             this.isShuttingDown = true;
-            _ = this.ShutdownAfterFinalSessionSaveAsync(sessionSave);
+            _ = this.ShutdownAfterFinalSessionSaveAsync(sessionSave, ++this.shutdownGeneration);
         }
     }
 
@@ -623,40 +574,16 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
 
     private Task QueueSessionSave()
     {
-        ActiveTimerSessionsDocument document = this.CreateActiveSessionsDocument();
-        this.pendingSessionSave = this.SaveSessionsAfterAsync(this.pendingSessionSave, document);
+        this.pendingSessionSave = this.FlushSessionSaveAsync();
         return this.pendingSessionSave;
     }
 
-    private ActiveTimerSessionsDocument CreateActiveSessionsDocument()
+    private async Task FlushSessionSaveAsync()
     {
-        ActiveTimerSessionDefinition[] sessions = this.windows
-            .Where(window => !this.closingWindows.Contains(window.Window))
-            .Select(window => new ActiveTimerSessionDefinition(
-                window.ViewModel.SessionId,
-                window.ViewModel.CreateActiveSessionDocument(window.Window.CurrentWindowGeometry)))
-            .ToArray();
-        return new ActiveTimerSessionsDocument(sessions: sessions);
-    }
-
-    private async Task SaveSessionsAfterAsync(Task previousSave, ActiveTimerSessionsDocument document)
-    {
-        try
+        ApplicationResult<bool> result = await this.Client.FlushPersistenceAsync().ConfigureAwait(false);
+        if (result is ApplicationResult<bool>.Failure failed)
         {
-            await previousSave.ConfigureAwait(false);
-        }
-        catch (Exception exception)
-        {
-            this.RecordDataRecovery("save", ActiveSessionsKey, "Previous active sessions save failed before a queued save.", exception);
-        }
-
-        try
-        {
-            await this.settingsStore.SaveAsync(ActiveSessionsKey, document).ConfigureAwait(false);
-        }
-        catch (Exception exception)
-        {
-            this.RecordDataRecovery("save", ActiveSessionsKey, "Active sessions save failed.", exception);
+            this.RecordDataRecovery("save", "active-sessions", failed.Error.Message, new IOException(failed.Error.Message));
         }
     }
 
@@ -664,15 +591,6 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
     {
         DesktopProgressRequest request = this.GetAggregateDesktopProgressRequest();
         _ = this.desktopProgressController.ApplyAsync(request);
-    }
-
-    private void ApplyWakeAlarm()
-    {
-        WakeAlarmTimerSnapshot[] timers = this.windows
-            .Where(window => !this.closingWindows.Contains(window.Window))
-            .Select(window => new WakeAlarmTimerSnapshot(window.ViewModel.State, window.ViewModel.EndTime))
-            .ToArray();
-        _ = this.wakeAlarmController.ApplyAsync(timers, this.wakeFromSuspendEnabled);
     }
 
     private DesktopProgressRequest GetAggregateDesktopProgressRequest()
@@ -727,7 +645,7 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
         }
     }
 
-    private async Task ShutdownAfterFinalSessionSaveAsync(Task sessionSave)
+    private async Task ShutdownAfterFinalSessionSaveAsync(Task sessionSave, long generation)
     {
         try
         {
@@ -738,6 +656,17 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
             this.RecordDataRecovery("save", ActiveSessionsKey, "Final session save failed before shutdown.", exception);
         }
 
+        if (this.runtime != null)
+        {
+            using PeriodicTimer wait = new(TimeSpan.FromMilliseconds(200));
+            while (generation == this.shutdownGeneration && this.windows.Count == 0 && await this.runtime.RequiresAuthorityAsync(ignoreClientId: this.localLease?.Id).ConfigureAwait(true))
+            {
+                await wait.WaitForNextTickAsync().ConfigureAwait(true);
+            }
+            if (generation != this.shutdownGeneration) { return; }
+            if (this.windows.Count > 0) { this.isShuttingDown = false; return; }
+            if (!await this.runtime.TryBeginIdleShutdownAsync(ignoreClientId: this.localLease?.Id).ConfigureAwait(true)) { this.isShuttingDown = false; return; }
+        }
         this.lifetime.Shutdown();
     }
 
@@ -749,6 +678,14 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
         }
 
         this.closingWindows.Add(window);
+        WindowRegistration registration = this.windows.First(item => item.Window == window);
+        await registration.ViewModel.PendingCommands.ConfigureAwait(false);
+        if (!this.observedSessions.Contains(registration.ViewModel.SessionId))
+        {
+            var current = await this.Client.GetSessionAsync(registration.ViewModel.SessionId).ConfigureAwait(false);
+            if (current is ApplicationResult<TimerSessionSnapshot>.Success selected && selected.Value.Lifetime != SessionLifetime.Detached)
+            { await this.Client.CloseSessionAsync(registration.ViewModel.SessionId).ConfigureAwait(false); }
+        }
         await this.QueueSessionSave().ConfigureAwait(false);
     }
 
@@ -940,7 +877,6 @@ internal sealed class TimerWindowCoordinator : IAsyncDisposable
             exception));
     }
 
-    private readonly record struct LoadDocumentResult<T>(bool Found, T? Value);
 
     private sealed record WindowRegistration(MainWindow Window, MainWindowViewModel ViewModel);
 

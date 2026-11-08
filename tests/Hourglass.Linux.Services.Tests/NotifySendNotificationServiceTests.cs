@@ -8,6 +8,34 @@ using Xunit;
 public sealed class NotifySendNotificationServiceTests
 {
     [Fact]
+    public async Task CancelingOwnedProcessTerminatesItBeforeReturning()
+    {
+        using CancellationTokenSource cancellation = new();
+        using Process process = new()
+        {
+            StartInfo = new ProcessStartInfo("/bin/sh")
+            {
+                UseShellExecute = false,
+                RedirectStandardInput = true
+            }
+        };
+        process.StartInfo.ArgumentList.Add("-c");
+        process.StartInfo.ArgumentList.Add("read value");
+        Assert.True(process.Start());
+        try
+        {
+            Task wait = NotifySendNotificationService.WaitForOwnedProcessAsync(process, cancellation.Token);
+            await cancellation.CancelAsync();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => wait);
+            Assert.True(process.HasExited);
+        }
+        finally
+        {
+            if (!process.HasExited) process.Kill(entireProcessTree: true);
+        }
+    }
+
+    [Fact]
     public async Task ShowTimerExpiredAsyncPassesNotifySendArguments()
     {
         ProcessStartInfo? capturedStartInfo = null;
@@ -22,6 +50,8 @@ public sealed class NotifySendNotificationServiceTests
         Assert.NotNull(capturedStartInfo);
         Assert.Equal("notify-send", capturedStartInfo.FileName);
         Assert.False(capturedStartInfo.UseShellExecute);
+        Assert.True(capturedStartInfo.RedirectStandardError);
+        Assert.True(capturedStartInfo.RedirectStandardOutput);
         Assert.Equal(
             ["--app-name=Hourglass", "Hourglass", "Timer complete"],
             capturedStartInfo.ArgumentList);

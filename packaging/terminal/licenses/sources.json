@@ -1,0 +1,50 @@
+{
+  "terminal.gui": {
+    "source": "https://raw.githubusercontent.com/tui-cs/Terminal.Gui/ece73d25c37df9bb17cb0c0d2171abd4d98eeaff/LICENSE",
+    "sha256": "2a7331c273b7c121f5e1f6f10e13d279a739ac310c49b56f2fb251d0490988d0"
+  },
+  "system.commandline": {
+    "source": "https://raw.githubusercontent.com/dotnet/dotnet/b0f34d51fccc69fd334253924abd8d6853fad7aa/LICENSE.TXT",
+    "sha256": "ae48df11a335dc1a615f4f938b69cba73bcf4485c4f97af49b38efb0f216353b"
+  },
+  "colorhelper": {
+    "source": "https://raw.githubusercontent.com/iamartyom/ColorHelper/0b4574db8981ade5e45638d180ec094dd7d1eef9/LICENSE",
+    "sha256": "2b9c3c7771d40dc756572b857719d55744dcb21c53bd814a2ac5ad462ffb1ba1"
+  },
+  "jetbrains.annotations": {
+    "source": "https://raw.githubusercontent.com/JetBrains/JetBrains.Annotations/51456a32946d20b160c91b384e08ba6d4a5731e4/license.md",
+    "sha256": "f2b4cfa16e46cef7fbf49c00563cb5db53d76108c56ee770beb65b5ef03a5fbb"
+  },
+  "markdig": {
+    "source": "https://raw.githubusercontent.com/xoofx/markdig/fc705234fa211d179ee1d5e7656b51ab99f70ca9/license.txt",
+    "sha256": "ae543293657b6782e3d4a76257dc4157210ce88a352ef8392065d3f04dcd88d1"
+  },
+  "onigwrap": {
+    "source": "https://raw.githubusercontent.com/aikawayataro/Onigwrap/dd8a1cbbe3190c18033b96f2922b95c1761ae793/LICENSE",
+    "sha256": "4dc9331502c288d277ec8aabe9322f833e9507c9b123ac95086ca44088616e38"
+  },
+  "testableio": {
+    "source": "https://raw.githubusercontent.com/TestableIO/System.IO.Abstractions/ec68061d1cf181d50f089f979301f874885bf0be/LICENSE",
+    "sha256": "9b4f46dc8e65bb14714479eb4de76b7a1e2e7f9eff7ab1eb0e9dea712f19b1ed"
+  },
+  "testably": {
+    "source": "https://raw.githubusercontent.com/Testably/Testably.Abstractions/9b967ee024caa2d47e3ac27a23d26ea55cd20ded/LICENSE",
+    "sha256": "024f2e034ea52d1b47be884bda1bd9b776ceddbfb2a7cc4d49f79255c8ed483c"
+  },
+  "textmatesharp": {
+    "source": "https://raw.githubusercontent.com/danipen/TextMateSharp/622d1b240a5be474939857c0b2780249022f14a3/LICENSE.md",
+    "sha256": "096ba61f14d930ab7728a53fe891150e4356d2614ad7c341eeedcfa36b99e3b4"
+  },
+  "tmds.dbus.protocol": {
+    "source": "https://raw.githubusercontent.com/tmds/Tmds.DBus/282acebca8d4e4e3ba211646ac650911ee94edfd/COPYING",
+    "sha256": "aca3b49277abcc7886ccb2f115603a9f5b15fc3f96019a10c00f2974098b210c"
+  },
+  "wcwidth": {
+    "source": "https://raw.githubusercontent.com/spectreconsole/wcwidth/64a3f523d5dc27124e04ff9079137ac2c5c72143/LICENSE.md",
+    "sha256": "29f03aba55e0761c5cb75a266839cd5cd25f013514fbe034bfb5a9b7529e8cce"
+  },
+  "dotnet": {
+    "source": "https://raw.githubusercontent.com/dotnet/dotnet/e2f47b0110ed922f21a1522da67279133ce28f32/LICENSE.TXT",
+    "sha256": "ae48df11a335dc1a615f4f938b69cba73bcf4485c4f97af49b38efb0f216353b"
+  }
+}

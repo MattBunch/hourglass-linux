@@ -1,3 +1,4 @@
+using Hourglass.Application;
 namespace Hourglass.Linux.Avalonia.Tests;
 
 using System.Globalization;
@@ -14,20 +15,55 @@ public sealed class MainWindowViewModelTests
     [InlineData(null)]
     [InlineData("")]
     [InlineData("   ")]
-    public void EmptyTimerTitleUsesApplicationWindowTitle(string? timerTitle)
+    public async Task EmptyTimerTitleUsesApplicationWindowTitle(string? timerTitle)
     {
-        var viewModel = CreateViewModel(new ManualMonotonicClock());
+        var viewModel = await CreateViewModelAsync(new ManualMonotonicClock());
 
         viewModel.TimerTitle = timerTitle;
+        await viewModel.PendingCommands;
 
         Assert.Equal(timerTitle ?? string.Empty, viewModel.TimerTitle);
         Assert.Equal("Hourglass", viewModel.WindowTitle);
     }
 
     [Fact]
-    public void DefaultTimerInputUsesParserResourceInsteadOfUiPlaceholder()
+    public async Task ExpiryCloseCallbackCanAwaitDisposalWithoutDeadlock()
     {
-        var viewModel = CreateViewModel(new ManualMonotonicClock());
+        var clock = new ManualMonotonicClock();
+        var audio = new RecordingAudioAlertService();
+        var viewModel = await CreateViewModelAsync(clock, audioAlertService: audio);
+        Task? close = null;
+        viewModel.CloseRequested += (_, _) => close = viewModel.DisposeAsync().AsTask();
+        viewModel.ToggleCloseWhenExpiredCommand.Execute(null);
+        await viewModel.PendingCommands;
+        viewModel.TimerInput = "1 second";
+        viewModel.StartCommand.Execute(null);
+        await viewModel.PendingCommands;
+        clock.Advance(TimeSpan.FromSeconds(1));
+        await viewModel.AdvanceAsync();
+        await viewModel.PendingExpiryEffects;
+        Assert.NotNull(close);
+        await close;
+        await viewModel.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task DisposalAwaitsPreviewCancellation()
+    {
+        var audio = new RecordingAudioAlertService { HoldPlaybackUntilCanceled = true };
+        var viewModel = await CreateViewModelAsync(new ManualMonotonicClock(), audioAlertService: audio);
+        viewModel.PreviewAudioAlertSoundCommand.Execute(null);
+        await viewModel.PendingCommands;
+        await audio.PlaybackStarted.Task;
+        await viewModel.DisposeAsync();
+        Assert.True(audio.PlaybackCanceled.Task.IsCompletedSuccessfully);
+        Assert.False(viewModel.IsAudioPreviewActive);
+    }
+
+    [Fact]
+    public async Task DefaultTimerInputUsesParserResourceInsteadOfUiPlaceholder()
+    {
+        var viewModel = await CreateViewModelAsync(new ManualMonotonicClock());
         XNamespace controls = "clr-namespace:Hourglass.Linux.Avalonia";
         XNamespace xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
         XDocument document = XDocument.Load(FindRepositoryFile("src/Hourglass.Linux.Avalonia/MainWindow.axaml"));
@@ -39,13 +75,14 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
-    public void ChangingTimerTitleImmediatelyUpdatesWindowTitleAndRaisesNotifications()
+    public async Task ChangingTimerTitleImmediatelyUpdatesWindowTitleAndRaisesNotifications()
     {
-        var viewModel = CreateViewModel(new ManualMonotonicClock());
+        var viewModel = await CreateViewModelAsync(new ManualMonotonicClock());
         var changedProperties = new List<string?>();
         viewModel.PropertyChanged += (_, args) => changedProperties.Add(args.PropertyName);
 
         viewModel.TimerTitle = "Tea";
+        await viewModel.PendingCommands;
 
         Assert.Equal("Tea", viewModel.TimerTitle);
         Assert.Equal("Tea", viewModel.WindowTitle);
@@ -59,11 +96,12 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
-    public void LaunchTimerRequestAppliesTitleAndStartsTimer()
+    public async Task LaunchTimerRequestAppliesTitleAndStartsTimer()
     {
-        var viewModel = CreateViewModel(new ManualMonotonicClock());
+        var viewModel = await CreateViewModelAsync(new ManualMonotonicClock());
 
         viewModel.ApplyLaunchTimerRequest("5 minutes", "Tea");
+        await viewModel.PendingCommands;
 
         Assert.Equal(TimerState.Running, viewModel.State);
         Assert.Equal("5 minutes", viewModel.TimerInput);
@@ -72,13 +110,14 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
-    public void WhitespaceTimerTitlePreservesInputWithoutRepublishingFallbackWindowTitle()
+    public async Task WhitespaceTimerTitlePreservesInputWithoutRepublishingFallbackWindowTitle()
     {
-        var viewModel = CreateViewModel(new ManualMonotonicClock());
+        var viewModel = await CreateViewModelAsync(new ManualMonotonicClock());
         var changedProperties = new List<string?>();
         viewModel.PropertyChanged += (_, args) => changedProperties.Add(args.PropertyName);
 
         viewModel.TimerTitle = "   ";
+        await viewModel.PendingCommands;
 
         Assert.Equal("   ", viewModel.TimerTitle);
         Assert.Equal("Hourglass", viewModel.WindowTitle);
@@ -86,14 +125,16 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
-    public void TimerTickDoesNotRepublishUnchangedWindowTitle()
+    public async Task TimerTickDoesNotRepublishUnchangedWindowTitle()
     {
-        var viewModel = CreateViewModel(new ManualMonotonicClock());
+        var viewModel = await CreateViewModelAsync(new ManualMonotonicClock());
         var changedProperties = new List<string?>();
         viewModel.TimerTitle = "Tea";
+        await viewModel.PendingCommands;
         viewModel.PropertyChanged += (_, args) => changedProperties.Add(args.PropertyName);
 
-        viewModel.Tick();
+        await viewModel.AdvanceAsync();
+        await viewModel.PendingExpiryEffects;
 
         Assert.DoesNotContain(nameof(viewModel.WindowTitle), changedProperties);
     }
@@ -102,7 +143,7 @@ public sealed class MainWindowViewModelTests
     public async Task LockedTimerTickDoesNotRepublishCustomThemeModificationState()
     {
         var clock = new ManualMonotonicClock();
-        var viewModel = CreateViewModel(
+        var viewModel = await CreateViewModelAsync(
             clock,
             settingsStore: new RecordingSettingsStore
             {
@@ -113,10 +154,12 @@ public sealed class MainWindowViewModelTests
         await viewModel.LoadSettingsAsync();
         viewModel.TimerInput = "2 minutes";
         viewModel.StartCommand.Execute(null);
+        await viewModel.PendingCommands;
         viewModel.PropertyChanged += (_, args) => changedProperties.Add(args.PropertyName);
 
         clock.Advance(TimeSpan.FromSeconds(1));
-        viewModel.Tick();
+        await viewModel.AdvanceAsync();
+        await viewModel.PendingExpiryEffects;
 
         Assert.True(viewModel.IsTimerModificationLocked);
         Assert.False(viewModel.CanModifyCustomThemes);
@@ -127,7 +170,7 @@ public sealed class MainWindowViewModelTests
     public async Task TimeLeftWindowTitleModeUpdatesOnTimerTicks()
     {
         var clock = new ManualMonotonicClock();
-        var viewModel = CreateViewModel(
+        var viewModel = await CreateViewModelAsync(
             clock,
             settingsStore: new RecordingSettingsStore
             {
@@ -139,10 +182,12 @@ public sealed class MainWindowViewModelTests
         await viewModel.LoadSettingsAsync();
         viewModel.TimerInput = "2 minutes";
         viewModel.StartCommand.Execute(null);
+        await viewModel.PendingCommands;
         changedProperties.Clear();
 
         clock.Advance(TimeSpan.FromSeconds(30));
-        viewModel.Tick();
+        await viewModel.AdvanceAsync();
+        await viewModel.PendingExpiryEffects;
 
         Assert.Equal("00:01:30", viewModel.WindowTitle);
         Assert.Contains(nameof(viewModel.WindowTitle), changedProperties);
@@ -157,7 +202,7 @@ public sealed class MainWindowViewModelTests
     [InlineData(WindowTitleMode.TimerTitlePlusTimeElapsed)]
     public async Task StoppedTimeBasedWindowTitleModesUseTimerTitleInsteadOfZero(WindowTitleMode mode)
     {
-        var viewModel = CreateViewModel(
+        var viewModel = await CreateViewModelAsync(
             new ManualMonotonicClock(),
             settingsStore: new RecordingSettingsStore
             {
@@ -166,6 +211,7 @@ public sealed class MainWindowViewModelTests
 
         await viewModel.LoadSettingsAsync();
         viewModel.TimerTitle = "Tea";
+        await viewModel.PendingCommands;
 
         Assert.Equal("Tea", viewModel.WindowTitle);
     }
@@ -179,7 +225,7 @@ public sealed class MainWindowViewModelTests
     [InlineData(WindowTitleMode.TimerTitlePlusTimeElapsed)]
     public async Task StoppedTimeBasedWindowTitleModesUseApplicationTitleWhenTimerTitleIsBlank(WindowTitleMode mode)
     {
-        var viewModel = CreateViewModel(
+        var viewModel = await CreateViewModelAsync(
             new ManualMonotonicClock(),
             settingsStore: new RecordingSettingsStore
             {
@@ -199,7 +245,7 @@ public sealed class MainWindowViewModelTests
     public async Task RunningCombinedWindowTitleModesOmitBlankTimerTitle(WindowTitleMode mode, string expected)
     {
         var clock = new ManualMonotonicClock();
-        var viewModel = CreateViewModel(
+        var viewModel = await CreateViewModelAsync(
             clock,
             settingsStore: new RecordingSettingsStore
             {
@@ -209,9 +255,11 @@ public sealed class MainWindowViewModelTests
         await viewModel.LoadSettingsAsync();
         viewModel.TimerInput = "2 minutes";
         viewModel.StartCommand.Execute(null);
+        await viewModel.PendingCommands;
 
         clock.Advance(TimeSpan.FromSeconds(30));
-        viewModel.Tick();
+        await viewModel.AdvanceAsync();
+        await viewModel.PendingExpiryEffects;
 
         Assert.Equal(expected, viewModel.WindowTitle);
     }
@@ -220,11 +268,12 @@ public sealed class MainWindowViewModelTests
     public async Task SelectThemePreferenceChangesStateAndSavesSettings()
     {
         var settingsStore = new RecordingSettingsStore();
-        var viewModel = CreateViewModel(new ManualMonotonicClock(), settingsStore: settingsStore);
+        var viewModel = await CreateViewModelAsync(new ManualMonotonicClock(), settingsStore: settingsStore);
         var changedProperties = new List<string?>();
         viewModel.PropertyChanged += (_, args) => changedProperties.Add(args.PropertyName);
 
         viewModel.SelectThemePreferenceCommand.Execute(nameof(LinuxThemePreference.Dark));
+        await viewModel.PendingCommands;
         await viewModel.PendingSettingsSave;
 
         Assert.Equal(LinuxThemePreference.Dark, viewModel.ThemePreference);
@@ -244,13 +293,14 @@ public sealed class MainWindowViewModelTests
         {
             LoadedCustomThemes = new CustomThemesDocument(themes: [theme])
         };
-        var viewModel = CreateViewModel(new ManualMonotonicClock(), settingsStore: settingsStore);
+        var viewModel = await CreateViewModelAsync(new ManualMonotonicClock(), settingsStore: settingsStore);
         await viewModel.LoadSettingsAsync();
 
         CustomThemeMenuItem menuItem = Assert.Single(viewModel.CustomThemeMenuItems);
         Assert.Equal("Evening", menuItem.Name);
 
         viewModel.SelectCustomThemeCommand.Execute(theme.Id);
+        await viewModel.PendingCommands;
         await viewModel.PendingSettingsSave;
 
         Assert.Equal(LinuxThemePreference.Custom, viewModel.ThemePreference);
@@ -265,7 +315,7 @@ public sealed class MainWindowViewModelTests
     public async Task SavingCustomThemePersistsThemeDocumentAndSelectsTheme()
     {
         var settingsStore = new RecordingSettingsStore();
-        var viewModel = CreateViewModel(new ManualMonotonicClock(), settingsStore: settingsStore);
+        var viewModel = await CreateViewModelAsync(new ManualMonotonicClock(), settingsStore: settingsStore);
         var theme = new CustomThemeDefinition("theme-1", "Evening");
 
         viewModel.SaveCustomTheme(theme, select: true);
@@ -288,7 +338,7 @@ public sealed class MainWindowViewModelTests
         {
             LoadedCustomThemes = new CustomThemesDocument(themes: [previousTheme])
         };
-        var viewModel = CreateViewModel(new ManualMonotonicClock(), settingsStore: settingsStore);
+        var viewModel = await CreateViewModelAsync(new ManualMonotonicClock(), settingsStore: settingsStore);
 
         await viewModel.LoadSettingsAsync();
         settingsStore.LatestCustomThemes = new CustomThemesDocument(themes: [previousTheme, externalTheme]);
@@ -311,7 +361,7 @@ public sealed class MainWindowViewModelTests
         {
             LoadedCustomThemes = new CustomThemesDocument(themes: [previousTheme])
         };
-        var viewModel = CreateViewModel(new ManualMonotonicClock(), settingsStore: settingsStore);
+        var viewModel = await CreateViewModelAsync(new ManualMonotonicClock(), settingsStore: settingsStore);
 
         await viewModel.LoadSettingsAsync();
         settingsStore.LatestCustomThemes = new CustomThemesDocument(themes: [externalEdit]);
@@ -333,11 +383,12 @@ public sealed class MainWindowViewModelTests
         {
             LoadedCustomThemes = new CustomThemesDocument(themes: [deletedTheme])
         };
-        var viewModel = CreateViewModel(new ManualMonotonicClock(), settingsStore: settingsStore);
+        var viewModel = await CreateViewModelAsync(new ManualMonotonicClock(), settingsStore: settingsStore);
 
         await viewModel.LoadSettingsAsync();
         settingsStore.LatestCustomThemes = new CustomThemesDocument(themes: [deletedTheme, externalTheme]);
         viewModel.DeleteCustomThemeCommand.Execute(deletedTheme.Id);
+        await viewModel.PendingCommands;
         await viewModel.PendingSettingsSave;
 
         Assert.NotNull(settingsStore.SavedCustomThemes);
@@ -355,7 +406,7 @@ public sealed class MainWindowViewModelTests
         {
             LoadedCustomThemes = new CustomThemesDocument(themes: [originalTheme])
         };
-        var viewModel = CreateViewModel(new ManualMonotonicClock(), settingsStore: settingsStore);
+        var viewModel = await CreateViewModelAsync(new ManualMonotonicClock(), settingsStore: settingsStore);
 
         await viewModel.LoadSettingsAsync();
         settingsStore.LatestCustomThemes = new CustomThemesDocument(themes: [originalTheme, externalTheme]);
@@ -377,12 +428,14 @@ public sealed class MainWindowViewModelTests
         {
             LoadedCustomThemes = new CustomThemesDocument(themes: [existingTheme])
         };
-        var viewModel = CreateViewModel(new ManualMonotonicClock(), settingsStore: settingsStore);
+        var viewModel = await CreateViewModelAsync(new ManualMonotonicClock(), settingsStore: settingsStore);
 
         await viewModel.LoadSettingsAsync();
         viewModel.ToggleLockInterfaceCommand.Execute(null);
+        await viewModel.PendingCommands;
         viewModel.TimerInput = "2 minutes";
         viewModel.StartCommand.Execute(null);
+        await viewModel.PendingCommands;
 
         Assert.True(viewModel.IsTimerModificationLocked);
         Assert.False(viewModel.CanModifyCustomThemes);
@@ -391,6 +444,7 @@ public sealed class MainWindowViewModelTests
 
         viewModel.SaveCustomTheme(addedTheme, select: true);
         viewModel.DeleteCustomThemeCommand.Execute(existingTheme.Id);
+        await viewModel.PendingCommands;
         await viewModel.PendingSettingsSave;
 
         Assert.Null(settingsStore.SavedCustomThemes);
@@ -409,7 +463,7 @@ public sealed class MainWindowViewModelTests
                 CustomThemeId = "missing"
             }
         };
-        var viewModel = CreateViewModel(new ManualMonotonicClock(), settingsStore: settingsStore);
+        var viewModel = await CreateViewModelAsync(new ManualMonotonicClock(), settingsStore: settingsStore);
 
         await viewModel.LoadSettingsAsync();
 
@@ -422,12 +476,14 @@ public sealed class MainWindowViewModelTests
     public async Task SelectWindowTitleModeChangesStateAndSavesSettings()
     {
         var settingsStore = new RecordingSettingsStore();
-        var viewModel = CreateViewModel(new ManualMonotonicClock(), settingsStore: settingsStore);
+        var viewModel = await CreateViewModelAsync(new ManualMonotonicClock(), settingsStore: settingsStore);
         viewModel.TimerTitle = "Tea";
+        await viewModel.PendingCommands;
         var changedProperties = new List<string?>();
         viewModel.PropertyChanged += (_, args) => changedProperties.Add(args.PropertyName);
 
         viewModel.SelectWindowTitleModeCommand.Execute(nameof(WindowTitleMode.TimerTitlePlusTimeLeft));
+        await viewModel.PendingCommands;
         await viewModel.PendingSettingsSave;
 
         Assert.Equal(WindowTitleMode.TimerTitlePlusTimeLeft, viewModel.WindowTitleMode);
@@ -440,18 +496,22 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
-    public void ChangingTimerTitleWhileRunningDoesNotAlterCountdown()
+    public async Task ChangingTimerTitleWhileRunningDoesNotAlterCountdown()
     {
         var clock = new ManualMonotonicClock();
-        var viewModel = CreateViewModel(clock);
+        var viewModel = await CreateViewModelAsync(clock);
         viewModel.TimerInput = "2 min";
         viewModel.TimerTitle = "Tea";
+        await viewModel.PendingCommands;
         viewModel.StartCommand.Execute(null);
+        await viewModel.PendingCommands;
         clock.Advance(TimeSpan.FromSeconds(30));
-        viewModel.Tick();
+        await viewModel.AdvanceAsync();
+        await viewModel.PendingExpiryEffects;
         string remainingTime = viewModel.RemainingTime;
 
         viewModel.TimerTitle = "Coffee";
+        await viewModel.PendingCommands;
 
         Assert.Equal("Coffee", viewModel.WindowTitle);
         Assert.Equal(TimerState.Running, viewModel.State);
@@ -459,18 +519,22 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
-    public void ChangingTimerTitleWhilePausedDoesNotAlterCountdown()
+    public async Task ChangingTimerTitleWhilePausedDoesNotAlterCountdown()
     {
         var clock = new ManualMonotonicClock();
-        var viewModel = CreateViewModel(clock);
+        var viewModel = await CreateViewModelAsync(clock);
         viewModel.TimerInput = "2 min";
         viewModel.StartCommand.Execute(null);
+        await viewModel.PendingCommands;
         clock.Advance(TimeSpan.FromSeconds(30));
-        viewModel.Tick();
+        await viewModel.AdvanceAsync();
+        await viewModel.PendingExpiryEffects;
         viewModel.PauseResumeCommand.Execute(null);
+        await viewModel.PendingCommands;
         string remainingTime = viewModel.RemainingTime;
 
         viewModel.TimerTitle = "Paused tea";
+        await viewModel.PendingCommands;
 
         Assert.Equal("Paused tea", viewModel.WindowTitle);
         Assert.Equal(TimerState.Paused, viewModel.State);
@@ -478,15 +542,18 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
-    public void ExpiredAndResetTimerRetainTimerTitle()
+    public async Task ExpiredAndResetTimerRetainTimerTitle()
     {
         var clock = new ManualMonotonicClock();
-        var viewModel = CreateViewModel(clock);
+        var viewModel = await CreateViewModelAsync(clock);
         viewModel.TimerInput = "1 second";
         viewModel.TimerTitle = "Eggs";
+        await viewModel.PendingCommands;
         viewModel.StartCommand.Execute(null);
+        await viewModel.PendingCommands;
         clock.Advance(TimeSpan.FromSeconds(1));
-        viewModel.Tick();
+        await viewModel.AdvanceAsync();
+        await viewModel.PendingExpiryEffects;
 
         Assert.Equal(TimerState.Expired, viewModel.State);
         Assert.True(viewModel.HasCompletionEmphasis);
@@ -494,6 +561,7 @@ public sealed class MainWindowViewModelTests
         Assert.Equal("Eggs", viewModel.WindowTitle);
 
         viewModel.ResetCommand.Execute(null);
+        await viewModel.PendingCommands;
 
         Assert.Equal(TimerState.Stopped, viewModel.State);
         Assert.False(viewModel.HasCompletionEmphasis);
@@ -502,16 +570,19 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
-    public void EnteringInputModeWhileExpiredResetsCompletedPresentationWithoutStopCommand()
+    public async Task EnteringInputModeWhileExpiredResetsCompletedPresentationWithoutStopCommand()
     {
         var clock = new ManualMonotonicClock();
-        var viewModel = CreateViewModel(clock);
+        var viewModel = await CreateViewModelAsync(clock);
         viewModel.TimerInput = "5 minutes";
         viewModel.StartCommand.Execute(null);
+        await viewModel.PendingCommands;
         clock.Advance(TimeSpan.FromMinutes(6));
-        viewModel.Tick();
+        await viewModel.AdvanceAsync();
+        await viewModel.PendingExpiryEffects;
 
         bool transitioned = viewModel.TryEnterInputModeFromExpired();
+        await viewModel.PendingCommands;
 
         Assert.True(transitioned);
         Assert.Equal("5 minutes", viewModel.TimerInput);
@@ -529,16 +600,19 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
-    public void EnteringInputModePreservesExpressionUntilNativeTextEditingReplacesSelection()
+    public async Task EnteringInputModePreservesExpressionUntilNativeTextEditingReplacesSelection()
     {
         var clock = new ManualMonotonicClock();
-        var viewModel = CreateViewModel(clock);
+        var viewModel = await CreateViewModelAsync(clock);
         viewModel.TimerInput = "1 second";
         viewModel.StartCommand.Execute(null);
+        await viewModel.PendingCommands;
         clock.Advance(TimeSpan.FromSeconds(1));
-        viewModel.Tick();
+        await viewModel.AdvanceAsync();
+        await viewModel.PendingExpiryEffects;
 
         Assert.True(viewModel.TryEnterInputModeFromExpired());
+        await viewModel.PendingCommands;
         Assert.Equal("1 second", viewModel.TimerInput);
 
         viewModel.TimerInput = "2";
@@ -552,16 +626,19 @@ public sealed class MainWindowViewModelTests
     [InlineData("2")]
     [InlineData("m")]
     [InlineData("1pm")]
-    public void NativeTimerEditingPreservesFirstTextAfterExpiredModeSwitch(string text)
+    public async Task NativeTimerEditingPreservesFirstTextAfterExpiredModeSwitch(string text)
     {
         var clock = new ManualMonotonicClock();
-        var viewModel = CreateViewModel(clock);
+        var viewModel = await CreateViewModelAsync(clock);
         viewModel.TimerInput = "1 second";
         viewModel.StartCommand.Execute(null);
+        await viewModel.PendingCommands;
         clock.Advance(TimeSpan.FromSeconds(1));
-        viewModel.Tick();
+        await viewModel.AdvanceAsync();
+        await viewModel.PendingExpiryEffects;
 
         Assert.True(viewModel.TryEnterInputModeFromExpired());
+        await viewModel.PendingCommands;
         viewModel.TimerInput = text;
 
         Assert.Equal(text, viewModel.TimerInput);
@@ -569,16 +646,19 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
-    public void EnteringInputModeWhileRunningKeepsCountdownActiveAndShowsEditCommands()
+    public async Task EnteringInputModeWhileRunningKeepsCountdownActiveAndShowsEditCommands()
     {
         var clock = new ManualMonotonicClock();
-        var viewModel = CreateViewModel(clock);
+        var viewModel = await CreateViewModelAsync(clock);
         viewModel.TimerInput = "2 min";
         viewModel.StartCommand.Execute(null);
+        await viewModel.PendingCommands;
         clock.Advance(TimeSpan.FromSeconds(30));
-        viewModel.Tick();
+        await viewModel.AdvanceAsync();
+        await viewModel.PendingExpiryEffects;
 
         Assert.True(viewModel.TryEnterTimerInputMode());
+        await viewModel.PendingCommands;
         Assert.Equal(TimerState.Running, viewModel.State);
         Assert.Equal("2 min", viewModel.TimerInput);
         Assert.Equal("00:01:30", viewModel.RemainingTime);
@@ -592,7 +672,8 @@ public sealed class MainWindowViewModelTests
         Assert.True(viewModel.CancelEditCommand.CanExecute(null));
 
         clock.Advance(TimeSpan.FromSeconds(15));
-        viewModel.Tick();
+        await viewModel.AdvanceAsync();
+        await viewModel.PendingExpiryEffects;
 
         Assert.Equal(TimerState.Running, viewModel.State);
         Assert.Equal("00:01:15", viewModel.RemainingTime);
@@ -600,25 +681,29 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
-    public void ExpiryWhileEditingForcesCompletedStatusAndPublishesOneShotFeedback()
+    public async Task ExpiryWhileEditingForcesCompletedStatusAndPublishesOneShotFeedback()
     {
         var clock = new ManualMonotonicClock();
-        var viewModel = CreateViewModel(clock);
+        var viewModel = await CreateViewModelAsync(clock);
         int attentionCount = 0;
         int flashCount = 0;
         viewModel.WindowAttentionRequested += (_, _) => attentionCount++;
         viewModel.ExpiryVisualFeedbackRequested += (_, _) => flashCount++;
         viewModel.TimerInput = "1 second";
         viewModel.TimerTitle = "Tea";
+        await viewModel.PendingCommands;
         viewModel.StartCommand.Execute(null);
+        await viewModel.PendingCommands;
 
         Assert.True(viewModel.TryEnterTimerInputMode());
+        await viewModel.PendingCommands;
         Assert.Equal(TimerState.Running, viewModel.State);
         Assert.True(viewModel.IsTimerInputVisible);
         Assert.False(viewModel.IsRemainingTimeVisible);
 
         clock.Advance(TimeSpan.FromSeconds(2));
-        viewModel.Tick();
+        await viewModel.AdvanceAsync();
+        await viewModel.PendingExpiryEffects;
 
         Assert.Equal(TimerState.Expired, viewModel.State);
         Assert.True(viewModel.IsCompletionTextVisible);
@@ -630,7 +715,8 @@ public sealed class MainWindowViewModelTests
         Assert.Equal(1, flashCount);
         Assert.Equal(1, attentionCount);
 
-        viewModel.Tick();
+        await viewModel.AdvanceAsync();
+        await viewModel.PendingExpiryEffects;
 
         Assert.Equal(1, flashCount);
         Assert.Equal(1, attentionCount);
@@ -647,7 +733,7 @@ public sealed class MainWindowViewModelTests
         {
             LoadedSettings = new LinuxAppSettings(popUpWhenExpired: false)
         };
-        var viewModel = CreateViewModel(
+        var viewModel = await CreateViewModelAsync(
             clock,
             notificationService: notificationService,
             sessionInhibitor: sessionInhibitor,
@@ -658,13 +744,18 @@ public sealed class MainWindowViewModelTests
         viewModel.WindowAttentionRequested += (_, _) => attentionCount++;
         viewModel.ExpiryVisualFeedbackRequested += (_, _) => flashCount++;
         await viewModel.LoadSettingsAsync();
+        await viewModel.PendingExpiryEffects;
         viewModel.TimerInput = "1 second";
         viewModel.TimerTitle = "Tea";
+        await viewModel.PendingCommands;
         viewModel.StartCommand.Execute(null);
+        await viewModel.PendingCommands;
         Assert.True(viewModel.TryEnterTimerInputMode());
+        await viewModel.PendingCommands;
 
         clock.Advance(TimeSpan.FromSeconds(2));
-        viewModel.Tick();
+        await viewModel.AdvanceAsync();
+        await viewModel.PendingExpiryEffects;
 
         Assert.Equal(TimerState.Expired, viewModel.State);
         Assert.True(viewModel.IsCompletionTextVisible);
@@ -677,31 +768,39 @@ public sealed class MainWindowViewModelTests
         Assert.Equal(0, attentionCount);
         Assert.Equal(1, notificationService.CallCount);
         Assert.Equal(1, audioAlertService.CallCount);
+        await viewModel.PendingSessionEffects;
         Assert.Equal(1, sessionInhibitor.ReleaseCount);
 
-        viewModel.Tick();
+        await viewModel.AdvanceAsync();
+        await viewModel.PendingExpiryEffects;
 
         Assert.Equal(1, flashCount);
         Assert.Equal(0, attentionCount);
         Assert.Equal(1, notificationService.CallCount);
         Assert.Equal(1, audioAlertService.CallCount);
+        await viewModel.PendingSessionEffects;
         Assert.Equal(1, sessionInhibitor.ReleaseCount);
     }
 
     [Fact]
-    public void EnteringInputModeWhilePausedKeepsCountdownPaused()
+    public async Task EnteringInputModeWhilePausedKeepsCountdownPaused()
     {
         var clock = new ManualMonotonicClock();
-        var viewModel = CreateViewModel(clock);
+        var viewModel = await CreateViewModelAsync(clock);
         viewModel.TimerInput = "2 min";
         viewModel.StartCommand.Execute(null);
+        await viewModel.PendingCommands;
         clock.Advance(TimeSpan.FromSeconds(30));
-        viewModel.Tick();
+        await viewModel.AdvanceAsync();
+        await viewModel.PendingExpiryEffects;
 
         viewModel.PauseResumeCommand.Execute(null);
+        await viewModel.PendingCommands;
         Assert.True(viewModel.TryEnterTimerInputMode());
+        await viewModel.PendingCommands;
         clock.Advance(TimeSpan.FromSeconds(15));
-        viewModel.Tick();
+        await viewModel.AdvanceAsync();
+        await viewModel.PendingExpiryEffects;
 
         Assert.Equal(TimerState.Paused, viewModel.State);
         Assert.Equal("2 min", viewModel.TimerInput);
@@ -710,15 +809,18 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
-    public void CancellingActiveTimerEditRestoresOriginalExpressionAndLiveDisplay()
+    public async Task CancellingActiveTimerEditRestoresOriginalExpressionAndLiveDisplay()
     {
-        var viewModel = CreateViewModel(new ManualMonotonicClock());
+        var viewModel = await CreateViewModelAsync(new ManualMonotonicClock());
         viewModel.TimerInput = "2 min";
         viewModel.StartCommand.Execute(null);
+        await viewModel.PendingCommands;
         Assert.True(viewModel.TryEnterTimerInputMode());
+        await viewModel.PendingCommands;
         viewModel.TimerInput = "45 seconds";
 
         viewModel.CancelEditCommand.Execute(null);
+        await viewModel.PendingCommands;
 
         Assert.Equal(TimerState.Running, viewModel.State);
         Assert.Equal("2 min", viewModel.TimerInput);
@@ -729,18 +831,22 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
-    public void StartingEditedInputReplacesActiveTimer()
+    public async Task StartingEditedInputReplacesActiveTimer()
     {
         var clock = new ManualMonotonicClock();
-        var viewModel = CreateViewModel(clock);
+        var viewModel = await CreateViewModelAsync(clock);
         viewModel.TimerInput = "2 min";
         viewModel.StartCommand.Execute(null);
+        await viewModel.PendingCommands;
         clock.Advance(TimeSpan.FromSeconds(30));
-        viewModel.Tick();
+        await viewModel.AdvanceAsync();
+        await viewModel.PendingExpiryEffects;
         Assert.True(viewModel.TryEnterTimerInputMode());
+        await viewModel.PendingCommands;
         viewModel.TimerInput = "5 minutes";
 
         viewModel.StartCommand.Execute(null);
+        await viewModel.PendingCommands;
 
         Assert.Equal(TimerState.Running, viewModel.State);
         Assert.Equal("5 minutes", viewModel.TimerInput);
@@ -751,18 +857,22 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
-    public void InvalidEditedInputKeepsOriginalTimerRunningAndEditorOpen()
+    public async Task InvalidEditedInputKeepsOriginalTimerRunningAndEditorOpen()
     {
         var clock = new ManualMonotonicClock();
-        var viewModel = CreateViewModel(clock);
+        var viewModel = await CreateViewModelAsync(clock);
         viewModel.TimerInput = "2 min";
         viewModel.StartCommand.Execute(null);
+        await viewModel.PendingCommands;
         Assert.True(viewModel.TryEnterTimerInputMode());
+        await viewModel.PendingCommands;
         viewModel.TimerInput = "not a timer";
 
         viewModel.StartCommand.Execute(null);
+        await viewModel.PendingCommands;
         clock.Advance(TimeSpan.FromSeconds(10));
-        viewModel.Tick();
+        await viewModel.AdvanceAsync();
+        await viewModel.PendingExpiryEffects;
 
         Assert.Equal(TimerState.Running, viewModel.State);
         Assert.Equal("not a timer", viewModel.TimerInput);
@@ -772,17 +882,21 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
-    public void EditingTitleWhileExpiredEntersInputModeAndPreservesFirstEdit()
+    public async Task EditingTitleWhileExpiredEntersInputModeAndPreservesFirstEdit()
     {
         var clock = new ManualMonotonicClock();
-        var viewModel = CreateViewModel(clock);
+        var viewModel = await CreateViewModelAsync(clock);
         viewModel.TimerInput = "1 second";
         viewModel.TimerTitle = "Eggs";
+        await viewModel.PendingCommands;
         viewModel.StartCommand.Execute(null);
+        await viewModel.PendingCommands;
         clock.Advance(TimeSpan.FromSeconds(1));
-        viewModel.Tick();
+        await viewModel.AdvanceAsync();
+        await viewModel.PendingExpiryEffects;
 
         viewModel.TimerTitle = "Eggs!";
+        await viewModel.PendingCommands;
 
         Assert.Equal(TimerState.Stopped, viewModel.State);
         Assert.Equal("Eggs!", viewModel.TimerTitle);
@@ -792,12 +906,13 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
-    public void TimerTitleAndTimerInputRemainIndependent()
+    public async Task TimerTitleAndTimerInputRemainIndependent()
     {
-        var viewModel = CreateViewModel(new ManualMonotonicClock());
+        var viewModel = await CreateViewModelAsync(new ManualMonotonicClock());
         string initialTimerInput = viewModel.TimerInput;
 
         viewModel.TimerTitle = "Laundry";
+        await viewModel.PendingCommands;
 
         Assert.Equal(initialTimerInput, viewModel.TimerInput);
         Assert.Equal(TimerState.Stopped, viewModel.State);
@@ -981,14 +1096,15 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
-    public void StartWithValidInputRunsTimer()
+    public async Task StartWithValidInputRunsTimer()
     {
         var clock = new ManualMonotonicClock();
         var sessionInhibitor = new RecordingSessionInhibitor();
-        var viewModel = CreateViewModel(clock, sessionInhibitor: sessionInhibitor);
+        var viewModel = await CreateViewModelAsync(clock, sessionInhibitor: sessionInhibitor);
 
         viewModel.TimerInput = "2 min";
         viewModel.StartCommand.Execute(null);
+        await viewModel.PendingCommands;
 
         Assert.Equal(TimerState.Running, viewModel.State);
         Assert.Equal("Running", viewModel.StatusText);
@@ -998,19 +1114,72 @@ public sealed class MainWindowViewModelTests
         Assert.False(viewModel.StartCommand.CanExecute(null));
         Assert.True(viewModel.PauseResumeCommand.CanExecute(null));
         Assert.True(viewModel.ResetCommand.CanExecute(null));
+        await viewModel.PendingSessionEffects;
         Assert.Equal(1, sessionInhibitor.AcquireCount);
+        await viewModel.PendingSessionEffects;
         Assert.Equal(0, sessionInhibitor.ReleaseCount);
     }
 
     [Fact]
-    public void StartWithAbsoluteTimeInputRunsTimer()
+    public async Task RuntimeTickUpdatesGuiThroughDispatcherWithoutWindowRefresh()
+    {
+        var clock = new ManualMonotonicClock();
+        var dispatcher = new RecordingUiDispatcher();
+        using var viewModel = await CreateViewModelAsync(clock, uiDispatcher: dispatcher);
+        viewModel.TimerInput = "2 seconds";
+        viewModel.StartCommand.Execute(null);
+        await viewModel.PendingCommands;
+        int priorPosts = dispatcher.PostCount;
+        bool projected = false;
+        viewModel.PropertyChanged += (_, args) =>
+        {
+            if (args.PropertyName == nameof(MainWindowViewModel.RemainingTime))
+            {
+                Assert.True(dispatcher.IsDispatching);
+                projected = true;
+            }
+        };
+        clock.Advance(TimeSpan.FromSeconds(1));
+
+        await viewModel.TickRuntimeAsync();
+
+        Assert.True(projected);
+        Assert.True(dispatcher.PostCount > priorPosts);
+        Assert.Equal("00:00:01", viewModel.RemainingTime);
+    }
+
+    [Fact]
+    public async Task ClosingSuspendsRuntimeUpdatesAndDisposalIsIdempotent()
+    {
+        var clock = new ManualMonotonicClock();
+        var notifications = new RecordingNotificationService();
+        var viewModel = await CreateViewModelAsync(clock, notificationService: notifications);
+        viewModel.TimerInput = "1 second";
+        viewModel.StartCommand.Execute(null);
+        await viewModel.PendingCommands;
+
+        viewModel.SuspendAutomaticTicks();
+        clock.Advance(TimeSpan.FromSeconds(2));
+        await viewModel.TickRuntimeAsync();
+
+        Assert.Equal(TimerState.Running, viewModel.State);
+        Assert.Equal("00:00:01", viewModel.RemainingTime);
+        Assert.Equal(0, notifications.CallCount);
+        viewModel.Dispose();
+        viewModel.Dispose();
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => viewModel.TickRuntimeAsync());
+    }
+
+    [Fact]
+    public async Task StartWithAbsoluteTimeInputRunsTimer()
     {
         var clock = new ManualMonotonicClock();
         DateTime now = new(2026, 6, 8, 12, 30, 0);
-        var viewModel = CreateViewModel(clock, () => now);
+        var viewModel = await CreateViewModelAsync(clock, () => now);
 
         viewModel.TimerInput = "1pm";
         viewModel.StartCommand.Execute(null);
+        await viewModel.PendingCommands;
 
         Assert.Equal(TimerState.Running, viewModel.State);
         Assert.Equal("Running", viewModel.StatusText);
@@ -1020,12 +1189,13 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
-    public void StartWithInvalidInputKeepsTimerStopped()
+    public async Task StartWithInvalidInputKeepsTimerStopped()
     {
-        var viewModel = CreateViewModel(new ManualMonotonicClock());
+        var viewModel = await CreateViewModelAsync(new ManualMonotonicClock());
 
         viewModel.TimerInput = "not a timer";
         viewModel.StartCommand.Execute(null);
+        await viewModel.PendingCommands;
 
         Assert.Equal(TimerState.Stopped, viewModel.State);
         Assert.Equal("Enter a valid current timer.", viewModel.StatusText);
@@ -1033,13 +1203,13 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
-    public void InvalidInputSetsDurableErrorAndReplaysFeedbackWithoutSideEffects()
+    public async Task InvalidInputSetsDurableErrorAndReplaysFeedbackWithoutSideEffects()
     {
         var notificationService = new RecordingNotificationService();
         var audioAlertService = new RecordingAudioAlertService();
         var sessionInhibitor = new RecordingSessionInhibitor();
         var settingsStore = new RecordingSettingsStore();
-        var viewModel = CreateViewModel(
+        var viewModel = await CreateViewModelAsync(
             new ManualMonotonicClock(),
             notificationService: notificationService,
             sessionInhibitor: sessionInhibitor,
@@ -1050,7 +1220,9 @@ public sealed class MainWindowViewModelTests
 
         viewModel.TimerInput = "not a timer";
         viewModel.StartCommand.Execute(null);
+        await viewModel.PendingCommands;
         viewModel.StartCommand.Execute(null);
+        await viewModel.PendingCommands;
 
         Assert.Equal(TimerState.Stopped, viewModel.State);
         Assert.Equal("not a timer", viewModel.TimerInput);
@@ -1060,17 +1232,19 @@ public sealed class MainWindowViewModelTests
         Assert.Equal(2, feedbackCount);
         Assert.Equal(0, notificationService.CallCount);
         Assert.Equal(0, audioAlertService.CallCount);
+        await viewModel.PendingSessionEffects;
         Assert.Equal(0, sessionInhibitor.AcquireCount);
         Assert.Null(settingsStore.SavedSettings);
     }
 
     [Fact]
-    public void EditingOrValidStartingClearsValidationError()
+    public async Task EditingOrValidStartingClearsValidationError()
     {
-        var viewModel = CreateViewModel(new ManualMonotonicClock());
+        var viewModel = await CreateViewModelAsync(new ManualMonotonicClock());
 
         viewModel.TimerInput = "invalid";
         viewModel.StartCommand.Execute(null);
+        await viewModel.PendingCommands;
         Assert.True(viewModel.HasValidationError);
         Assert.Equal("Enter a valid current timer.", viewModel.TimerInputHelpText);
 
@@ -1079,47 +1253,57 @@ public sealed class MainWindowViewModelTests
         Assert.Equal("Enter a duration or time, then press Enter to start.", viewModel.TimerInputHelpText);
 
         viewModel.StartCommand.Execute(null);
+        await viewModel.PendingCommands;
         Assert.True(viewModel.HasValidationError);
         viewModel.TimerInput = "10 seconds";
         viewModel.StartCommand.Execute(null);
+        await viewModel.PendingCommands;
 
         Assert.Equal(TimerState.Running, viewModel.State);
         Assert.False(viewModel.HasValidationError);
     }
 
     [Fact]
-    public void StartCommandDoesNotRestartRunningTimer()
+    public async Task StartCommandDoesNotRestartRunningTimer()
     {
         var clock = new ManualMonotonicClock();
         var sessionInhibitor = new RecordingSessionInhibitor();
-        var viewModel = CreateViewModel(clock, sessionInhibitor: sessionInhibitor);
+        var viewModel = await CreateViewModelAsync(clock, sessionInhibitor: sessionInhibitor);
 
         viewModel.TimerInput = "2 min";
         viewModel.StartCommand.Execute(null);
+        await viewModel.PendingCommands;
         clock.Advance(TimeSpan.FromSeconds(30));
-        viewModel.Tick();
+        await viewModel.AdvanceAsync();
+        await viewModel.PendingExpiryEffects;
 
         viewModel.TimerInput = "5 minutes";
         viewModel.StartCommand.Execute(null);
+        await viewModel.PendingCommands;
 
         Assert.Equal(TimerState.Running, viewModel.State);
         Assert.Equal("00:01:30", viewModel.RemainingTime);
+        await viewModel.PendingSessionEffects;
         Assert.Equal(1, sessionInhibitor.AcquireCount);
     }
 
     [Fact]
-    public void RestartCommandRestartsDurationAndReacquiresSessionInhibition()
+    public async Task RestartCommandRestartsDurationAndReacquiresSessionInhibition()
     {
         var clock = new ManualMonotonicClock();
         var sessionInhibitor = new RecordingSessionInhibitor();
-        var viewModel = CreateViewModel(clock, sessionInhibitor: sessionInhibitor);
+        var viewModel = await CreateViewModelAsync(clock, sessionInhibitor: sessionInhibitor);
         viewModel.TimerInput = "2 minutes";
         viewModel.TimerTitle = "Tea";
+        await viewModel.PendingCommands;
         viewModel.StartCommand.Execute(null);
+        await viewModel.PendingCommands;
         clock.Advance(TimeSpan.FromSeconds(30));
-        viewModel.Tick();
+        await viewModel.AdvanceAsync();
+        await viewModel.PendingExpiryEffects;
 
         viewModel.RestartCommand.Execute(null);
+        await viewModel.PendingCommands;
 
         Assert.Equal(TimerState.Running, viewModel.State);
         Assert.Equal("00:02:00", viewModel.RemainingTime);
@@ -1127,17 +1311,19 @@ public sealed class MainWindowViewModelTests
         Assert.Equal("Tea", viewModel.TimerTitle);
         Assert.True(viewModel.IsRemainingTimeVisible);
         Assert.False(viewModel.HasCompletionEmphasis);
+        await viewModel.PendingSessionEffects;
         Assert.Equal(2, sessionInhibitor.AcquireCount);
+        await viewModel.PendingSessionEffects;
         Assert.Equal(1, sessionInhibitor.ReleaseCount);
     }
 
     [Fact]
-    public void RestartAfterExpiryCreatesOneNewExpiryCycle()
+    public async Task RestartAfterExpiryCreatesOneNewExpiryCycle()
     {
         var clock = new ManualMonotonicClock();
         var notificationService = new RecordingNotificationService();
         var audioAlertService = new RecordingAudioAlertService();
-        var viewModel = CreateViewModel(
+        var viewModel = await CreateViewModelAsync(
             clock,
             notificationService: notificationService,
             audioAlertService: audioAlertService);
@@ -1147,15 +1333,20 @@ public sealed class MainWindowViewModelTests
         viewModel.ExpiryVisualFeedbackRequested += (_, _) => flashCount++;
         viewModel.TimerInput = "1 second";
         viewModel.StartCommand.Execute(null);
+        await viewModel.PendingCommands;
         clock.Advance(TimeSpan.FromSeconds(1));
-        viewModel.Tick();
+        await viewModel.AdvanceAsync();
+        await viewModel.PendingExpiryEffects;
 
         viewModel.RestartCommand.Execute(null);
+        await viewModel.PendingCommands;
         Assert.Equal(TimerState.Running, viewModel.State);
         Assert.False(viewModel.HasCompletionEmphasis);
         clock.Advance(TimeSpan.FromSeconds(1));
-        viewModel.Tick();
-        viewModel.Tick();
+        await viewModel.AdvanceAsync();
+        await viewModel.PendingExpiryEffects;
+        await viewModel.AdvanceAsync();
+        await viewModel.PendingExpiryEffects;
 
         Assert.Equal(2, attentionCount);
         Assert.Equal(2, flashCount);
@@ -1164,32 +1355,38 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
-    public void TimerExpressionEditingTemporarilyDisablesRestartAndEscapeRestoresIt()
+    public async Task TimerExpressionEditingTemporarilyDisablesRestartAndEscapeRestoresIt()
     {
-        var viewModel = CreateViewModel(new ManualMonotonicClock());
+        var viewModel = await CreateViewModelAsync(new ManualMonotonicClock());
         viewModel.TimerInput = "2 minutes";
         viewModel.StartCommand.Execute(null);
+        await viewModel.PendingCommands;
         Assert.True(viewModel.RestartCommand.CanExecute(null));
         Assert.True(viewModel.TryEnterTimerInputMode());
+        await viewModel.PendingCommands;
 
         Assert.False(viewModel.RestartCommand.CanExecute(null));
         Assert.True(viewModel.TryHandleEscape());
+        await viewModel.PendingCommands;
 
         Assert.False(viewModel.IsTimerInputVisible);
         Assert.True(viewModel.RestartCommand.CanExecute(null));
     }
 
     [Fact]
-    public void EscapeDismissesExpiredPresentationAfterEditCancellationPriority()
+    public async Task EscapeDismissesExpiredPresentationAfterEditCancellationPriority()
     {
         var clock = new ManualMonotonicClock();
-        var viewModel = CreateViewModel(clock);
+        var viewModel = await CreateViewModelAsync(clock);
         viewModel.TimerInput = "1 second";
         viewModel.StartCommand.Execute(null);
+        await viewModel.PendingCommands;
         clock.Advance(TimeSpan.FromSeconds(1));
-        viewModel.Tick();
+        await viewModel.AdvanceAsync();
+        await viewModel.PendingExpiryEffects;
 
         Assert.True(viewModel.TryHandleEscape());
+        await viewModel.PendingCommands;
 
         Assert.Equal(TimerState.Stopped, viewModel.State);
         Assert.True(viewModel.IsTimerInputVisible);
@@ -1659,6 +1856,13 @@ public sealed class MainWindowViewModelTests
         string[] allowListedFragments =
         [
             "\"active-session\"",
+            "\"audio-preview\"",
+            "\"session-effects\"",
+            "\"dispose\"",
+            "\"Session cleanup failed.\"",
+            "\"Audio preview cancellation failed.\"",
+            "\"cancel\"",
+            "\"shared-inhibition\"",
             "\"active-sessions\"",
             "\"app\"",
             "\"application/json\"",
@@ -1775,7 +1979,7 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
-    public void AboutDialogIsMainWindowShellBehavior()
+    public async Task AboutDialogIsMainWindowShellBehavior()
     {
         string codeBehind = File.ReadAllText(FindRepositoryFile("src/Hourglass.Linux.Avalonia/MainWindow.axaml.cs"));
         string aboutHandler = ExtractMethod(codeBehind, "private async void AboutMenuItemClick");
@@ -1809,24 +2013,28 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
-    public void ContextMenuTimerCommandAvailabilityMatchesEveryTimerState()
+    public async Task ContextMenuTimerCommandAvailabilityMatchesEveryTimerState()
     {
         var clock = new ManualMonotonicClock();
-        var viewModel = CreateViewModel(clock);
+        var viewModel = await CreateViewModelAsync(clock);
 
         AssertCommandAvailability(viewModel, canStart: true, canPauseResume: false, canStop: false, canRestart: false);
 
         viewModel.TimerInput = "1 second";
         viewModel.StartCommand.Execute(null);
+        await viewModel.PendingCommands;
         AssertCommandAvailability(viewModel, canStart: false, canPauseResume: true, canStop: true, canRestart: true);
 
         viewModel.PauseResumeCommand.Execute(null);
+        await viewModel.PendingCommands;
         Assert.Equal("Resume", viewModel.PauseResumeText);
         AssertCommandAvailability(viewModel, canStart: false, canPauseResume: true, canStop: true, canRestart: true);
 
         viewModel.PauseResumeCommand.Execute(null);
+        await viewModel.PendingCommands;
         clock.Advance(TimeSpan.FromSeconds(1));
-        viewModel.Tick();
+        await viewModel.AdvanceAsync();
+        await viewModel.PendingExpiryEffects;
         Assert.Equal(TimerState.Expired, viewModel.State);
         AssertCommandAvailability(viewModel, canStart: false, canPauseResume: false, canStop: true, canRestart: true);
     }
@@ -1871,7 +2079,7 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
-    public void WindowClosePathsUseSharedCoordinatorAndIdempotentCleanup()
+    public async Task WindowClosePathsUseSharedCoordinatorAndIdempotentCleanup()
     {
         string codeBehind = File.ReadAllText(FindRepositoryFile("src/Hourglass.Linux.Avalonia/MainWindow.axaml.cs"));
         int exitHandlerStart = codeBehind.IndexOf("private void ExitMenuItemClick", StringComparison.Ordinal);
@@ -1911,11 +2119,10 @@ public sealed class MainWindowViewModelTests
         Assert.Contains("Dispatcher.UIThread.CheckAccess()", codeBehind, StringComparison.Ordinal);
         Assert.Contains("Dispatcher.UIThread.Post(async () =>", codeBehind, StringComparison.Ordinal);
         Assert.Contains("this.isClosePreparing = true;", prepareClose, StringComparison.Ordinal);
-        Assert.Contains("this.refreshTimer.Stop();", prepareClose, StringComparison.Ordinal);
+        Assert.Contains("this.viewModel.SuspendAutomaticTicks();", prepareClose, StringComparison.Ordinal);
         Assert.True(
-            prepareClose.IndexOf("this.refreshTimer.Stop();", StringComparison.Ordinal)
+            prepareClose.IndexOf("this.viewModel.SuspendAutomaticTicks();", StringComparison.Ordinal)
             < prepareClose.IndexOf("this.desktopProgressController.ClearAsync()", StringComparison.Ordinal));
-        Assert.Contains("this.refreshTimer.Stop();", cleanup, StringComparison.Ordinal);
         Assert.Contains("this.expiryFlashTimer.Stop();", cleanup, StringComparison.Ordinal);
         Assert.Contains("this.validationFeedbackTimer.Stop();", cleanup, StringComparison.Ordinal);
         Assert.Contains("this.viewModel.WindowAttentionRequested -= this.WindowAttentionRequested;", cleanup, StringComparison.Ordinal);
@@ -1950,51 +2157,62 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
-    public void PauseAndResumePreserveRemainingTime()
+    public async Task PauseAndResumePreserveRemainingTime()
     {
         var clock = new ManualMonotonicClock();
         var sessionInhibitor = new RecordingSessionInhibitor();
         DateTime now = new(2026, 6, 8, 10, 0, 0);
-        var viewModel = CreateViewModel(clock, () => now, sessionInhibitor: sessionInhibitor);
+        var viewModel = await CreateViewModelAsync(clock, () => now, sessionInhibitor: sessionInhibitor);
 
         viewModel.TimerInput = "10 seconds";
         viewModel.StartCommand.Execute(null);
+        await viewModel.PendingCommands;
         clock.Advance(TimeSpan.FromSeconds(3));
-        viewModel.Tick();
+        await viewModel.AdvanceAsync();
+        await viewModel.PendingExpiryEffects;
 
         viewModel.PauseResumeCommand.Execute(null);
+        await viewModel.PendingCommands;
         clock.Advance(TimeSpan.FromSeconds(5));
-        viewModel.Tick();
+        await viewModel.AdvanceAsync();
+        await viewModel.PendingExpiryEffects;
 
         Assert.Equal(TimerState.Paused, viewModel.State);
         Assert.Equal("00:00:07", viewModel.RemainingTime);
         Assert.Equal("Resume", viewModel.PauseResumeText);
+        await viewModel.PendingSessionEffects;
         Assert.Equal(1, sessionInhibitor.ReleaseCount);
 
         now = now.AddSeconds(8);
         viewModel.PauseResumeCommand.Execute(null);
+        await viewModel.PendingCommands;
         clock.Advance(TimeSpan.FromSeconds(2));
-        viewModel.Tick();
+        await viewModel.AdvanceAsync();
+        await viewModel.PendingExpiryEffects;
 
         Assert.Equal(TimerState.Running, viewModel.State);
         Assert.Equal("00:00:05", viewModel.RemainingTime);
         Assert.Equal("Pause", viewModel.PauseResumeText);
+        await viewModel.PendingSessionEffects;
         Assert.Equal(2, sessionInhibitor.AcquireCount);
     }
 
     [Fact]
-    public void ResetReturnsTimerToReadyState()
+    public async Task ResetReturnsTimerToReadyState()
     {
         var clock = new ManualMonotonicClock();
         var sessionInhibitor = new RecordingSessionInhibitor();
-        var viewModel = CreateViewModel(clock, sessionInhibitor: sessionInhibitor);
+        var viewModel = await CreateViewModelAsync(clock, sessionInhibitor: sessionInhibitor);
 
         viewModel.TimerInput = "10 seconds";
         viewModel.StartCommand.Execute(null);
+        await viewModel.PendingCommands;
         clock.Advance(TimeSpan.FromSeconds(3));
-        viewModel.Tick();
+        await viewModel.AdvanceAsync();
+        await viewModel.PendingExpiryEffects;
 
         viewModel.ResetCommand.Execute(null);
+        await viewModel.PendingCommands;
 
         Assert.Equal(TimerState.Stopped, viewModel.State);
         Assert.Equal("Ready", viewModel.StatusText);
@@ -2003,97 +2221,114 @@ public sealed class MainWindowViewModelTests
         Assert.True(viewModel.StartCommand.CanExecute(null));
         Assert.False(viewModel.PauseResumeCommand.CanExecute(null));
         Assert.False(viewModel.ResetCommand.CanExecute(null));
+        await viewModel.PendingSessionEffects;
         Assert.Equal(1, sessionInhibitor.ReleaseCount);
     }
 
     [Fact]
-    public void ProgressAdvancesFreezesResumesExpiresAndResets()
+    public async Task ProgressAdvancesFreezesResumesExpiresAndResets()
     {
         var clock = new ManualMonotonicClock();
-        var viewModel = CreateViewModel(clock);
+        var viewModel = await CreateViewModelAsync(clock);
 
         viewModel.TimerInput = "10 seconds";
         viewModel.StartCommand.Execute(null);
+        await viewModel.PendingCommands;
 
         Assert.Equal(100, viewModel.ProgressPercent);
 
         clock.Advance(TimeSpan.FromSeconds(2.5));
-        viewModel.Tick();
+        await viewModel.AdvanceAsync();
+        await viewModel.PendingExpiryEffects;
 
         Assert.Equal(75, viewModel.ProgressPercent);
 
         viewModel.PauseResumeCommand.Execute(null);
+        await viewModel.PendingCommands;
         clock.Advance(TimeSpan.FromSeconds(4));
-        viewModel.Tick();
+        await viewModel.AdvanceAsync();
+        await viewModel.PendingExpiryEffects;
 
         Assert.Equal(75, viewModel.ProgressPercent);
 
         viewModel.PauseResumeCommand.Execute(null);
+        await viewModel.PendingCommands;
         clock.Advance(TimeSpan.FromSeconds(2.5));
-        viewModel.Tick();
+        await viewModel.AdvanceAsync();
+        await viewModel.PendingExpiryEffects;
 
         Assert.Equal(50, viewModel.ProgressPercent);
 
         clock.Advance(TimeSpan.FromSeconds(5));
-        viewModel.Tick();
+        await viewModel.AdvanceAsync();
+        await viewModel.PendingExpiryEffects;
 
         Assert.Equal(TimerState.Expired, viewModel.State);
         Assert.Equal(0, viewModel.ProgressPercent);
 
         clock.Advance(TimeSpan.FromSeconds(5));
-        viewModel.Tick();
+        await viewModel.AdvanceAsync();
+        await viewModel.PendingExpiryEffects;
 
         Assert.Equal(0, viewModel.ProgressPercent);
 
         viewModel.ResetCommand.Execute(null);
+        await viewModel.PendingCommands;
 
         Assert.Equal(0, viewModel.ProgressPercent);
     }
 
     [Fact]
-    public void TickTransitionsExpiredTimerToCompleteDisplay()
+    public async Task TickTransitionsExpiredTimerToCompleteDisplay()
     {
         var clock = new ManualMonotonicClock();
         var sessionInhibitor = new RecordingSessionInhibitor();
-        var viewModel = CreateViewModel(clock, sessionInhibitor: sessionInhibitor);
+        var viewModel = await CreateViewModelAsync(clock, sessionInhibitor: sessionInhibitor);
 
         viewModel.TimerInput = "1 second";
         viewModel.StartCommand.Execute(null);
+        await viewModel.PendingCommands;
         clock.Advance(TimeSpan.FromSeconds(2));
-        viewModel.Tick();
+        await viewModel.AdvanceAsync();
+        await viewModel.PendingExpiryEffects;
 
         Assert.Equal(TimerState.Expired, viewModel.State);
         Assert.Equal("Timer complete", viewModel.StatusText);
         Assert.Equal("00:00:00", viewModel.RemainingTime);
         Assert.False(viewModel.IsRunning);
         Assert.False(viewModel.IsInputEnabled);
+        await viewModel.PendingSessionEffects;
         Assert.Equal(1, sessionInhibitor.ReleaseCount);
     }
 
     [Fact]
-    public void InhibitionFailureDoesNotPreventTimerStart()
+    public async Task InhibitionFailureDoesNotPreventTimerStart()
     {
         var clock = new ManualMonotonicClock();
         var sessionInhibitor = new RecordingSessionInhibitor { ThrowOnAcquire = true };
-        var viewModel = CreateViewModel(clock, sessionInhibitor: sessionInhibitor);
+        var viewModel = await CreateViewModelAsync(clock, sessionInhibitor: sessionInhibitor);
 
         viewModel.TimerInput = "90 seconds";
         viewModel.StartCommand.Execute(null);
+        await viewModel.PendingCommands;
 
         Assert.Equal(TimerState.Running, viewModel.State);
+        await viewModel.PendingSessionEffects;
         Assert.Equal(1, sessionInhibitor.AcquireCount);
     }
 
     [Fact]
-    public void DisposeReleasesActiveInhibition()
+    public async Task DisposeReleasesActiveInhibition()
     {
         var sessionInhibitor = new RecordingSessionInhibitor();
-        var viewModel = CreateViewModel(new ManualMonotonicClock(), sessionInhibitor: sessionInhibitor);
+        var viewModel = await CreateViewModelAsync(new ManualMonotonicClock(), sessionInhibitor: sessionInhibitor);
 
         viewModel.TimerInput = "90 seconds";
         viewModel.StartCommand.Execute(null);
+        await viewModel.PendingCommands;
         viewModel.Dispose();
 
+        await viewModel.PendingSessionEffects;
         Assert.Equal(1, sessionInhibitor.ReleaseCount);
     }
 
@@ -2102,20 +2337,23 @@ public sealed class MainWindowViewModelTests
     [InlineData("", "Hourglass")]
     [InlineData("   ", "Hourglass")]
     [InlineData("Tea", "Tea")]
-    public void TickTransitionsExpiredTimerShowsNotificationOnceWithExpectedTitle(
+    public async Task TickTransitionsExpiredTimerShowsNotificationOnceWithExpectedTitle(
         string? timerTitle,
         string expectedNotificationTitle)
     {
         var clock = new ManualMonotonicClock();
         var notificationService = new RecordingNotificationService();
-        var viewModel = CreateViewModel(clock, notificationService: notificationService);
+        var viewModel = await CreateViewModelAsync(clock, notificationService: notificationService);
 
         viewModel.TimerTitle = timerTitle;
+        await viewModel.PendingCommands;
         viewModel.TimerInput = "1 second";
         viewModel.StartCommand.Execute(null);
+        await viewModel.PendingCommands;
         clock.Advance(TimeSpan.FromSeconds(2));
-        viewModel.Tick();
-        viewModel.Tick();
+        await viewModel.AdvanceAsync();
+        await viewModel.AdvanceAsync();
+        await viewModel.PendingExpiryEffects;
 
         Assert.Equal(1, notificationService.CallCount);
         Assert.Equal(expectedNotificationTitle, notificationService.Title);
@@ -2123,17 +2361,20 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
-    public void TickTransitionsExpiredTimerPlaysAudioOnce()
+    public async Task TickTransitionsExpiredTimerPlaysAudioOnce()
     {
         var clock = new ManualMonotonicClock();
         var audioAlertService = new RecordingAudioAlertService();
-        var viewModel = CreateViewModel(clock, audioAlertService: audioAlertService);
+        var viewModel = await CreateViewModelAsync(clock, audioAlertService: audioAlertService);
 
         viewModel.TimerInput = "1 second";
         viewModel.StartCommand.Execute(null);
+        await viewModel.PendingCommands;
         clock.Advance(TimeSpan.FromSeconds(2));
-        viewModel.Tick();
-        viewModel.Tick();
+        await viewModel.AdvanceAsync();
+        await viewModel.PendingExpiryEffects;
+        await viewModel.AdvanceAsync();
+        await viewModel.PendingExpiryEffects;
 
         Assert.Equal(1, audioAlertService.CallCount);
         Assert.Equal(AudioAlertSoundIds.NormalBeep, audioAlertService.SoundId);
@@ -2148,26 +2389,29 @@ public sealed class MainWindowViewModelTests
         {
             LoadedSettings = LinuxAppSettings.Default with { AudioAlertSoundId = AudioAlertSoundIds.QuietBeep }
         };
-        var viewModel = CreateViewModel(
+        var viewModel = await CreateViewModelAsync(
             clock,
             settingsStore: settingsStore,
             audioAlertService: audioAlertService);
 
         await viewModel.LoadSettingsAsync();
+        await viewModel.PendingExpiryEffects;
         viewModel.TimerInput = "1 second";
         viewModel.StartCommand.Execute(null);
+        await viewModel.PendingCommands;
         clock.Advance(TimeSpan.FromSeconds(2));
-        viewModel.Tick();
+        await viewModel.AdvanceAsync();
+        await viewModel.PendingExpiryEffects;
 
         Assert.Equal(1, audioAlertService.CallCount);
         Assert.Equal(AudioAlertSoundIds.QuietBeep, audioAlertService.SoundId);
     }
 
     [Fact]
-    public void ExpiryPublishesAttentionAndVisualFeedbackOncePerTimerCycle()
+    public async Task ExpiryPublishesAttentionAndVisualFeedbackOncePerTimerCycle()
     {
         var clock = new ManualMonotonicClock();
-        var viewModel = CreateViewModel(clock);
+        var viewModel = await CreateViewModelAsync(clock);
         int attentionCount = 0;
         int flashCount = 0;
         viewModel.WindowAttentionRequested += (_, _) => attentionCount++;
@@ -2175,19 +2419,25 @@ public sealed class MainWindowViewModelTests
 
         viewModel.TimerInput = "1 second";
         viewModel.StartCommand.Execute(null);
+        await viewModel.PendingCommands;
         clock.Advance(TimeSpan.FromSeconds(2));
-        viewModel.Tick();
-        viewModel.Tick();
+        await viewModel.AdvanceAsync();
+        await viewModel.PendingExpiryEffects;
+        await viewModel.AdvanceAsync();
+        await viewModel.PendingExpiryEffects;
 
         Assert.Equal(1, attentionCount);
         Assert.Equal(1, flashCount);
         Assert.True(viewModel.HasCompletionEmphasis);
 
         viewModel.ResetCommand.Execute(null);
+        await viewModel.PendingCommands;
         Assert.False(viewModel.HasCompletionEmphasis);
         viewModel.StartCommand.Execute(null);
+        await viewModel.PendingCommands;
         clock.Advance(TimeSpan.FromSeconds(2));
-        viewModel.Tick();
+        await viewModel.AdvanceAsync();
+        await viewModel.PendingExpiryEffects;
 
         Assert.Equal(2, attentionCount);
         Assert.Equal(2, flashCount);
@@ -2204,7 +2454,7 @@ public sealed class MainWindowViewModelTests
         {
             LoadedSettings = new LinuxAppSettings(popUpWhenExpired: false)
         };
-        var viewModel = CreateViewModel(
+        var viewModel = await CreateViewModelAsync(
             clock,
             notificationService: notificationService,
             sessionInhibitor: sessionInhibitor,
@@ -2214,25 +2464,29 @@ public sealed class MainWindowViewModelTests
         viewModel.WindowAttentionRequested += (_, _) => attentionCount++;
 
         await viewModel.LoadSettingsAsync();
+        await viewModel.PendingExpiryEffects;
         viewModel.TimerInput = "1 second";
         viewModel.StartCommand.Execute(null);
+        await viewModel.PendingCommands;
         clock.Advance(TimeSpan.FromSeconds(2));
-        viewModel.Tick();
+        await viewModel.AdvanceAsync();
+        await viewModel.PendingExpiryEffects;
 
         Assert.Equal(0, attentionCount);
         Assert.Equal(1, notificationService.CallCount);
         Assert.Equal(1, audioAlertService.CallCount);
+        await viewModel.PendingSessionEffects;
         Assert.Equal(1, sessionInhibitor.ReleaseCount);
         Assert.True(viewModel.HasCompletionEmphasis);
     }
 
     [Fact]
-    public void AttentionHandlerFailureDoesNotPreventNotificationOrAudio()
+    public async Task AttentionHandlerFailureDoesNotPreventNotificationOrAudio()
     {
         var clock = new ManualMonotonicClock();
         var notificationService = new RecordingNotificationService();
         var audioAlertService = new RecordingAudioAlertService();
-        var viewModel = CreateViewModel(
+        var viewModel = await CreateViewModelAsync(
             clock,
             notificationService: notificationService,
             audioAlertService: audioAlertService);
@@ -2240,8 +2494,10 @@ public sealed class MainWindowViewModelTests
 
         viewModel.TimerInput = "1 second";
         viewModel.StartCommand.Execute(null);
+        await viewModel.PendingCommands;
         clock.Advance(TimeSpan.FromSeconds(2));
-        viewModel.Tick();
+        await viewModel.AdvanceAsync();
+        await viewModel.PendingExpiryEffects;
 
         Assert.Equal(TimerState.Expired, viewModel.State);
         Assert.Equal(1, notificationService.CallCount);
@@ -2249,16 +2505,18 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
-    public void NotificationFailureDoesNotPreventCompleteDisplay()
+    public async Task NotificationFailureDoesNotPreventCompleteDisplay()
     {
         var clock = new ManualMonotonicClock();
         var notificationService = new RecordingNotificationService { ThrowOnNotify = true };
-        var viewModel = CreateViewModel(clock, notificationService: notificationService);
+        var viewModel = await CreateViewModelAsync(clock, notificationService: notificationService);
 
         viewModel.TimerInput = "1 second";
         viewModel.StartCommand.Execute(null);
+        await viewModel.PendingCommands;
         clock.Advance(TimeSpan.FromSeconds(2));
-        viewModel.Tick();
+        await viewModel.AdvanceAsync();
+        await viewModel.PendingExpiryEffects;
 
         Assert.Equal(1, notificationService.CallCount);
         Assert.Equal(TimerState.Expired, viewModel.State);
@@ -2267,20 +2525,22 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
-    public void AudioFailureDoesNotPreventCompleteDisplayOrNotification()
+    public async Task AudioFailureDoesNotPreventCompleteDisplayOrNotification()
     {
         var clock = new ManualMonotonicClock();
         var audioAlertService = new RecordingAudioAlertService { ThrowOnPlay = true };
         var notificationService = new RecordingNotificationService();
-        var viewModel = CreateViewModel(
+        var viewModel = await CreateViewModelAsync(
             clock,
             notificationService: notificationService,
             audioAlertService: audioAlertService);
 
         viewModel.TimerInput = "1 second";
         viewModel.StartCommand.Execute(null);
+        await viewModel.PendingCommands;
         clock.Advance(TimeSpan.FromSeconds(2));
-        viewModel.Tick();
+        await viewModel.AdvanceAsync();
+        await viewModel.PendingExpiryEffects;
 
         Assert.Equal(1, audioAlertService.CallCount);
         Assert.Equal(1, notificationService.CallCount);
@@ -2289,20 +2549,22 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
-    public void NotificationFailureDoesNotPreventAudio()
+    public async Task NotificationFailureDoesNotPreventAudio()
     {
         var clock = new ManualMonotonicClock();
         var notificationService = new RecordingNotificationService { ThrowOnNotify = true };
         var audioAlertService = new RecordingAudioAlertService();
-        var viewModel = CreateViewModel(
+        var viewModel = await CreateViewModelAsync(
             clock,
             notificationService: notificationService,
             audioAlertService: audioAlertService);
 
         viewModel.TimerInput = "1 second";
         viewModel.StartCommand.Execute(null);
+        await viewModel.PendingCommands;
         clock.Advance(TimeSpan.FromSeconds(2));
-        viewModel.Tick();
+        await viewModel.AdvanceAsync();
+        await viewModel.PendingExpiryEffects;
 
         Assert.Equal(1, notificationService.CallCount);
         Assert.Equal(1, audioAlertService.CallCount);
@@ -2316,9 +2578,10 @@ public sealed class MainWindowViewModelTests
         {
             LoadedSettings = new LinuxAppSettings(["15 minutes"], notificationsEnabled: true)
         };
-        var viewModel = CreateViewModel(new ManualMonotonicClock(), settingsStore: settingsStore);
+        var viewModel = await CreateViewModelAsync(new ManualMonotonicClock(), settingsStore: settingsStore);
 
         await viewModel.LoadSettingsAsync();
+        await viewModel.PendingExpiryEffects;
 
         Assert.Equal("15 minutes", viewModel.TimerInput);
         Assert.Equal("Ready", viewModel.StatusText);
@@ -2346,12 +2609,13 @@ public sealed class MainWindowViewModelTests
                 showProgressInTaskbar: false,
                 showInNotificationArea: true)
         };
-        var viewModel = CreateViewModel(
+        var viewModel = await CreateViewModelAsync(
             new ManualMonotonicClock(),
             settingsStore: settingsStore,
             statusIconSupported: true);
 
         await viewModel.LoadSettingsAsync();
+        await viewModel.PendingExpiryEffects;
 
         Assert.False(viewModel.NotificationsEnabled);
         Assert.False(viewModel.AudioAlertsEnabled);
@@ -2374,9 +2638,10 @@ public sealed class MainWindowViewModelTests
     public async Task ToggleNotificationsChangesStateAndSavesSettings()
     {
         var settingsStore = new RecordingSettingsStore();
-        var viewModel = CreateViewModel(new ManualMonotonicClock(), settingsStore: settingsStore);
+        var viewModel = await CreateViewModelAsync(new ManualMonotonicClock(), settingsStore: settingsStore);
 
         viewModel.ToggleNotificationsCommand.Execute(null);
+        await viewModel.PendingCommands;
         await viewModel.PendingSettingsSave;
 
         Assert.False(viewModel.NotificationsEnabled);
@@ -2388,9 +2653,10 @@ public sealed class MainWindowViewModelTests
     public async Task ToggleAudioAlertsChangesStateAndSavesSettings()
     {
         var settingsStore = new RecordingSettingsStore();
-        var viewModel = CreateViewModel(new ManualMonotonicClock(), settingsStore: settingsStore);
+        var viewModel = await CreateViewModelAsync(new ManualMonotonicClock(), settingsStore: settingsStore);
 
         viewModel.ToggleAudioAlertsCommand.Execute(null);
+        await viewModel.PendingCommands;
         await viewModel.PendingSettingsSave;
 
         Assert.False(viewModel.AudioAlertsEnabled);
@@ -2404,9 +2670,10 @@ public sealed class MainWindowViewModelTests
     public async Task SelectAudioAlertSoundChangesStateAndSavesSettings()
     {
         var settingsStore = new RecordingSettingsStore();
-        var viewModel = CreateViewModel(new ManualMonotonicClock(), settingsStore: settingsStore);
+        var viewModel = await CreateViewModelAsync(new ManualMonotonicClock(), settingsStore: settingsStore);
 
         viewModel.SelectAudioAlertSoundCommand.Execute(AudioAlertSoundIds.QuietBeep);
+        await viewModel.PendingCommands;
         await viewModel.PendingSettingsSave;
 
         Assert.True(viewModel.AudioAlertsEnabled);
@@ -2423,12 +2690,13 @@ public sealed class MainWindowViewModelTests
         var settingsStore = new RecordingSettingsStore();
         var audioAlertService = new RecordingAudioAlertService();
         audioAlertService.SetSoundAvailable(AudioAlertSoundIds.QuietBeep, available: false);
-        var viewModel = CreateViewModel(
+        var viewModel = await CreateViewModelAsync(
             new ManualMonotonicClock(),
             settingsStore: settingsStore,
             audioAlertService: audioAlertService);
 
         viewModel.SelectAudioAlertSoundCommand.Execute(AudioAlertSoundIds.QuietBeep);
+        await viewModel.PendingCommands;
         await viewModel.PendingSettingsSave;
 
         Assert.True(viewModel.AudioAlertsEnabled);
@@ -2440,9 +2708,10 @@ public sealed class MainWindowViewModelTests
     public async Task SelectNoSoundDisablesAudioAlertsAndSavesSettings()
     {
         var settingsStore = new RecordingSettingsStore();
-        var viewModel = CreateViewModel(new ManualMonotonicClock(), settingsStore: settingsStore);
+        var viewModel = await CreateViewModelAsync(new ManualMonotonicClock(), settingsStore: settingsStore);
 
         viewModel.SelectAudioAlertSoundCommand.Execute(AudioAlertSoundIds.None);
+        await viewModel.PendingCommands;
         await viewModel.PendingSettingsSave;
 
         Assert.False(viewModel.AudioAlertsEnabled);
@@ -2459,9 +2728,10 @@ public sealed class MainWindowViewModelTests
         {
             LoadedSettings = new LinuxAppSettings(audioAlertsEnabled: false)
         };
-        var viewModel = CreateViewModel(new ManualMonotonicClock(), settingsStore: settingsStore);
+        var viewModel = await CreateViewModelAsync(new ManualMonotonicClock(), settingsStore: settingsStore);
 
         await viewModel.LoadSettingsAsync();
+        await viewModel.PendingExpiryEffects;
 
         Assert.False(viewModel.AudioAlertsEnabled);
         Assert.True(viewModel.IsNoSoundSelected);
@@ -2476,13 +2746,15 @@ public sealed class MainWindowViewModelTests
         {
             LoadedSettings = LinuxAppSettings.Default with { AudioAlertSoundId = AudioAlertSoundIds.LoudBeep }
         };
-        var viewModel = CreateViewModel(
+        var viewModel = await CreateViewModelAsync(
             new ManualMonotonicClock(),
             settingsStore: settingsStore,
             audioAlertService: audioAlertService);
 
         await viewModel.LoadSettingsAsync();
+        await viewModel.PendingExpiryEffects;
         viewModel.PreviewAudioAlertSoundCommand.Execute(null);
+        await viewModel.PendingCommands;
 
         Assert.Equal(1, audioAlertService.CallCount);
         Assert.Equal(AudioAlertSoundIds.LoudBeep, audioAlertService.SoundId);
@@ -2493,7 +2765,7 @@ public sealed class MainWindowViewModelTests
     {
         var audioAlertService = new RecordingAudioAlertService();
         var uiDispatcher = new RecordingUiDispatcher();
-        var viewModel = CreateViewModel(
+        var viewModel = await CreateViewModelAsync(
             new ManualMonotonicClock(),
             audioAlertService: audioAlertService,
             uiDispatcher: uiDispatcher);
@@ -2516,6 +2788,7 @@ public sealed class MainWindowViewModelTests
         };
 
         viewModel.PreviewAudioAlertSoundCommand.Execute(null);
+        await viewModel.PendingCommands;
 
         Task finished = await Task.WhenAny(completed.Task, Task.Delay(TimeSpan.FromSeconds(2)));
         Assert.Same(completed.Task, finished);
@@ -2523,17 +2796,18 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
-    public void PreviewUnavailableAudioAlertSoundDoesNotPlay()
+    public async Task PreviewUnavailableAudioAlertSoundDoesNotPlay()
     {
         var audioAlertService = new RecordingAudioAlertService();
         audioAlertService.SetSoundAvailable(AudioAlertSoundIds.NormalBeep, available: false);
-        var viewModel = CreateViewModel(
+        var viewModel = await CreateViewModelAsync(
             new ManualMonotonicClock(),
             audioAlertService: audioAlertService);
 
         Assert.False(viewModel.CanPreviewAudioAlertSound);
 
         viewModel.PreviewAudioAlertSoundCommand.Execute(null);
+        await viewModel.PendingCommands;
 
         Assert.Equal(0, audioAlertService.CallCount);
     }
@@ -2545,16 +2819,18 @@ public sealed class MainWindowViewModelTests
         {
             HoldPlaybackUntilCanceled = true
         };
-        var viewModel = CreateViewModel(
+        var viewModel = await CreateViewModelAsync(
             new ManualMonotonicClock(),
             audioAlertService: audioAlertService);
 
         viewModel.PreviewAudioAlertSoundCommand.Execute(null);
+        await viewModel.PendingCommands;
         await audioAlertService.PlaybackStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
         Assert.True(viewModel.IsAudioPreviewActive);
 
         viewModel.StopAudioAlertPreviewCommand.Execute(null);
+        await viewModel.PendingCommands;
         await audioAlertService.PlaybackCanceled.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
         Assert.False(viewModel.IsAudioPreviewActive);
@@ -2568,15 +2844,17 @@ public sealed class MainWindowViewModelTests
             HoldPlaybackUntilCanceled = true
         };
         var settingsStore = new RecordingSettingsStore();
-        var viewModel = CreateViewModel(
+        var viewModel = await CreateViewModelAsync(
             new ManualMonotonicClock(),
             settingsStore: settingsStore,
             audioAlertService: audioAlertService);
 
         viewModel.PreviewAudioAlertSoundCommand.Execute(null);
+        await viewModel.PendingCommands;
         await audioAlertService.PlaybackStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
         viewModel.SelectAudioAlertSoundCommand.Execute(AudioAlertSoundIds.None);
+        await viewModel.PendingCommands;
         await audioAlertService.PlaybackCanceled.Task.WaitAsync(TimeSpan.FromSeconds(5));
         await viewModel.PendingSettingsSave;
 
@@ -2590,9 +2868,10 @@ public sealed class MainWindowViewModelTests
     public async Task ToggleAlwaysOnTopChangesStateAndSavesSettings()
     {
         var settingsStore = new RecordingSettingsStore();
-        var viewModel = CreateViewModel(new ManualMonotonicClock(), settingsStore: settingsStore);
+        var viewModel = await CreateViewModelAsync(new ManualMonotonicClock(), settingsStore: settingsStore);
 
         viewModel.ToggleAlwaysOnTopCommand.Execute(null);
+        await viewModel.PendingCommands;
         await viewModel.PendingSettingsSave;
 
         Assert.True(viewModel.AlwaysOnTop);
@@ -2604,11 +2883,12 @@ public sealed class MainWindowViewModelTests
     public async Task ToggleShowProgressInTaskbarRaisesPropertyChangedAndSavesSettings()
     {
         var settingsStore = new RecordingSettingsStore();
-        var viewModel = CreateViewModel(new ManualMonotonicClock(), settingsStore: settingsStore);
+        var viewModel = await CreateViewModelAsync(new ManualMonotonicClock(), settingsStore: settingsStore);
         var changedProperties = new List<string?>();
         viewModel.PropertyChanged += (_, args) => changedProperties.Add(args.PropertyName);
 
         viewModel.ToggleShowProgressInTaskbarCommand.Execute(null);
+        await viewModel.PendingCommands;
         await viewModel.PendingSettingsSave;
 
         Assert.False(viewModel.ShowProgressInTaskbar);
@@ -2622,7 +2902,7 @@ public sealed class MainWindowViewModelTests
     public async Task ToggleShowInNotificationAreaRequiresSupportedBackendAndSavesSettings()
     {
         var settingsStore = new RecordingSettingsStore();
-        var viewModel = CreateViewModel(
+        var viewModel = await CreateViewModelAsync(
             new ManualMonotonicClock(),
             settingsStore: settingsStore,
             statusIconSupported: true);
@@ -2630,6 +2910,7 @@ public sealed class MainWindowViewModelTests
         viewModel.PropertyChanged += (_, args) => changedProperties.Add(args.PropertyName);
 
         viewModel.ToggleShowInNotificationAreaCommand.Execute(null);
+        await viewModel.PendingCommands;
         await viewModel.PendingSettingsSave;
 
         Assert.True(viewModel.IsStatusIconSupported);
@@ -2651,18 +2932,20 @@ public sealed class MainWindowViewModelTests
         {
             LoadedSettings = new LinuxAppSettings(showInNotificationArea: false)
         };
-        var viewModel = CreateViewModel(
+        var viewModel = await CreateViewModelAsync(
             new ManualMonotonicClock(),
             settingsStore: settingsStore,
             statusIconSupported: true);
 
         await viewModel.LoadSettingsAsync();
+        await viewModel.PendingExpiryEffects;
         settingsStore.LoadedSettings = new LinuxAppSettings(
             ["20 minutes", "12 minutes"],
             showInNotificationArea: true);
 
         viewModel.TimerInput = "12 minutes";
         viewModel.StartCommand.Execute(null);
+        await viewModel.PendingCommands;
         await viewModel.PendingSettingsSave;
 
         Assert.NotNull(settingsStore.SavedSettings);
@@ -2677,9 +2960,10 @@ public sealed class MainWindowViewModelTests
         {
             LoadedSettings = LinuxAppSettings.Default
         };
-        var viewModel = CreateViewModel(new ManualMonotonicClock(), settingsStore: settingsStore);
+        var viewModel = await CreateViewModelAsync(new ManualMonotonicClock(), settingsStore: settingsStore);
 
         await viewModel.LoadSettingsAsync();
+        await viewModel.PendingExpiryEffects;
         settingsStore.LoadedSettings = LinuxAppSettings.Default with
         {
             ReverseProgressBar = true,
@@ -2687,6 +2971,7 @@ public sealed class MainWindowViewModelTests
         };
 
         viewModel.ToggleNotificationsCommand.Execute(null);
+        await viewModel.PendingCommands;
         await viewModel.PendingSettingsSave;
 
         Assert.NotNull(settingsStore.SavedSettings);
@@ -2709,12 +2994,13 @@ public sealed class MainWindowViewModelTests
             },
             LoadedCustomThemes = new CustomThemesDocument(themes: [firstTheme, secondTheme])
         };
-        var viewModel = CreateViewModel(new ManualMonotonicClock(), settingsStore: settingsStore);
+        var viewModel = await CreateViewModelAsync(new ManualMonotonicClock(), settingsStore: settingsStore);
 
         await viewModel.LoadSettingsAsync();
         settingsStore.LoadedSettings = LinuxAppSettings.Default with { ThemePreference = LinuxThemePreference.System };
 
         viewModel.SelectCustomThemeCommand.Execute(secondTheme.Id);
+        await viewModel.PendingCommands;
         await viewModel.PendingSettingsSave;
 
         Assert.NotNull(settingsStore.SavedSettings);
@@ -2729,12 +3015,13 @@ public sealed class MainWindowViewModelTests
         {
             LoadedSettings = LinuxAppSettings.Default
         };
-        var viewModel = CreateViewModel(new ManualMonotonicClock(), settingsStore: settingsStore);
+        var viewModel = await CreateViewModelAsync(new ManualMonotonicClock(), settingsStore: settingsStore);
 
         await viewModel.LoadSettingsAsync();
         settingsStore.LoadedSettings = LinuxAppSettings.Default with { LoopTimer = true };
 
         viewModel.ToggleCloseWhenExpiredCommand.Execute(null);
+        await viewModel.PendingCommands;
         await viewModel.PendingSettingsSave;
 
         Assert.NotNull(settingsStore.SavedSettings);
@@ -2750,12 +3037,13 @@ public sealed class MainWindowViewModelTests
         {
             LoadedSettings = LinuxAppSettings.Default
         };
-        var viewModel = CreateViewModel(new ManualMonotonicClock(), settingsStore: settingsStore);
+        var viewModel = await CreateViewModelAsync(new ManualMonotonicClock(), settingsStore: settingsStore);
 
         await viewModel.LoadSettingsAsync();
         settingsStore.LoadedSettings = LinuxAppSettings.Default with { CloseWhenExpired = true };
 
         viewModel.ToggleLoopSoundCommand.Execute(null);
+        await viewModel.PendingCommands;
         await viewModel.PendingSettingsSave;
 
         Assert.NotNull(settingsStore.SavedSettings);
@@ -2771,15 +3059,17 @@ public sealed class MainWindowViewModelTests
         {
             LoadedSettings = LinuxAppSettings.Default
         };
-        var viewModel = CreateViewModel(new ManualMonotonicClock(), settingsStore: settingsStore);
+        var viewModel = await CreateViewModelAsync(new ManualMonotonicClock(), settingsStore: settingsStore);
 
         await viewModel.LoadSettingsAsync();
+        await viewModel.PendingExpiryEffects;
         settingsStore.LoadedSettings = LinuxAppSettings.Default with
         {
             AudioAlertSoundId = AudioAlertSoundIds.QuietBeep
         };
 
         viewModel.ToggleLoopSoundCommand.Execute(null);
+        await viewModel.PendingCommands;
         await viewModel.PendingSettingsSave;
 
         Assert.NotNull(settingsStore.SavedSettings);
@@ -2795,9 +3085,10 @@ public sealed class MainWindowViewModelTests
         {
             LoadedSettings = LinuxAppSettings.Default
         };
-        var viewModel = CreateViewModel(new ManualMonotonicClock(), settingsStore: settingsStore);
+        var viewModel = await CreateViewModelAsync(new ManualMonotonicClock(), settingsStore: settingsStore);
 
         await viewModel.LoadSettingsAsync();
+        await viewModel.PendingExpiryEffects;
         settingsStore.LoadedSettings = LinuxAppSettings.Default with
         {
             AudioAlertsEnabled = false,
@@ -2805,6 +3096,7 @@ public sealed class MainWindowViewModelTests
         };
 
         viewModel.SelectAudioAlertSoundCommand.Execute(AudioAlertSoundIds.QuietBeep);
+        await viewModel.PendingCommands;
         await viewModel.PendingSettingsSave;
 
         Assert.NotNull(settingsStore.SavedSettings);
@@ -2841,16 +3133,16 @@ public sealed class MainWindowViewModelTests
         {
             LoadedSettings = LinuxAppSettings.Default
         };
-        var appSettingsStore = new CoordinatedAppSettingsStore(settingsStore);
-        var firstWindow = CreateViewModel(
+        await using var sharedRuntime = new HourglassRuntime(clock: new ManualMonotonicClock(), wallClockNow: () => new DateTime(2026, 6, 8, 10, 0, 0), settingsStore: settingsStore);
+        var firstWindow = await CreateViewModelAsync(
             new ManualMonotonicClock(),
             settingsStore: settingsStore,
-            appSettingsStore: appSettingsStore);
+            runtime: sharedRuntime);
         var secondDispatcher = new RecordingUiDispatcher();
-        var secondWindow = CreateViewModel(
+        var secondWindow = await CreateViewModelAsync(
             new ManualMonotonicClock(),
             settingsStore: settingsStore,
-            appSettingsStore: appSettingsStore,
+            runtime: sharedRuntime,
             uiDispatcher: secondDispatcher);
         bool notificationsChangedOnDispatcher = false;
 
@@ -2863,11 +3155,15 @@ public sealed class MainWindowViewModelTests
         };
 
         await firstWindow.LoadSettingsAsync();
+        await firstWindow.PendingExpiryEffects;
         await secondWindow.LoadSettingsAsync();
+        await secondWindow.PendingExpiryEffects;
 
         firstWindow.ToggleNotificationsCommand.Execute(null);
+        await firstWindow.PendingCommands;
         await firstWindow.PendingSettingsSave;
         secondWindow.ToggleAlwaysOnTopCommand.Execute(null);
+        await secondWindow.PendingCommands;
         await secondWindow.PendingSettingsSave;
 
         Assert.False(secondWindow.NotificationsEnabled);
@@ -2885,15 +3181,17 @@ public sealed class MainWindowViewModelTests
         {
             LoadedSettings = new LinuxAppSettings(showInNotificationArea: true)
         };
-        var viewModel = CreateViewModel(new ManualMonotonicClock(), settingsStore: settingsStore);
+        var viewModel = await CreateViewModelAsync(new ManualMonotonicClock(), settingsStore: settingsStore);
 
         await viewModel.LoadSettingsAsync();
+        await viewModel.PendingExpiryEffects;
 
         Assert.False(viewModel.IsStatusIconSupported);
         Assert.False(viewModel.ShowInNotificationArea);
         Assert.False(viewModel.CanHideToNotificationArea);
         Assert.False(viewModel.ToggleShowInNotificationAreaCommand.CanExecute(null));
         viewModel.ToggleShowInNotificationAreaCommand.Execute(null);
+        await viewModel.PendingCommands;
         await viewModel.PendingSettingsSave;
         Assert.Null(settingsStore.SavedSettings);
     }
@@ -2901,13 +3199,13 @@ public sealed class MainWindowViewModelTests
     [Fact]
     public async Task HideToNotificationAreaCommandRequiresRecoverableStatusIcon()
     {
-        var disabled = CreateViewModel(new ManualMonotonicClock(), statusIconSupported: true);
-        var unsupported = CreateViewModel(new ManualMonotonicClock());
+        var disabled = await CreateViewModelAsync(new ManualMonotonicClock(), statusIconSupported: true);
+        var unsupported = await CreateViewModelAsync(new ManualMonotonicClock());
         var visibleButNotRecoverableSettings = new RecordingSettingsStore
         {
             LoadedSettings = new LinuxAppSettings(showInNotificationArea: true)
         };
-        var visibleButNotRecoverable = CreateViewModel(
+        var visibleButNotRecoverable = await CreateViewModelAsync(
             new ManualMonotonicClock(),
             settingsStore: visibleButNotRecoverableSettings,
             statusIconSupported: true);
@@ -2915,7 +3213,7 @@ public sealed class MainWindowViewModelTests
         {
             LoadedSettings = new LinuxAppSettings(showInNotificationArea: true)
         };
-        var enabled = CreateViewModel(
+        var enabled = await CreateViewModelAsync(
             new ManualMonotonicClock(),
             settingsStore: enabledSettings,
             statusIconSupported: true,
@@ -2929,12 +3227,18 @@ public sealed class MainWindowViewModelTests
         visibleButNotRecoverable.HideToNotificationAreaRequested += (_, _) => visibleButNotRecoverableRequests++;
         enabled.HideToNotificationAreaRequested += (_, _) => enabledRequests++;
         await visibleButNotRecoverable.LoadSettingsAsync();
+        await visibleButNotRecoverable.PendingExpiryEffects;
         await enabled.LoadSettingsAsync();
+        await enabled.PendingExpiryEffects;
 
         disabled.HideToNotificationAreaCommand.Execute(null);
+        await disabled.PendingCommands;
         unsupported.HideToNotificationAreaCommand.Execute(null);
+        await unsupported.PendingCommands;
         visibleButNotRecoverable.HideToNotificationAreaCommand.Execute(null);
+        await visibleButNotRecoverable.PendingCommands;
         enabled.HideToNotificationAreaCommand.Execute(null);
+        await enabled.PendingCommands;
 
         Assert.Equal(0, disabledRequests);
         Assert.Equal(0, unsupportedRequests);
@@ -2952,19 +3256,23 @@ public sealed class MainWindowViewModelTests
         {
             LoadedSettings = new LinuxAppSettings(showInNotificationArea: true)
         };
-        var viewModel = CreateViewModel(
+        var viewModel = await CreateViewModelAsync(
             clock,
             settingsStore: settingsStore,
             statusIconSupported: true,
             statusIconCanRecoverHiddenWindow: true);
         await viewModel.LoadSettingsAsync();
+        await viewModel.PendingExpiryEffects;
 
         StatusIconMenuState stopped = viewModel.StatusIconMenuState;
         viewModel.TimerTitle = "Tea";
+        await viewModel.PendingCommands;
         viewModel.TimerInput = "1 minute";
         viewModel.StartCommand.Execute(null);
+        await viewModel.PendingCommands;
         StatusIconMenuState running = viewModel.StatusIconMenuState;
         viewModel.PauseResumeCommand.Execute(null);
+        await viewModel.PendingCommands;
         StatusIconMenuState paused = viewModel.StatusIconMenuState;
 
         Assert.True(stopped.IsVisible);
@@ -2989,11 +3297,12 @@ public sealed class MainWindowViewModelTests
     public async Task TogglePopUpWhenExpiredRaisesPropertyChangedAndSavesSettings()
     {
         var settingsStore = new RecordingSettingsStore();
-        var viewModel = CreateViewModel(new ManualMonotonicClock(), settingsStore: settingsStore);
+        var viewModel = await CreateViewModelAsync(new ManualMonotonicClock(), settingsStore: settingsStore);
         var changedProperties = new List<string?>();
         viewModel.PropertyChanged += (_, args) => changedProperties.Add(args.PropertyName);
 
         viewModel.TogglePopUpWhenExpiredCommand.Execute(null);
+        await viewModel.PendingCommands;
         await viewModel.PendingSettingsSave;
 
         Assert.False(viewModel.PopUpWhenExpired);
@@ -3006,11 +3315,12 @@ public sealed class MainWindowViewModelTests
     public async Task TogglePromptOnExitRaisesPropertyChangedAndSavesSettings()
     {
         var settingsStore = new RecordingSettingsStore();
-        var viewModel = CreateViewModel(new ManualMonotonicClock(), settingsStore: settingsStore);
+        var viewModel = await CreateViewModelAsync(new ManualMonotonicClock(), settingsStore: settingsStore);
         var changedProperties = new List<string?>();
         viewModel.PropertyChanged += (_, args) => changedProperties.Add(args.PropertyName);
 
         viewModel.TogglePromptOnExitCommand.Execute(null);
+        await viewModel.PendingCommands;
         await viewModel.PendingSettingsSave;
 
         Assert.False(viewModel.PromptOnExit);
@@ -3023,16 +3333,19 @@ public sealed class MainWindowViewModelTests
     public async Task ExitPromptAppliesOnlyToActiveTimersWhenEnabled()
     {
         var settingsStore = new RecordingSettingsStore();
-        var viewModel = CreateViewModel(new ManualMonotonicClock(), settingsStore: settingsStore);
+        var viewModel = await CreateViewModelAsync(new ManualMonotonicClock(), settingsStore: settingsStore);
         Assert.False(viewModel.ShouldPromptOnExit);
 
         viewModel.TimerInput = "1 minute";
         viewModel.StartCommand.Execute(null);
+        await viewModel.PendingCommands;
         Assert.True(viewModel.ShouldPromptOnExit);
         viewModel.PauseResumeCommand.Execute(null);
+        await viewModel.PendingCommands;
         Assert.True(viewModel.ShouldPromptOnExit);
 
         viewModel.TogglePromptOnExitCommand.Execute(null);
+        await viewModel.PendingCommands;
         await viewModel.PendingSettingsSave;
         Assert.False(viewModel.ShouldPromptOnExit);
     }
@@ -3041,14 +3354,20 @@ public sealed class MainWindowViewModelTests
     public async Task Milestone3OptionTogglesSaveSettingsAndEnforceMutualExclusion()
     {
         var settingsStore = new RecordingSettingsStore();
-        var viewModel = CreateViewModel(new ManualMonotonicClock(), settingsStore: settingsStore);
+        var viewModel = await CreateViewModelAsync(new ManualMonotonicClock(), settingsStore: settingsStore);
 
         viewModel.ToggleReverseProgressBarCommand.Execute(null);
+        await viewModel.PendingCommands;
         viewModel.ToggleShowTimeElapsedCommand.Execute(null);
+        await viewModel.PendingCommands;
         viewModel.ToggleLoopTimerCommand.Execute(null);
+        await viewModel.PendingCommands;
         viewModel.ToggleCloseWhenExpiredCommand.Execute(null);
+        await viewModel.PendingCommands;
         viewModel.ToggleLoopSoundCommand.Execute(null);
+        await viewModel.PendingCommands;
         viewModel.ToggleDoNotKeepComputerAwakeCommand.Execute(null);
+        await viewModel.PendingCommands;
         await viewModel.PendingSettingsSave;
 
         Assert.True(viewModel.ReverseProgressBar);
@@ -3067,20 +3386,23 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
-    public void LoopTimerRestartsDurationTimersAndEmitsOneExpiryCycle()
+    public async Task LoopTimerRestartsDurationTimersAndEmitsOneExpiryCycle()
     {
         var clock = new ManualMonotonicClock();
         var notificationService = new RecordingNotificationService();
         var audioAlertService = new RecordingAudioAlertService();
-        var viewModel = CreateViewModel(clock, notificationService: notificationService, audioAlertService: audioAlertService);
+        var viewModel = await CreateViewModelAsync(clock, notificationService: notificationService, audioAlertService: audioAlertService);
         int visualRequests = 0;
         viewModel.ExpiryVisualFeedbackRequested += (_, _) => visualRequests++;
         viewModel.ToggleLoopTimerCommand.Execute(null);
+        await viewModel.PendingCommands;
         viewModel.TimerInput = "1 second";
         viewModel.StartCommand.Execute(null);
+        await viewModel.PendingCommands;
 
         clock.Advance(TimeSpan.FromSeconds(1));
-        viewModel.Tick();
+        await viewModel.AdvanceAsync();
+        await viewModel.PendingExpiryEffects;
 
         Assert.Equal(TimerState.Running, viewModel.State);
         Assert.Equal("Running", viewModel.StatusText);
@@ -3090,41 +3412,88 @@ public sealed class MainWindowViewModelTests
         Assert.Equal("00:00:01", viewModel.RemainingTime);
     }
 
+    [Theory]
+    [InlineData("stop")]
+    [InlineData("restart")]
+    [InlineData("dispose")]
+    public async Task DelayedExpiryDoesNotPlayAudioOrLoopAfterSessionChanges(string action)
+    {
+        var clock = new ManualMonotonicClock();
+        var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var notifications = new RecordingNotificationService { Completion = completion.Task };
+        var audio = new RecordingAudioAlertService();
+        var viewModel = await CreateViewModelAsync(clock, notificationService: notifications, audioAlertService: audio);
+        viewModel.ToggleLoopTimerCommand.Execute(null);
+        await viewModel.PendingCommands;
+        viewModel.TimerInput = "1 second";
+        viewModel.StartCommand.Execute(null);
+        await viewModel.PendingCommands;
+        clock.Advance(TimeSpan.FromSeconds(1));
+        await viewModel.AdvanceAsync();
+        Task pending = viewModel.PendingExpiryEffects;
+        Assert.False(pending.IsCompleted);
+
+        switch (action)
+        {
+            case "stop": viewModel.ResetCommand.Execute(null); break;
+            case "restart": viewModel.RestartCommand.Execute(null); break;
+            case "dispose": viewModel.Dispose(); break;
+        }
+
+        await viewModel.PendingCommands;
+        TimerState state = viewModel.State;
+        completion.SetResult();
+        await pending;
+
+        Assert.Equal(state, viewModel.State);
+        Assert.Equal(0, audio.CallCount);
+        viewModel.Dispose();
+    }
+
     [Fact]
-    public void LoopSoundUsesStoppablePlaybackAndStopsOnDismissal()
+    public async Task LoopSoundUsesStoppablePlaybackAndStopsOnDismissal()
     {
         var clock = new ManualMonotonicClock();
         var audioAlertService = new RecordingAudioAlertService();
-        var viewModel = CreateViewModel(clock, audioAlertService: audioAlertService);
+        var viewModel = await CreateViewModelAsync(clock, audioAlertService: audioAlertService);
         viewModel.ToggleLoopSoundCommand.Execute(null);
+        await viewModel.PendingCommands;
         viewModel.TimerInput = "1 second";
         viewModel.StartCommand.Execute(null);
+        await viewModel.PendingCommands;
 
         clock.Advance(TimeSpan.FromSeconds(1));
-        viewModel.Tick();
+        await viewModel.AdvanceAsync();
+        await viewModel.PendingExpiryEffects;
         bool dismissed = viewModel.TryHandleEscape();
+        await viewModel.PendingCommands;
+        await viewModel.PendingSessionEffects;
 
         Assert.True(dismissed);
         Assert.Equal(1, audioAlertService.LoopingCallCount);
+        await viewModel.PendingSessionEffects;
         Assert.Equal(1, audioAlertService.StopCount);
         Assert.Equal(TimerState.Stopped, viewModel.State);
     }
 
     [Fact]
-    public void CloseWhenExpiredRequestsCloseAndSuppressesAttention()
+    public async Task CloseWhenExpiredRequestsCloseAndSuppressesAttention()
     {
         var clock = new ManualMonotonicClock();
-        var viewModel = CreateViewModel(clock);
+        var viewModel = await CreateViewModelAsync(clock);
         int closeRequests = 0;
         int attentionRequests = 0;
         viewModel.CloseRequested += (_, _) => closeRequests++;
         viewModel.WindowAttentionRequested += (_, _) => attentionRequests++;
         viewModel.ToggleCloseWhenExpiredCommand.Execute(null);
+        await viewModel.PendingCommands;
         viewModel.TimerInput = "1 second";
         viewModel.StartCommand.Execute(null);
+        await viewModel.PendingCommands;
 
         clock.Advance(TimeSpan.FromSeconds(1));
-        viewModel.Tick();
+        await viewModel.AdvanceAsync();
+        await viewModel.PendingExpiryEffects;
 
         Assert.Equal(1, closeRequests);
         Assert.Equal(0, attentionRequests);
@@ -3135,7 +3504,7 @@ public sealed class MainWindowViewModelTests
     {
         var clock = new ManualMonotonicClock();
         var uiDispatcher = new RecordingUiDispatcher();
-        var viewModel = CreateViewModel(clock, uiDispatcher: uiDispatcher);
+        var viewModel = await CreateViewModelAsync(clock, uiDispatcher: uiDispatcher);
         var closeRequested = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         viewModel.CloseRequested += (_, _) =>
         {
@@ -3143,66 +3512,80 @@ public sealed class MainWindowViewModelTests
             closeRequested.TrySetResult();
         };
         viewModel.ToggleCloseWhenExpiredCommand.Execute(null);
+        await viewModel.PendingCommands;
         viewModel.TimerInput = "1 second";
         viewModel.StartCommand.Execute(null);
+        await viewModel.PendingCommands;
 
         clock.Advance(TimeSpan.FromSeconds(1));
-        viewModel.Tick();
+        await viewModel.AdvanceAsync();
 
         Task finished = await Task.WhenAny(closeRequested.Task, Task.Delay(TimeSpan.FromSeconds(2)));
         Assert.Same(closeRequested.Task, finished);
     }
 
     [Fact]
-    public void LockInterfaceBlocksTimerMutationUntilExpiry()
+    public async Task LockInterfaceBlocksTimerMutationUntilExpiry()
     {
         var clock = new ManualMonotonicClock();
-        var viewModel = CreateViewModel(clock);
+        var viewModel = await CreateViewModelAsync(clock);
         viewModel.ToggleLockInterfaceCommand.Execute(null);
+        await viewModel.PendingCommands;
         viewModel.TimerInput = "2 seconds";
         viewModel.StartCommand.Execute(null);
+        await viewModel.PendingCommands;
 
         Assert.True(viewModel.IsTimerModificationLocked);
         Assert.False(viewModel.PauseResumeCommand.CanExecute(null));
         Assert.False(viewModel.ResetCommand.CanExecute(null));
         Assert.False(viewModel.RestartCommand.CanExecute(null));
         Assert.False(viewModel.TryEnterTimerInputMode());
+        await viewModel.PendingCommands;
 
         clock.Advance(TimeSpan.FromSeconds(2));
-        viewModel.Tick();
+        await viewModel.AdvanceAsync();
+        await viewModel.PendingExpiryEffects;
 
         Assert.False(viewModel.IsTimerModificationLocked);
         Assert.True(viewModel.ResetCommand.CanExecute(null));
     }
 
     [Fact]
-    public void KeepAwakePreferenceAppliesImmediatelyToRunningTimer()
+    public async Task KeepAwakePreferenceAppliesImmediatelyToRunningTimer()
     {
         var clock = new ManualMonotonicClock();
         var sessionInhibitor = new RecordingSessionInhibitor();
-        var viewModel = CreateViewModel(clock, sessionInhibitor: sessionInhibitor);
+        var viewModel = await CreateViewModelAsync(clock, sessionInhibitor: sessionInhibitor);
         viewModel.TimerInput = "1 minute";
         viewModel.StartCommand.Execute(null);
+        await viewModel.PendingCommands;
 
         viewModel.ToggleDoNotKeepComputerAwakeCommand.Execute(null);
+        await viewModel.PendingCommands;
         viewModel.ToggleDoNotKeepComputerAwakeCommand.Execute(null);
+        await viewModel.PendingCommands;
 
+        await viewModel.PendingSessionEffects;
         Assert.Equal(2, sessionInhibitor.AcquireCount);
+        await viewModel.PendingSessionEffects;
         Assert.Equal(1, sessionInhibitor.ReleaseCount);
     }
 
     [Fact]
-    public void UnsupportedShutdownCannotBeEnabledOrInvoked()
+    public async Task UnsupportedShutdownCannotBeEnabledOrInvoked()
     {
         var clock = new ManualMonotonicClock();
         var powerService = new RecordingSystemPowerService { IsShutdownSupported = false };
-        var viewModel = CreateViewModel(clock, systemPowerService: powerService);
+        var viewModel = await CreateViewModelAsync(clock, systemPowerService: powerService);
 
         viewModel.ToggleShutDownWhenExpiredCommand.Execute(null);
+        await viewModel.PendingCommands;
         viewModel.TimerInput = "1 second";
         viewModel.StartCommand.Execute(null);
+        await viewModel.PendingCommands;
         clock.Advance(TimeSpan.FromSeconds(1));
-        viewModel.Tick();
+        await viewModel.AdvanceAsync();
+        await viewModel.PendingExpiryEffects;
 
         Assert.False(viewModel.ShutDownWhenExpired);
         Assert.Equal(0, powerService.ShutdownRequestCount);
@@ -3212,9 +3595,10 @@ public sealed class MainWindowViewModelTests
     public async Task SettingsSaveFailureDoesNotCrashOrChangeTimerState()
     {
         var settingsStore = new RecordingSettingsStore { ThrowOnSave = true };
-        var viewModel = CreateViewModel(new ManualMonotonicClock(), settingsStore: settingsStore);
+        var viewModel = await CreateViewModelAsync(new ManualMonotonicClock(), settingsStore: settingsStore);
 
         viewModel.ToggleNotificationsCommand.Execute(null);
+        await viewModel.PendingCommands;
         await viewModel.PendingSettingsSave;
 
         Assert.False(viewModel.NotificationsEnabled);
@@ -3232,7 +3616,7 @@ public sealed class MainWindowViewModelTests
             TaskContinuationOptions.None,
             scheduler);
         var settingsStore = new DeferredSettingsStore();
-        var viewModel = CreateViewModel(new ManualMonotonicClock(), settingsStore: settingsStore);
+        var viewModel = await CreateViewModelAsync(new ManualMonotonicClock(), settingsStore: settingsStore);
 
         Task<Task> scheduledLoadTask = taskFactory.StartNew(() =>
         {
@@ -3252,14 +3636,15 @@ public sealed class MainWindowViewModelTests
 
         settingsStore.Complete(new LinuxAppSettings(["15 minutes"], notificationsEnabled: true));
 
+        await scheduler.WaitForWorkAsync();
         Assert.False(loadTask.IsCompleted);
         Assert.True(scheduler.PendingCount > 0);
         Assert.Equal("5 minutes", viewModel.TimerInput);
 
         while (!loadTask.IsCompleted)
         {
-            Assert.True(scheduler.PendingCount > 0);
-            scheduler.RunNext();
+            await Task.WhenAny(loadTask, scheduler.WaitForWorkAsync());
+            if (!loadTask.IsCompleted) { scheduler.RunNext(); }
         }
 
         await loadTask;
@@ -3272,7 +3657,7 @@ public sealed class MainWindowViewModelTests
     public async Task LoadSettingsFailureKeepsDefaultTimerInput()
     {
         var settingsStore = new RecordingSettingsStore { ThrowOnLoad = true };
-        var viewModel = CreateViewModel(new ManualMonotonicClock(), settingsStore: settingsStore);
+        var viewModel = await CreateViewModelAsync(new ManualMonotonicClock(), settingsStore: settingsStore);
 
         await viewModel.LoadSettingsAsync();
 
@@ -3281,13 +3666,14 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
-    public void StartWithValidInputSavesRecentTimerInput()
+    public async Task StartWithValidInputSavesRecentTimerInput()
     {
         var settingsStore = new RecordingSettingsStore();
-        var viewModel = CreateViewModel(new ManualMonotonicClock(), settingsStore: settingsStore);
+        var viewModel = await CreateViewModelAsync(new ManualMonotonicClock(), settingsStore: settingsStore);
 
         viewModel.TimerInput = "90 seconds";
         viewModel.StartCommand.Execute(null);
+        await viewModel.PendingCommands;
 
         Assert.NotNull(settingsStore.SavedSettings);
         Assert.Equal(["90 seconds"], settingsStore.SavedSettings.RecentTimerInputs);
@@ -3300,10 +3686,11 @@ public sealed class MainWindowViewModelTests
         {
             LoadedSettings = new LinuxAppSettings(["15 minutes", "10 seconds"])
         };
-        var viewModel = CreateViewModel(new ManualMonotonicClock(), settingsStore: settingsStore);
+        var viewModel = await CreateViewModelAsync(new ManualMonotonicClock(), settingsStore: settingsStore);
         await viewModel.LoadSettingsAsync();
 
         viewModel.SelectRecentInputCommand.Execute("10 seconds");
+        await viewModel.PendingCommands;
         await viewModel.PendingSettingsSave;
 
         Assert.Equal("10 seconds", viewModel.TimerInput);
@@ -3321,10 +3708,11 @@ public sealed class MainWindowViewModelTests
         {
             LoadedSettings = new LinuxAppSettings(["15 minutes", "10 seconds"])
         };
-        var viewModel = CreateViewModel(new ManualMonotonicClock(), settingsStore: settingsStore);
+        var viewModel = await CreateViewModelAsync(new ManualMonotonicClock(), settingsStore: settingsStore);
         await viewModel.LoadSettingsAsync();
 
         viewModel.ClearRecentInputsCommand.Execute(null);
+        await viewModel.PendingCommands;
         await viewModel.PendingSettingsSave;
 
         Assert.Empty(viewModel.RecentInputMenuItems);
@@ -3336,13 +3724,17 @@ public sealed class MainWindowViewModelTests
     public async Task SaveOpenAndRemoveSavedTimerUsesSeparateDocument()
     {
         var settingsStore = new RecordingSettingsStore();
-        var viewModel = CreateViewModel(new ManualMonotonicClock(), settingsStore: settingsStore);
+        var viewModel = await CreateViewModelAsync(new ManualMonotonicClock(), settingsStore: settingsStore);
         viewModel.TimerInput = "90 seconds";
         viewModel.TimerTitle = "Tea";
+        await viewModel.PendingCommands;
         viewModel.ToggleReverseProgressBarCommand.Execute(null);
+        await viewModel.PendingCommands;
         viewModel.SelectWindowTitleModeCommand.Execute(nameof(WindowTitleMode.TimerTitlePlusTimeLeft));
+        await viewModel.PendingCommands;
 
         viewModel.SaveCurrentTimerCommand.Execute(null);
+        await viewModel.PendingCommands;
         await viewModel.PendingSettingsSave;
 
         Assert.NotNull(settingsStore.SavedTimers);
@@ -3354,8 +3746,11 @@ public sealed class MainWindowViewModelTests
 
         viewModel.TimerInput = "5 minutes";
         viewModel.TimerTitle = "";
+        await viewModel.PendingCommands;
         viewModel.SelectWindowTitleModeCommand.Execute(nameof(WindowTitleMode.TimeElapsed));
+        await viewModel.PendingCommands;
         viewModel.OpenSavedTimerCommand.Execute(savedTimer.Id);
+        await viewModel.PendingCommands;
         await viewModel.PendingSettingsSave;
 
         Assert.Equal("90 seconds", viewModel.TimerInput);
@@ -3365,6 +3760,7 @@ public sealed class MainWindowViewModelTests
         Assert.Equal(TimerState.Stopped, viewModel.State);
 
         viewModel.RemoveSavedTimerCommand.Execute(savedTimer.Id);
+        await viewModel.PendingCommands;
         await viewModel.PendingSettingsSave;
 
         Assert.Empty(viewModel.SavedTimerMenuItems);
@@ -3376,23 +3772,28 @@ public sealed class MainWindowViewModelTests
     public async Task OpenAllSavedTimersPublishesCurrentSavedTimerSnapshot()
     {
         var settingsStore = new RecordingSettingsStore();
-        var viewModel = CreateViewModel(new ManualMonotonicClock(), settingsStore: settingsStore);
+        var viewModel = await CreateViewModelAsync(new ManualMonotonicClock(), settingsStore: settingsStore);
         SavedTimersDocument? requestedSavedTimers = null;
         viewModel.OpenAllSavedTimersRequested += (_, args) => requestedSavedTimers = args.SavedTimers;
         viewModel.TimerInput = "90 seconds";
         viewModel.TimerTitle = "Tea";
+        await viewModel.PendingCommands;
 
         viewModel.SaveCurrentTimerCommand.Execute(null);
+        await viewModel.PendingCommands;
         SavedTimerMenuItem savedTimer = Assert.Single(viewModel.SavedTimerMenuItems);
         viewModel.OpenAllSavedTimersCommand.Execute(null);
+        await viewModel.PendingCommands;
 
         Assert.NotNull(requestedSavedTimers);
         SavedTimerDefinition requestedTimer = Assert.Single(requestedSavedTimers.Timers);
         Assert.Equal(savedTimer.Id, requestedTimer.Id);
 
         viewModel.RemoveSavedTimerCommand.Execute(savedTimer.Id);
+        await viewModel.PendingCommands;
         requestedSavedTimers = null;
         viewModel.OpenAllSavedTimersCommand.Execute(null);
+        await viewModel.PendingCommands;
 
         Assert.Null(requestedSavedTimers);
         await viewModel.PendingSettingsSave;
@@ -3402,24 +3803,28 @@ public sealed class MainWindowViewModelTests
     public async Task CoordinatedSavedTimerSavesPreserveAdditionsFromOtherWindows()
     {
         var settingsStore = new RecordingSettingsStore();
-        var savedTimersStore = new CoordinatedSavedTimersStore(settingsStore);
-        var firstWindow = CreateViewModel(
+        await using var sharedRuntime = new HourglassRuntime(clock: new ManualMonotonicClock(), wallClockNow: () => new DateTime(2026, 6, 8, 10, 0, 0), settingsStore: settingsStore);
+        var firstWindow = await CreateViewModelAsync(
             new ManualMonotonicClock(),
             settingsStore: settingsStore,
-            savedTimersStore: savedTimersStore);
-        var secondWindow = CreateViewModel(
+            runtime: sharedRuntime);
+        var secondWindow = await CreateViewModelAsync(
             new ManualMonotonicClock(),
             settingsStore: settingsStore,
-            savedTimersStore: savedTimersStore);
+            runtime: sharedRuntime);
         await firstWindow.LoadSettingsAsync();
         await secondWindow.LoadSettingsAsync();
 
         firstWindow.TimerInput = "10 minutes";
         firstWindow.TimerTitle = "Tea";
+        await firstWindow.PendingCommands;
         firstWindow.SaveCurrentTimerCommand.Execute(null);
+        await firstWindow.PendingCommands;
         secondWindow.TimerInput = "20 minutes";
         secondWindow.TimerTitle = "Coffee";
+        await secondWindow.PendingCommands;
         secondWindow.SaveCurrentTimerCommand.Execute(null);
+        await secondWindow.PendingCommands;
         await Task.WhenAll(firstWindow.PendingSettingsSave, secondWindow.PendingSettingsSave);
 
         Assert.NotNull(settingsStore.SavedTimers);
@@ -3436,23 +3841,26 @@ public sealed class MainWindowViewModelTests
         {
             LoadedSavedTimers = new SavedTimersDocument(timers: [originalTimer])
         };
-        var savedTimersStore = new CoordinatedSavedTimersStore(settingsStore);
-        var firstWindow = CreateViewModel(
+        await using var sharedRuntime = new HourglassRuntime(clock: new ManualMonotonicClock(), wallClockNow: () => new DateTime(2026, 6, 8, 10, 0, 0), settingsStore: settingsStore);
+        var firstWindow = await CreateViewModelAsync(
             new ManualMonotonicClock(),
             settingsStore: settingsStore,
-            savedTimersStore: savedTimersStore);
-        var secondWindow = CreateViewModel(
+            runtime: sharedRuntime);
+        var secondWindow = await CreateViewModelAsync(
             new ManualMonotonicClock(),
             settingsStore: settingsStore,
-            savedTimersStore: savedTimersStore);
+            runtime: sharedRuntime);
         await firstWindow.LoadSettingsAsync();
         await secondWindow.LoadSettingsAsync();
 
         firstWindow.TimerInput = "20 minutes";
         firstWindow.TimerTitle = "Coffee";
+        await firstWindow.PendingCommands;
         firstWindow.SaveCurrentTimerCommand.Execute(null);
+        await firstWindow.PendingCommands;
         await firstWindow.PendingSettingsSave;
         secondWindow.RemoveSavedTimerCommand.Execute(originalTimer.Id);
+        await secondWindow.PendingCommands;
         await secondWindow.PendingSettingsSave;
 
         Assert.NotNull(settingsStore.SavedTimers);
@@ -3468,23 +3876,26 @@ public sealed class MainWindowViewModelTests
         {
             LoadedSavedTimers = new SavedTimersDocument(timers: [originalTimer])
         };
-        var savedTimersStore = new CoordinatedSavedTimersStore(settingsStore);
-        var firstWindow = CreateViewModel(
+        await using var sharedRuntime = new HourglassRuntime(clock: new ManualMonotonicClock(), wallClockNow: () => new DateTime(2026, 6, 8, 10, 0, 0), settingsStore: settingsStore);
+        var firstWindow = await CreateViewModelAsync(
             new ManualMonotonicClock(),
             settingsStore: settingsStore,
-            savedTimersStore: savedTimersStore);
-        var secondWindow = CreateViewModel(
+            runtime: sharedRuntime);
+        var secondWindow = await CreateViewModelAsync(
             new ManualMonotonicClock(),
             settingsStore: settingsStore,
-            savedTimersStore: savedTimersStore);
+            runtime: sharedRuntime);
         await firstWindow.LoadSettingsAsync();
         await secondWindow.LoadSettingsAsync();
 
         firstWindow.RemoveSavedTimerCommand.Execute(originalTimer.Id);
+        await firstWindow.PendingCommands;
         await firstWindow.PendingSettingsSave;
         secondWindow.TimerInput = "20 minutes";
         secondWindow.TimerTitle = "Coffee";
+        await secondWindow.PendingCommands;
         secondWindow.SaveCurrentTimerCommand.Execute(null);
+        await secondWindow.PendingCommands;
         await secondWindow.PendingSettingsSave;
 
         Assert.NotNull(settingsStore.SavedTimers);
@@ -3498,12 +3909,15 @@ public sealed class MainWindowViewModelTests
         var clock = new ManualMonotonicClock();
         DateTime now = new(2026, 7, 2, 8, 0, 0);
         var settingsStore = new RecordingSettingsStore();
-        var viewModel = CreateViewModel(clock, wallClockNow: () => now, settingsStore: settingsStore);
+        var viewModel = await CreateViewModelAsync(clock, wallClockNow: () => now, settingsStore: settingsStore);
         viewModel.TimerInput = "10 seconds";
         viewModel.TimerTitle = "Tea";
+        await viewModel.PendingCommands;
         viewModel.SelectWindowTitleModeCommand.Execute(nameof(WindowTitleMode.TimeLeftPlusTimerTitle));
+        await viewModel.PendingCommands;
 
         viewModel.StartCommand.Execute(null);
+        await viewModel.PendingCommands;
         await viewModel.PendingSettingsSave;
 
         Assert.NotNull(settingsStore.SavedActiveSession);
@@ -3514,7 +3928,7 @@ public sealed class MainWindowViewModelTests
 
         var restoredNotifications = new RecordingNotificationService();
         var restoredAudio = new RecordingAudioAlertService();
-        var restored = CreateViewModel(
+        var restored = await CreateViewModelAsync(
             new ManualMonotonicClock(),
             wallClockNow: () => now.AddSeconds(15),
             notificationService: restoredNotifications,
@@ -3530,6 +3944,7 @@ public sealed class MainWindowViewModelTests
         restored.ExpiryVisualFeedbackRequested += (_, _) => visualRequests++;
 
         await restored.LoadSettingsAsync();
+        await restored.PendingExpiryEffects;
 
         Assert.Equal(TimerState.Expired, restored.State);
         Assert.True(restored.IsCompletionTextVisible);
@@ -3564,7 +3979,7 @@ public sealed class MainWindowViewModelTests
                 timeLeftTicks: TimeSpan.FromSeconds(5).Ticks,
                 totalTimeTicks: TimeSpan.FromSeconds(10).Ticks)
         };
-        var viewModel = CreateViewModel(
+        var viewModel = await CreateViewModelAsync(
             new ManualMonotonicClock(),
             wallClockNow: () => end.AddSeconds(5),
             notificationService: notificationService,
@@ -3574,6 +3989,7 @@ public sealed class MainWindowViewModelTests
         viewModel.ExpiryVisualFeedbackRequested += (_, _) => visualRequests++;
 
         await viewModel.LoadSettingsAsync();
+        await viewModel.PendingExpiryEffects;
         await viewModel.PendingSettingsSave;
 
         Assert.Equal(TimerState.Expired, viewModel.State);
@@ -3587,6 +4003,7 @@ public sealed class MainWindowViewModelTests
         Assert.Equal(1, audioAlertService.CallCount);
 
         viewModel.RestartCommand.Execute(null);
+        await viewModel.PendingCommands;
 
         Assert.Equal(TimerState.Running, viewModel.State);
         Assert.False(viewModel.IsTimerModificationLocked);
@@ -3615,7 +4032,7 @@ public sealed class MainWindowViewModelTests
                     DoNotKeepComputerAwake: true,
                     WindowTitleMode: WindowTitleMode.TimeElapsedPlusTimerTitle))
         };
-        var viewModel = CreateViewModel(
+        var viewModel = await CreateViewModelAsync(
             new ManualMonotonicClock(),
             wallClockNow: () => start.AddSeconds(5),
             settingsStore: settingsStore);
@@ -3628,6 +4045,33 @@ public sealed class MainWindowViewModelTests
         Assert.True(viewModel.LoopTimer);
         Assert.True(viewModel.DoNotKeepComputerAwake);
         Assert.Equal(WindowTitleMode.TimeElapsedPlusTimerTitle, viewModel.WindowTitleMode);
+    }
+
+    [Fact]
+    public async Task PersistenceWaitIncludesSavesQueuedByHeldSnapshotDelivery()
+    {
+        var clock = new ManualMonotonicClock();
+        var store = new RecordingSettingsStore();
+        var dispatcher = new HeldUiDispatcher();
+        await using var viewModel = await CreateViewModelAsync(clock, settingsStore: store, uiDispatcher: dispatcher);
+        viewModel.TimerInput = "2 seconds";
+        viewModel.StartCommand.Execute(null);
+        await viewModel.PendingSettingsSave;
+        dispatcher.Hold();
+        try
+        {
+            clock.Advance(TimeSpan.FromSeconds(1));
+            Task tick = viewModel.TickRuntimeAsync();
+            await dispatcher.Entered.Task;
+            Task persisted = viewModel.PendingSettingsSave;
+            Assert.False(persisted.IsCompleted);
+            dispatcher.Release();
+            await tick;
+            await persisted;
+            Assert.NotNull(store.SavedActiveSession);
+            Assert.Equal(TimeSpan.FromSeconds(1).Ticks, store.SavedActiveSession.TimeLeftTicks);
+        }
+        finally { dispatcher.Release(); }
     }
 
     [Fact]
@@ -3656,22 +4100,29 @@ public sealed class MainWindowViewModelTests
                 timeLeftTicks: TimeSpan.FromSeconds(5).Ticks,
                 totalTimeTicks: TimeSpan.FromSeconds(10).Ticks)
         };
-        var viewModel = CreateViewModel(
+        var viewModel = await CreateViewModelAsync(
             new ManualMonotonicClock(),
             wallClockNow: () => end.AddSeconds(5),
             notificationService: notificationService,
             settingsStore: settingsStore);
 
-        await viewModel.LoadSettingsAsync();
-        await viewModel.PendingSettingsSave;
-
-        Assert.Equal(TimerState.Expired, viewModel.State);
-        Assert.NotNull(settingsStore.SavedActiveSession);
-        Assert.Equal(TimerState.Expired, settingsStore.SavedActiveSession.State);
-        Assert.Equal(TimeSpan.Zero.Ticks, settingsStore.SavedActiveSession.TimeLeftTicks);
-        Assert.Equal(1, notificationService.CallCount);
-
-        notificationCompletion.SetResult();
+        try
+        {
+            await viewModel.LoadSettingsAsync();
+            await viewModel.PendingSettingsSave;
+            await notificationService.Entered.Task;
+            Assert.False(notificationCompletion.Task.IsCompleted);
+            Assert.Equal(TimerState.Expired, viewModel.State);
+            Assert.NotNull(settingsStore.SavedActiveSession);
+            Assert.Equal(TimerState.Expired, settingsStore.SavedActiveSession.State);
+            Assert.Equal(TimeSpan.Zero.Ticks, settingsStore.SavedActiveSession.TimeLeftTicks);
+            Assert.Equal(1, notificationService.CallCount);
+        }
+        finally
+        {
+            notificationCompletion.TrySetResult();
+            await viewModel.DisposeAsync();
+        }
     }
 
     [Fact]
@@ -3698,7 +4149,7 @@ public sealed class MainWindowViewModelTests
                 timeExpiredTicks: TimeSpan.FromSeconds(5).Ticks,
                 totalTimeTicks: TimeSpan.FromSeconds(10).Ticks)
         };
-        var viewModel = CreateViewModel(
+        var viewModel = await CreateViewModelAsync(
             new ManualMonotonicClock(),
             wallClockNow: () => end.AddSeconds(15),
             notificationService: notificationService,
@@ -3710,6 +4161,7 @@ public sealed class MainWindowViewModelTests
         viewModel.WindowAttentionRequested += (_, _) => attentionRequests++;
 
         await viewModel.LoadSettingsAsync();
+        await viewModel.PendingExpiryEffects;
 
         Assert.Equal(TimerState.Expired, viewModel.State);
         Assert.Equal("Timer complete", viewModel.StatusText);
@@ -3729,11 +4181,14 @@ public sealed class MainWindowViewModelTests
         var clock = new ManualMonotonicClock();
         DateTime now = new(2026, 7, 2, 8, 0, 0);
         var settingsStore = new RecordingSettingsStore();
-        var viewModel = CreateViewModel(clock, wallClockNow: () => now, settingsStore: settingsStore);
+        var viewModel = await CreateViewModelAsync(clock, wallClockNow: () => now, settingsStore: settingsStore);
         viewModel.TimerInput = "10 seconds";
         viewModel.TimerTitle = "Tea";
+        await viewModel.PendingCommands;
         viewModel.StartCommand.Execute(null);
+        await viewModel.PendingCommands;
         Assert.True(viewModel.TryEnterTimerInputMode());
+        await viewModel.PendingCommands;
         viewModel.TimerInput = "10 secon";
         await viewModel.PendingSettingsSave;
 
@@ -3743,7 +4198,7 @@ public sealed class MainWindowViewModelTests
 
         now = now.AddSeconds(4);
         var sessionInhibitor = new RecordingSessionInhibitor();
-        var restored = CreateViewModel(
+        var restored = await CreateViewModelAsync(
             new ManualMonotonicClock(),
             wallClockNow: () => now,
             sessionInhibitor: sessionInhibitor,
@@ -3760,6 +4215,7 @@ public sealed class MainWindowViewModelTests
         Assert.False(restored.IsRemainingTimeVisible);
         Assert.Equal("10 secon", restored.TimerInput);
         Assert.Equal("Tea", restored.TimerTitle);
+        await restored.PendingSessionEffects;
         Assert.Equal(1, sessionInhibitor.AcquireCount);
     }
 
@@ -3769,14 +4225,19 @@ public sealed class MainWindowViewModelTests
         var clock = new ManualMonotonicClock();
         DateTime now = new(2026, 7, 2, 8, 0, 0);
         var settingsStore = new RecordingSettingsStore();
-        var viewModel = CreateViewModel(clock, wallClockNow: () => now, settingsStore: settingsStore);
+        var viewModel = await CreateViewModelAsync(clock, wallClockNow: () => now, settingsStore: settingsStore);
         viewModel.TimerInput = "10 seconds";
         viewModel.TimerTitle = "Tea";
+        await viewModel.PendingCommands;
         viewModel.StartCommand.Execute(null);
+        await viewModel.PendingCommands;
         clock.Advance(TimeSpan.FromSeconds(4));
-        viewModel.Tick();
+        await viewModel.AdvanceAsync();
+        await viewModel.PendingExpiryEffects;
         viewModel.PauseResumeCommand.Execute(null);
+        await viewModel.PendingCommands;
         Assert.True(viewModel.TryEnterTimerInputMode());
+        await viewModel.PendingCommands;
         viewModel.TimerInput = "10 secon";
         await viewModel.PendingSettingsSave;
 
@@ -3785,7 +4246,7 @@ public sealed class MainWindowViewModelTests
         Assert.Equal("10 seconds", settingsStore.SavedActiveSession.TimerStartInput);
 
         var sessionInhibitor = new RecordingSessionInhibitor();
-        var restored = CreateViewModel(
+        var restored = await CreateViewModelAsync(
             new ManualMonotonicClock(),
             wallClockNow: () => now.AddMinutes(5),
             sessionInhibitor: sessionInhibitor,
@@ -3802,6 +4263,7 @@ public sealed class MainWindowViewModelTests
         Assert.False(restored.IsRemainingTimeVisible);
         Assert.Equal("10 secon", restored.TimerInput);
         Assert.Equal("Tea", restored.TimerTitle);
+        await restored.PendingSessionEffects;
         Assert.Equal(0, sessionInhibitor.AcquireCount);
     }
 
@@ -3818,7 +4280,7 @@ public sealed class MainWindowViewModelTests
                 endTime: new DateTime(2026, 7, 2, 8, 0, 10),
                 totalTimeTicks: TimeSpan.FromSeconds(10).Ticks)
         };
-        var viewModel = CreateViewModel(new ManualMonotonicClock(), settingsStore: settingsStore);
+        var viewModel = await CreateViewModelAsync(new ManualMonotonicClock(), settingsStore: settingsStore);
 
         await viewModel.LoadSettingsAsync();
 
@@ -3836,16 +4298,19 @@ public sealed class MainWindowViewModelTests
         {
             LoadedSettings = new LinuxAppSettings(["1 second"], notificationsEnabled: false)
         };
-        var viewModel = CreateViewModel(
+        var viewModel = await CreateViewModelAsync(
             clock,
             notificationService: notificationService,
             audioAlertService: audioAlertService,
             settingsStore: settingsStore);
 
         await viewModel.LoadSettingsAsync();
+        await viewModel.PendingExpiryEffects;
         viewModel.StartCommand.Execute(null);
+        await viewModel.PendingCommands;
         clock.Advance(TimeSpan.FromSeconds(2));
-        viewModel.Tick();
+        await viewModel.AdvanceAsync();
+        await viewModel.PendingExpiryEffects;
 
         Assert.Equal(TimerState.Expired, viewModel.State);
         Assert.Equal(0, notificationService.CallCount);
@@ -3865,16 +4330,19 @@ public sealed class MainWindowViewModelTests
                 notificationsEnabled: true,
                 audioAlertsEnabled: false)
         };
-        var viewModel = CreateViewModel(
+        var viewModel = await CreateViewModelAsync(
             clock,
             notificationService: notificationService,
             audioAlertService: audioAlertService,
             settingsStore: settingsStore);
 
         await viewModel.LoadSettingsAsync();
+        await viewModel.PendingExpiryEffects;
         viewModel.StartCommand.Execute(null);
+        await viewModel.PendingCommands;
         clock.Advance(TimeSpan.FromSeconds(2));
-        viewModel.Tick();
+        await viewModel.AdvanceAsync();
+        await viewModel.PendingExpiryEffects;
 
         Assert.Equal(TimerState.Expired, viewModel.State);
         Assert.Equal(1, notificationService.CallCount);
@@ -3888,19 +4356,23 @@ public sealed class MainWindowViewModelTests
         var notificationService = new RecordingNotificationService();
         var audioAlertService = new RecordingAudioAlertService();
         var settingsStore = new RecordingSettingsStore();
-        var viewModel = CreateViewModel(
+        var viewModel = await CreateViewModelAsync(
             clock,
             notificationService: notificationService,
             audioAlertService: audioAlertService,
             settingsStore: settingsStore);
 
         viewModel.ToggleNotificationsCommand.Execute(null);
+        await viewModel.PendingCommands;
         viewModel.ToggleAudioAlertsCommand.Execute(null);
+        await viewModel.PendingCommands;
         await viewModel.PendingSettingsSave;
         viewModel.TimerInput = "1 second";
         viewModel.StartCommand.Execute(null);
+        await viewModel.PendingCommands;
         clock.Advance(TimeSpan.FromSeconds(1));
-        viewModel.Tick();
+        await viewModel.AdvanceAsync();
+        await viewModel.PendingExpiryEffects;
 
         Assert.Equal(TimerState.Expired, viewModel.State);
         Assert.Equal(0, notificationService.CallCount);
@@ -4575,35 +5047,107 @@ public sealed class MainWindowViewModelTests
         Assert.Equal(canRestart, viewModel.RestartCommand.CanExecute(null));
     }
 
-    private static MainWindowViewModel CreateViewModel(
+    [Fact]
+    public async Task LockedTimerAllowsTitleCommitAndExplicitUnlock()
+    {
+        var viewModel = await CreateViewModelAsync(new ManualMonotonicClock());
+        viewModel.ToggleLockInterfaceCommand.Execute(null);
+        await viewModel.PendingCommands;
+        viewModel.StartCommand.Execute(null);
+        await viewModel.PendingCommands;
+        Assert.True(viewModel.IsTimerModificationLocked);
+        Assert.False(viewModel.ResetCommand.CanExecute(null));
+        viewModel.TimerTitle = "Renamed while locked";
+        Assert.Equal("Renamed while locked", viewModel.WindowTitle);
+        await viewModel.PendingCommands;
+        Assert.True(viewModel.ToggleLockInterfaceCommand.CanExecute(null));
+        viewModel.ToggleLockInterfaceCommand.Execute(null);
+        await viewModel.PendingCommands;
+        Assert.False(viewModel.IsTimerModificationLocked);
+        Assert.True(viewModel.ResetCommand.CanExecute(null));
+        await viewModel.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task ConcurrentApplicationEditRejectsGuiDraftWithoutReplacingCountdown()
+    {
+        var clock = new ManualMonotonicClock();
+        await using var runtime = new Hourglass.Application.HourglassRuntime(clock: clock, wallClockNow: () => new DateTime(2026, 1, 1));
+        var viewModel = await CreateViewModelAsync(clock, runtime: runtime);
+        viewModel.TimerInput = "10 seconds";
+        viewModel.StartCommand.Execute(null);
+        await viewModel.PendingCommands;
+        Assert.True(viewModel.TryEnterTimerInputMode());
+        viewModel.TimerInput = "20 seconds";
+        var initial = Assert.IsType<Hourglass.Application.ApplicationResult<Hourglass.Application.TimerSessionSnapshot>.Success>(await runtime.GetSessionAsync(viewModel.SessionId)).Value;
+        Assert.IsType<Hourglass.Application.ApplicationResult<Hourglass.Application.TimerSessionSnapshot>.Success>(await runtime.ExecuteAsync(
+            new Hourglass.Application.SessionCommand.Update(viewModel.SessionId, initial.Revision, TimerTitle: "Remote title")));
+        viewModel.StartCommand.Execute(null);
+        await viewModel.PendingCommands;
+        var current = Assert.IsType<Hourglass.Application.ApplicationResult<Hourglass.Application.TimerSessionSnapshot>.Success>(await runtime.GetSessionAsync(viewModel.SessionId)).Value;
+        Assert.Equal(initial.Countdown, current.Countdown);
+        Assert.Equal("10 seconds", current.TimerInput);
+        Assert.Equal("Remote title", current.TimerTitle);
+        Assert.Equal("20 seconds", viewModel.TimerInput);
+        Assert.True(viewModel.IsTimerInputVisible);
+        Assert.True(viewModel.HasValidationError);
+        Assert.Equal(ApplicationStrings.StatusSessionConflict, viewModel.StatusText);
+        await viewModel.DisposeAsync();
+    }
+
+    private static async Task<MainWindowViewModel> CreateViewModelAsync(
         ManualMonotonicClock clock,
         Func<DateTime>? wallClockNow = null,
         INotificationService? notificationService = null,
         ISessionInhibitor? sessionInhibitor = null,
         ISettingsStore? settingsStore = null,
-        IAppSettingsStore? appSettingsStore = null,
-        ISavedTimersStore? savedTimersStore = null,
         IAudioAlertService? audioAlertService = null,
         ISystemPowerService? systemPowerService = null,
         bool statusIconSupported = false,
         bool statusIconCanRecoverHiddenWindow = false,
-        IUiDispatcher? uiDispatcher = null)
+        IUiDispatcher? uiDispatcher = null,
+        Hourglass.Application.HourglassRuntime? runtime = null)
     {
         ISettingsStore resolvedSettingsStore = settingsStore ?? new RecordingSettingsStore();
 
-        return new MainWindowViewModel(
-            new CountdownEngine(clock),
+        var viewModel = new MainWindowViewModel(
+            clock,
             wallClockNow ?? (() => new DateTime(2026, 6, 8, 10, 0, 0)),
             notificationService ?? new RecordingNotificationService(),
             sessionInhibitor ?? new RecordingSessionInhibitor(),
             resolvedSettingsStore,
-            appSettingsStore ?? new DirectAppSettingsStore(resolvedSettingsStore),
-            savedTimersStore ?? new DirectSavedTimersStore(resolvedSettingsStore),
             audioAlertService ?? new RecordingAudioAlertService(),
             systemPowerService ?? new RecordingSystemPowerService(),
             statusIconSupported,
             statusIconCanRecoverHiddenWindow,
-            uiDispatcher: uiDispatcher);
+            uiDispatcher: uiDispatcher,
+            runtime: runtime);
+        await viewModel.PendingCommands;
+        return viewModel;
+    }
+
+    private sealed class HeldUiDispatcher : IUiDispatcher
+    {
+        private TaskCompletionSource? released;
+        public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public void Hold() => this.released = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public void Release() => this.released?.TrySetResult();
+        public bool CheckAccess() => true;
+        public void Post(Action action) => action();
+        public async Task InvokeAsync(Action action, CancellationToken cancellationToken = default)
+        {
+            if (this.released != null)
+            {
+                this.Entered.TrySetResult();
+                await this.released.Task.WaitAsync(cancellationToken);
+            }
+            action();
+        }
+        public async Task<T> InvokeAsync<T>(Func<T> action, CancellationToken cancellationToken = default)
+        {
+            await this.InvokeAsync(() => { }, cancellationToken);
+            return action();
+        }
     }
 
     private sealed class RecordingUiDispatcher : IUiDispatcher
@@ -4661,6 +5205,7 @@ public sealed class MainWindowViewModelTests
 
     private sealed class RecordingNotificationService : INotificationService
     {
+        public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public int CallCount { get; private set; }
 
         public string? Title { get; private set; }
@@ -4676,6 +5221,7 @@ public sealed class MainWindowViewModelTests
             this.CallCount++;
             this.Title = title;
             this.Body = body;
+            this.Entered.TrySetResult();
 
             if (this.ThrowOnNotify)
             {
@@ -4882,6 +5428,9 @@ public sealed class MainWindowViewModelTests
                 case "active-session":
                     this.SavedActiveSession = Assert.IsType<ActiveTimerSessionDocument>(value);
                     break;
+                case "active-sessions":
+                    Assert.IsType<ActiveTimerSessionsDocument>(value);
+                    break;
                 default:
                     throw new InvalidOperationException($"Unexpected key: {key}");
             }
@@ -4917,28 +5466,26 @@ public sealed class MainWindowViewModelTests
 
     private sealed class QueuedTaskScheduler : TaskScheduler
     {
+        private readonly object gate = new();
         private readonly Queue<Task> tasks = [];
-
-        public int PendingCount => this.tasks.Count;
-
-        protected override IEnumerable<Task>? GetScheduledTasks()
-        {
-            return this.tasks.ToArray();
-        }
-
+        private TaskCompletionSource workAvailable = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public int PendingCount { get { lock (this.gate) { return this.tasks.Count; } } }
+        public Task WaitForWorkAsync() { lock (this.gate) { return this.tasks.Count > 0 ? Task.CompletedTask : this.workAvailable.Task; } }
+        protected override IEnumerable<Task>? GetScheduledTasks() { lock (this.gate) { return this.tasks.ToArray(); } }
         protected override void QueueTask(Task task)
         {
-            this.tasks.Enqueue(task);
+            lock (this.gate) { this.tasks.Enqueue(task); this.workAvailable.TrySetResult(); }
         }
-
-        protected override bool TryExecuteTaskInline(Task task, bool taskWasPreviouslyQueued)
-        {
-            return false;
-        }
-
+        protected override bool TryExecuteTaskInline(Task task, bool taskWasPreviouslyQueued) => false;
         public void RunNext()
         {
-            this.TryExecuteTask(this.tasks.Dequeue());
+            Task task;
+            lock (this.gate)
+            {
+                task = this.tasks.Dequeue();
+                if (this.tasks.Count == 0) { this.workAvailable = new(TaskCreationOptions.RunContinuationsAsynchronously); }
+            }
+            this.TryExecuteTask(task);
         }
     }
 

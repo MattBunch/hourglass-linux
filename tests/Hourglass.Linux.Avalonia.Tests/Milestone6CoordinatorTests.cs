@@ -1,3 +1,4 @@
+using Hourglass.Application;
 namespace Hourglass.Linux.Avalonia.Tests;
 
 using Hourglass.Platform;
@@ -7,9 +8,10 @@ using Xunit;
 public sealed class Milestone6CoordinatorTests
 {
     [Fact]
-    public void NewTimerCommandPublishesCoordinatorRequest()
+    public async Task NewTimerCommandPublishesCoordinatorRequest()
     {
-        var viewModel = new MainWindowViewModel(new CountdownEngine(new TestMonotonicClock()), () => DateTime.Now);
+        var viewModel = new MainWindowViewModel(new TestMonotonicClock(), () => DateTime.Now);
+        await viewModel.PendingCommands;
         int requestCount = 0;
         viewModel.NewTimerRequested += (_, _) => requestCount++;
 
@@ -183,7 +185,8 @@ public sealed class Milestone6CoordinatorTests
         Assert.Contains("Dispatcher.UIThread.Post(async () =>", window, StringComparison.Ordinal);
         Assert.Contains("this.closingWindows.Add(window);", coordinator, StringComparison.Ordinal);
         Assert.Contains("await this.QueueSessionSave().ConfigureAwait(false);", coordinator, StringComparison.Ordinal);
-        Assert.Contains(".Where(window => !this.closingWindows.Contains(window.Window))", coordinator, StringComparison.Ordinal);
+        Assert.Contains("await this.Client.CloseSessionAsync(registration.ViewModel.SessionId)", coordinator, StringComparison.Ordinal);
+        Assert.Contains("if (!this.observedSessions.Contains(registration.ViewModel.SessionId))", coordinator, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -193,7 +196,7 @@ public sealed class Milestone6CoordinatorTests
         int windowClosedStart = coordinator.IndexOf("private void WindowClosed(object? sender, EventArgs e)", StringComparison.Ordinal);
         int statusIconActionStart = coordinator.IndexOf("private void StatusIconActionRequested", StringComparison.Ordinal);
         int shutdownHelperStart = coordinator.IndexOf(
-            "private async Task ShutdownAfterFinalSessionSaveAsync(Task sessionSave)",
+            "private async Task ShutdownAfterFinalSessionSaveAsync(Task sessionSave, long generation)",
             StringComparison.Ordinal);
         int prepareCloseStart = coordinator.IndexOf("private async Task PrepareWindowCloseAsync", StringComparison.Ordinal);
 
@@ -205,21 +208,11 @@ public sealed class Milestone6CoordinatorTests
         string shutdownHelper = coordinator[shutdownHelperStart..prepareCloseStart];
 
         Assert.Contains("Task sessionSave = this.QueueSessionSave();", windowClosedMethod, StringComparison.Ordinal);
-        Assert.Contains("_ = this.ShutdownAfterFinalSessionSaveAsync(sessionSave);", windowClosedMethod, StringComparison.Ordinal);
+        Assert.Contains("_ = this.ShutdownAfterFinalSessionSaveAsync(sessionSave, ++this.shutdownGeneration);", windowClosedMethod, StringComparison.Ordinal);
+        Assert.Contains("if (generation != this.shutdownGeneration) { return; }", shutdownHelper, StringComparison.Ordinal);
         Assert.DoesNotContain("this.lifetime.Shutdown();", windowClosedMethod, StringComparison.Ordinal);
         Assert.Contains("await sessionSave.ConfigureAwait(true);", shutdownHelper, StringComparison.Ordinal);
         Assert.Contains("this.lifetime.Shutdown();", shutdownHelper, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void CoordinatorDistinguishesMissingActiveSessionsFromEmptyActiveSessions()
-    {
-        string coordinator = File.ReadAllText(FindRepositoryFile("src/Hourglass.Linux.Avalonia/TimerWindowCoordinator.cs"));
-
-        Assert.Contains("LoadDocumentResult<ActiveTimerSessionsDocument>", coordinator, StringComparison.Ordinal);
-        Assert.Contains("if (activeSessions.Found)", coordinator, StringComparison.Ordinal);
-        Assert.Contains("return activeSessions.Value ?? ActiveTimerSessionsDocument.Empty;", coordinator, StringComparison.Ordinal);
-        Assert.Contains("LoadOptionalDocumentAsync<ActiveTimerSessionDocument>", coordinator, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -227,7 +220,7 @@ public sealed class Milestone6CoordinatorTests
     {
         string coordinator = File.ReadAllText(FindRepositoryFile("src/Hourglass.Linux.Avalonia/TimerWindowCoordinator.cs"));
         int loadWindowStart = coordinator.IndexOf("private async Task LoadWindowAsync", StringComparison.Ordinal);
-        int loadActiveSessionsStart = coordinator.IndexOf("private async Task<ActiveTimerSessionsDocument> LoadActiveSessionsAsync", StringComparison.Ordinal);
+        int loadActiveSessionsStart = coordinator.IndexOf("private void ViewModelNewTimerRequested", StringComparison.Ordinal);
         int openAllStart = coordinator.IndexOf("private void ViewModelOpenAllSavedTimersRequested", StringComparison.Ordinal);
         int activeSessionChangedStart = coordinator.IndexOf("private void ViewModelActiveSessionChanged", StringComparison.Ordinal);
 
@@ -241,7 +234,7 @@ public sealed class Milestone6CoordinatorTests
         Assert.Contains("if (!this.windows.Contains(registration))", loadWindowMethod, StringComparison.Ordinal);
         Assert.True(
             loadWindowMethod.IndexOf("if (!this.windows.Contains(registration))", StringComparison.Ordinal)
-            < loadWindowMethod.IndexOf("registration.ViewModel.RestoreActiveSession(session)", StringComparison.Ordinal));
+            < loadWindowMethod.IndexOf("registration.ViewModel.RestoreActiveSession(session, restoredExpiry)", StringComparison.Ordinal));
         Assert.True(
             loadWindowMethod.IndexOf("if (!this.windows.Contains(registration))", StringComparison.Ordinal)
             < loadWindowMethod.IndexOf("registration.ViewModel.ApplySavedTimer(savedTimer)", StringComparison.Ordinal));
@@ -264,29 +257,6 @@ public sealed class Milestone6CoordinatorTests
         Assert.Contains("if (!Dispatcher.UIThread.CheckAccess())", syncMethod, StringComparison.Ordinal);
         Assert.Contains("Dispatcher.UIThread.Post(this.ApplyStatusIconState);", syncMethod, StringComparison.Ordinal);
         Assert.Contains("_ = this.ApplyStatusIconStateAsync();", syncMethod, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void CoordinatorValidatesActiveSessionsBeforeMarkingStartupRestored()
-    {
-        string coordinator = File.ReadAllText(FindRepositoryFile("src/Hourglass.Linux.Avalonia/TimerWindowCoordinator.cs"));
-        int startupStart = coordinator.IndexOf("public async Task StartAsync", StringComparison.Ordinal);
-        int createWindowStart = coordinator.IndexOf("private MainWindow? CreateWindow", StringComparison.Ordinal);
-
-        Assert.True(startupStart >= 0);
-        Assert.True(createWindowStart > startupStart);
-        string startupMethod = coordinator[startupStart..createWindowStart];
-
-        Assert.Contains("DateTime wallClockNow = DateTime.Now;", startupMethod, StringComparison.Ordinal);
-        Assert.Contains("IsRestorableActiveSession(session.Session, wallClockNow)", startupMethod, StringComparison.Ordinal);
-        Assert.Contains("this.CreateWindow(session.SessionId, session.Session)", startupMethod, StringComparison.Ordinal);
-        Assert.DoesNotContain("session.Session != null && this.CreateWindow", startupMethod, StringComparison.Ordinal);
-
-        int validationCall = startupMethod.IndexOf(
-            "IsRestorableActiveSession(session.Session, wallClockNow)",
-            StringComparison.Ordinal);
-        int restoredAssignment = startupMethod.IndexOf("restoredAny = true;", validationCall, StringComparison.Ordinal);
-        Assert.True(restoredAssignment > validationCall);
     }
 
     [Fact]
@@ -333,7 +303,7 @@ public sealed class Milestone6CoordinatorTests
 
         Assert.Contains("private bool showInNotificationArea;", coordinator, StringComparison.Ordinal);
         Assert.Contains(
-            "this.showInNotificationArea = settings.ShowInNotificationArea && this.statusIconService.IsSupported;",
+            "this.showInNotificationArea = started.Value.Data.Settings.ShowInNotificationArea && this.statusIconService.IsSupported;",
             coordinator,
             StringComparison.Ordinal);
         Assert.Contains("nameof(MainWindowViewModel.ShowInNotificationArea)", propertyChangedMethod, StringComparison.Ordinal);

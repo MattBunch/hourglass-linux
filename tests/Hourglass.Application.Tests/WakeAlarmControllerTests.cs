@@ -1,4 +1,5 @@
-namespace Hourglass.Linux.Avalonia.Tests;
+using Hourglass.Application;
+namespace Hourglass.Application.Tests;
 
 using Hourglass.Platform;
 using Hourglass.Timing;
@@ -179,5 +180,10 @@ public sealed class WakeAlarmControllerTests
                 Message: "Wake alarm unavailable.",
                 Lease: null));
         }
+    }
+    private sealed class RecordingDiagnosticSink : IDiagnosticSink
+    {
+        public List<DiagnosticEvent> Events { get; } = [];
+        public void Record(DiagnosticEvent diagnosticEvent) => this.Events.Add(diagnosticEvent);
     }
 }

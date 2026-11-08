@@ -2,7 +2,7 @@
 
 ## Version source of truth
 
-`src/Hourglass.Linux.Avalonia/Hourglass.Linux.Avalonia.csproj` is the canonical
+`build/Hourglass.Version.props`, imported by GUI, CLI, TUI and Host, is the canonical
 source of the Hourglass Linux release version. Its `<Version>` must use one of
 these forms:
 
@@ -45,6 +45,8 @@ and package validation before publishing these assets:
 
 - `hourglass-linux-X.Y.Z-linux-x64.tar.gz`;
 - `Hourglass-X.Y.Z-x86_64.AppImage`;
+- `hourglass-terminal-X.Y.Z-linux-x64.tar.gz`;
+- `hourglass-terminal-X.Y.Z-linux-arm64.tar.gz`;
 - `SHA256SUMS`.
 
 Each package asset contains a `licenses/` directory with the project `LICENSE.md` and
@@ -90,3 +92,25 @@ add package recipes.
 Each Nix source update must use the immutable tag or commit and its matching
 SRI hash. Increment RPM, Debian, and AUR package revisions only for packaging
 changes to the same upstream version.
+
+## Terminal archive gates
+
+From a clean committed checkout, run `scripts/publish-terminal-release.sh
+--runtime linux-x64 --output /tmp/hourglass-terminal-release` (choose a fresh
+output directory). The publisher stages separate CLI/TUI/Host payloads, sound
+assets, pinned dependency notices, source revision and a deterministic archive.
+Use `linux-arm64` for the other target; cross-publishing alone does not validate
+execution. Both native CI jobs extract to a path containing spaces and execute
+`tests/verify-terminal-package.py`, including foreground/detached lifecycle and
+PTY restoration checks. The tagged release consumes those tested archives only
+after both jobs succeed. Existing GUI archive and AppImage names remain unchanged.
+
+Version validation checks all executable project versions against the GUI,
+AppStream and tag. Verbatim terminal dependency licenses are pinned under
+`packaging/terminal/licenses`; package/version changes require updating that
+audit. Missing or modified required license evidence fails packaging.
+
+Release approval must distinguish automated package/process checks from attended
+SSH, terminal emulator, screen-reader, desktop-service and physical wake checks.
+Unavailable attended checks are recorded as Not run. This workflow does not
+create tags on behalf of an implementation task.

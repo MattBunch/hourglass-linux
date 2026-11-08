@@ -6,12 +6,13 @@ using Hourglass.Platform;
 
 namespace Hourglass.Linux.Avalonia;
 
-public sealed partial class App : Application
+public sealed partial class App : global::Avalonia.Application
 {
     private TimerWindowCoordinator? coordinator;
     private readonly StartupDiagnostics startupDiagnostics;
 
     internal static SingleInstanceLaunchRequest? InitialLaunchRequest { get; set; }
+    internal static Task ShutdownCompletion { get; private set; } = Task.CompletedTask;
 
     public App()
         : this(StartupDiagnostics.Disabled)
@@ -35,6 +36,7 @@ public sealed partial class App : Application
         this.startupDiagnostics.Record(StartupStage.FrameworkInitialization);
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
+            ShutdownCompletion = Task.CompletedTask;
             desktop.ShutdownMode = ShutdownMode.OnExplicitShutdown;
             this.startupDiagnostics.Record(StartupStage.ClassicDesktopLifetimeConfigured);
             this.startupDiagnostics.Record(StartupStage.CoordinatorConstructionStarting);
@@ -74,11 +76,12 @@ public sealed partial class App : Application
         catch (Exception exception)
         {
             this.startupDiagnostics.RecordException(StartupStage.CoordinatorStartFailed, exception);
-            throw;
+            if (this.coordinator != null) { await this.coordinator.DisposeAsync().ConfigureAwait(true); this.coordinator = null; }
+            if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop) { desktop.Shutdown(1); }
         }
     }
 
-    private async void DesktopExit(object? sender, ControlledApplicationLifetimeExitEventArgs e)
+    private void DesktopExit(object? sender, ControlledApplicationLifetimeExitEventArgs e)
     {
         if (sender is IClassicDesktopStyleApplicationLifetime desktop)
         {
@@ -88,7 +91,7 @@ public sealed partial class App : Application
         if (this.coordinator != null)
         {
             SingleInstanceLaunchRequestDispatcher.Shared.Unregister(this.coordinator.HandleLaunchRequestAsync);
-            await this.coordinator.DisposeAsync();
+            ShutdownCompletion = this.coordinator.DisposeAsync().AsTask();
             this.coordinator = null;
         }
     }

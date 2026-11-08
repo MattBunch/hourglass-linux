@@ -44,10 +44,11 @@ public sealed class PackagingMetadataTests
         XElement releases = Assert.IsType<XElement>(component.Element("releases"));
         XElement release = Assert.IsType<XElement>(releases.Elements("release").FirstOrDefault());
         Assert.Equal(projectVersion, release.Attribute("version")?.Value);
-        Assert.Equal("2026-09-15", release.Attribute("date")?.Value);
+        Assert.Equal("2026-11-08", release.Attribute("date")?.Value);
         Assert.Null(release.Attribute("type"));
         Assert.Equal(
             [
+                "0.3.0",
                 "0.2.0",
                 "0.2.0~beta9",
                 "0.2.0~beta8",
@@ -186,7 +187,11 @@ public sealed class PackagingMetadataTests
         Assert.Contains("scripts/validate-linux-packaging.sh", workflow, StringComparison.Ordinal);
         Assert.Contains("hourglass-linux-${RELEASE_VERSION}-linux-x64.tar.gz", workflow, StringComparison.Ordinal);
         Assert.Contains("Hourglass-${RELEASE_VERSION}-x86_64.AppImage", workflow, StringComparison.Ordinal);
-        Assert.Contains("\"Hourglass-${RELEASE_VERSION}-x86_64.AppImage\" > SHA256SUMS", workflow, StringComparison.Ordinal);
+        Assert.Contains("hourglass-terminal-${RELEASE_VERSION}-linux-x64.tar.gz", workflow, StringComparison.Ordinal);
+        Assert.Contains("\"hourglass-terminal-${RELEASE_VERSION}-linux-arm64.tar.gz\" > SHA256SUMS", workflow, StringComparison.Ordinal);
+        Assert.Contains("needs: terminal", workflow, StringComparison.Ordinal);
+        Assert.Contains("ubuntu-24.04-arm", workflow, StringComparison.Ordinal);
+        Assert.Contains("tests/verify-terminal-package.py", workflow, StringComparison.Ordinal);
         Assert.Contains("Release archive staging still contains portable debug symbols.", workflow, StringComparison.Ordinal);
         Assert.Contains("SHA256SUMS", workflow, StringComparison.Ordinal);
         Assert.Contains("sha256sum --check SHA256SUMS", workflow, StringComparison.Ordinal);
@@ -226,7 +231,7 @@ public sealed class PackagingMetadataTests
     private static string ReadAvaloniaProjectVersion()
     {
         XDocument project = XDocument.Load(
-            FindRepositoryFile("src/Hourglass.Linux.Avalonia/Hourglass.Linux.Avalonia.csproj"));
+            FindRepositoryFile("build/Hourglass.Version.props"));
         string? version = project
             .Descendants("Version")
             .SingleOrDefault()

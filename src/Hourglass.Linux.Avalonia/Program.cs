@@ -17,11 +17,12 @@ internal static class Program
 
         return Run(
             args,
-            () => new LinuxFileLockSingleInstanceService(),
+            GuiLaunchBridge.CreateRegistration,
             request =>
             {
                 App.InitialLaunchRequest = request;
-                return BuildAvaloniaApp(startupDiagnostics).StartWithClassicDesktopLifetime(request.Arguments.ToArray());
+                try { return BuildAvaloniaApp(startupDiagnostics).StartWithClassicDesktopLifetime(request.Arguments.ToArray()); }
+                finally { App.ShutdownCompletion.GetAwaiter().GetResult(); }
             },
             Console.Error,
             startupDiagnostics);

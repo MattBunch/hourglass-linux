@@ -52,13 +52,11 @@ public sealed class DemoContext : IAsyncDisposable
         }
 
         this.viewModel = new MainWindowViewModel(
-            new CountdownEngine(services.Clock),
+            services.Clock,
             () => services.Clock.WallClockNow,
             services.NotificationService,
             services.SessionInhibitor,
             services.SettingsStore,
-            new DirectAppSettingsStore(services.SettingsStore),
-            new DirectSavedTimersStore(services.SettingsStore),
             services.SoundService,
             services.SystemPowerService,
             statusIconSupported: false,
@@ -66,6 +64,8 @@ public sealed class DemoContext : IAsyncDisposable
             persistActiveSessionDirectly: false,
             restoreActiveSessionOnLoad: false,
             uiDispatcher: AvaloniaUiDispatcher.Instance);
+        PumpUntilComplete(this.viewModel.PendingCommands);
+        this.viewModel.PendingCommands.GetAwaiter().GetResult();
         this.Window = new MainWindow(
             this.viewModel,
             services.DesktopProgressService,
@@ -75,7 +75,8 @@ public sealed class DemoContext : IAsyncDisposable
             createWindowAttentionService: _ => services.WindowAttentionService,
             loadSettingsOnOpened: false,
             suppressExpiryVisualFeedback: true,
-            suppressCommandPanelTransitions: true);
+            suppressCommandPanelTransitions: true,
+            schedulingMode: TimerSchedulingMode.Manual);
         this.Window.Width = options.Width;
         this.Window.Height = options.Height;
         this.Window.CanResize = false;
@@ -107,7 +108,9 @@ public sealed class DemoContext : IAsyncDisposable
     {
         cancellationToken.ThrowIfCancellationRequested();
         this.Window.Show();
-        await this.viewModel.LoadSettingsAsync(cancellationToken).ConfigureAwait(true);
+        Task load = this.viewModel.LoadSettingsAsync(cancellationToken);
+        PumpUntilComplete(load);
+        await load.ConfigureAwait(true);
         await this.FlushAsync(cancellationToken).ConfigureAwait(true);
     }
 
@@ -244,7 +247,12 @@ public sealed class DemoContext : IAsyncDisposable
         TimeSpan step = TimeSpan.FromTicks(targetTicks - this.scenarioTicks);
         this.services.Clock.Advance(step);
         this.scenarioTicks = targetTicks;
-        this.viewModel.Tick();
+        Task advance = this.viewModel.AdvanceAsync();
+        PumpUntilComplete(advance);
+        advance.GetAwaiter().GetResult();
+        Task effects = this.viewModel.PendingSessionEffects;
+        PumpUntilComplete(effects);
+        effects.GetAwaiter().GetResult();
     }
 
     private static void ApplyDemoFont(Control control)
@@ -307,13 +315,32 @@ public sealed class DemoContext : IAsyncDisposable
         this.disposed = true;
         await this.FlushAsync(CancellationToken.None).ConfigureAwait(true);
         this.aboutWindow?.Close();
-        await this.Window.CloseCoordinatedWithPreapprovedExitAsync().ConfigureAwait(true);
+        Task close = this.Window.CloseCoordinatedWithPreapprovedExitAsync();
+        PumpUntilComplete(close);
+        await close.ConfigureAwait(true);
         await this.FlushAsync(CancellationToken.None).ConfigureAwait(true);
+    }
+
+    // The recorder has no desktop main loop. Keep its dispatcher alive across async close preparation.
+    private static void PumpUntilComplete(Task operation)
+    {
+        if (operation.IsCompleted)
+        {
+            return;
+        }
+
+        DispatcherFrame frame = new();
+        _ = operation.ContinueWith(
+            _ => Dispatcher.UIThread.Post(() => frame.Continue = false),
+            CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+        Dispatcher.UIThread.PushFrame(frame);
     }
 
     private Task FlushAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        PumpUntilComplete(this.viewModel.PendingCommands);
+        this.viewModel.PendingCommands.GetAwaiter().GetResult();
         Dispatcher.UIThread.RunJobs();
         Avalonia.Headless.AvaloniaHeadlessPlatform.ForceRenderTimerTick();
         return Task.CompletedTask;

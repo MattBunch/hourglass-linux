@@ -69,7 +69,9 @@ public sealed class NotifySendNotificationService : INotificationService
         var startInfo = new ProcessStartInfo
         {
             FileName = executableName,
-            UseShellExecute = false
+            UseShellExecute = false,
+            RedirectStandardError = true,
+            RedirectStandardOutput = true
         };
 
         startInfo.ArgumentList.Add(AppNameArgument);
@@ -86,13 +88,39 @@ public sealed class NotifySendNotificationService : INotificationService
             StartInfo = startInfo
         };
 
+        cancellationToken.ThrowIfCancellationRequested();
         if (!process.Start())
         {
             return -1;
         }
 
-        await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
-        return process.ExitCode;
+        Task<string> stderr = process.StandardError.ReadToEndAsync();
+        Task<string> stdout = process.StandardOutput.ReadToEndAsync();
+        int exitCode = await WaitForOwnedProcessAsync(process, cancellationToken).ConfigureAwait(false);
+        await Task.WhenAll(stderr, stdout).ConfigureAwait(false);
+        return exitCode;
+    }
+
+    internal static async Task<int> WaitForOwnedProcessAsync(Process process, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+            return process.ExitCode;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            try
+            {
+                if (!process.HasExited)
+                {
+                    process.Kill(entireProcessTree: true);
+                }
+            }
+            catch (InvalidOperationException) when (process.HasExited) { }
+            await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
+            throw;
+        }
     }
 
     private void RecordFailure(string message, Exception? exception)

@@ -4,6 +4,23 @@ All notable changes to Hourglass Linux are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-11-08
+
+### Added
+
+- Add a command-line interface and full-screen TUI for starting, listing, and
+  controlling timers, including detached timers and shared GUI timer control.
+- Provide accessible, monochrome, and compact terminal presentation modes.
+- Publish self-contained terminal archives for Linux x64 and arm64 alongside
+  the existing GUI archive and x86_64 AppImage, with combined checksums.
+
+### Known limitations
+
+- Attended SSH, terminal emulator, screen-reader, desktop-service, and physical
+  wake checks remain recorded separately; unavailable checks are Not run.
+- AppImage signing and AppImageUpdate metadata remain unavailable. Terminal
+  archives target glibc-based Linux; the GUI remains a separate installation.
+
 ## [0.2.0] - 2026-09-15
 
 ### Added

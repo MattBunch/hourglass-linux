@@ -4,15 +4,18 @@ namespace Hourglass.Settings;
 
 public sealed record ActiveTimerSessionSnapshotDefinition
 {
-    public ActiveTimerSessionSnapshotDefinition(string sessionId, ActiveTimerSessionSnapshot? session)
+    public ActiveTimerSessionSnapshotDefinition(string sessionId, ActiveTimerSessionSnapshot? session, SessionLifetime lifetime = SessionLifetime.Gui)
     {
         this.SessionId = string.IsNullOrWhiteSpace(sessionId) ? Guid.NewGuid().ToString("N") : sessionId.Trim();
         this.Session = session;
+        this.Lifetime = lifetime;
     }
 
     public string SessionId { get; }
 
     public ActiveTimerSessionSnapshot? Session { get; }
+
+    public SessionLifetime Lifetime { get; }
 
     public bool IsValid => this.Session != null;
 }
@@ -47,7 +50,7 @@ public sealed record ActiveTimerSessionsSnapshot
                     session.SessionId,
                     session.Session == null
                         ? null
-                        : ActiveTimerSessionSnapshot.FromDocument(session.Session, wallClockNow, monotonicNow)))
+                        : ActiveTimerSessionSnapshot.FromDocument(session.Session, wallClockNow, monotonicNow), session.Lifetime))
                 .ToArray());
     }
 
@@ -55,7 +58,7 @@ public sealed record ActiveTimerSessionsSnapshot
     {
         ActiveTimerSessionDefinition[] definitions = this.sessions
             .Where(session => session.Session != null)
-            .Select(session => new ActiveTimerSessionDefinition(session.SessionId, session.Session!.ToDocument()))
+            .Select(session => new ActiveTimerSessionDefinition(session.SessionId, session.Session!.ToDocument(), session.Lifetime))
             .ToArray();
         return new ActiveTimerSessionsDocument(sessions: definitions);
     }
@@ -64,7 +67,7 @@ public sealed record ActiveTimerSessionsSnapshot
     {
         ArgumentNullException.ThrowIfNull(session);
 
-        ActiveTimerSessionSnapshotDefinition replacement = new(sessionId, session);
+        ActiveTimerSessionSnapshotDefinition replacement = new(sessionId, session, this.sessions.FirstOrDefault(item => item.SessionId == sessionId)?.Lifetime ?? SessionLifetime.Gui);
         ActiveTimerSessionSnapshotDefinition[] updated = this.sessions
             .Where(existing => !StringComparer.Ordinal.Equals(existing.SessionId, replacement.SessionId))
             .Append(replacement)

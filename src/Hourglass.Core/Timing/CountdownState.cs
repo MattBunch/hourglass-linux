@@ -6,7 +6,7 @@ using Hourglass.Serialization;
 
 public sealed record CountdownState
 {
-    internal CountdownState(
+    public CountdownState(
         TimerState state,
         DateTime? startTime,
         DateTime? endTime,
