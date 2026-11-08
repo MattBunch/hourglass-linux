@@ -26,7 +26,7 @@ The legacy Windows solution remains available as `Hourglass.sln`, but Linux port
 
 The [scriptable CLI](docs/cli.md) builds as `hourglass` and runs foreground timers through the shared application runtime.
 The [interactive TUI](docs/tui.md) builds as `hourglass-tui` and can also be opened with `hourglass tui`.
-Self-contained terminal archives for Linux x64 and arm64 are prepared for the next tagged release; see [terminal installation](docs/terminal-installation.md). Existing published releases are not retroactively updated.
+Version 0.3.0 adds self-contained terminal archives for Linux x64 and arm64; see [terminal installation](docs/terminal-installation.md).
 
 ## Run Locally
 

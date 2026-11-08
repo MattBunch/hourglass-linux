@@ -1,8 +1,8 @@
 # Terminal installation
 
-DEV-18 adds self-contained terminal archives for glibc-based Linux x64 and arm64.
-The release workflow is prepared to publish them with a future tagged release;
-this feature branch does not make them available on an existing release.
+Version 0.3.0 adds self-contained terminal archives for glibc-based Linux x64 and
+arm64. Download the archive and `SHA256SUMS` from the matching
+[GitHub Release](https://github.com/MattBunch/hourglass-linux/releases).
 
 Choose `hourglass-terminal-<version>-linux-x64.tar.gz` for x86-64 or
 `hourglass-terminal-<version>-linux-arm64.tar.gz` for AArch64. Verify the release
@@ -14,7 +14,7 @@ runtime is required. The internal host is not a public command or system service
 For example, after obtaining an archive and its checksum file:
 
 ```sh
-sha256sum --check SHA256SUMS
+sha256sum --check --ignore-missing SHA256SUMS
 mkdir -p "$HOME/.local/opt/hourglass-terminal"
 tar -xzf hourglass-terminal-<version>-linux-x64.tar.gz -C "$HOME/.local/opt/hourglass-terminal"
 export PATH="$HOME/.local/opt/hourglass-terminal/bin:$PATH"
